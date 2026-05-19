@@ -22,6 +22,9 @@ target 'Hafriyapp' do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
+  # Bluetooth ESC/POS yazıcı (BLE — CoreBluetooth)
+  pod 'RNBluetoothEscposPrinter', :path => '../node_modules/react-native-bluetooth-escpos-printer'
+
   post_install do |installer|
     react_native_post_install(
       installer,

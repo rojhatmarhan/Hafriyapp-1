@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   StyleSheet,
   Alert,
+  Platform,
 } from 'react-native';
 import {
   getPairedAndScannedDevices,
@@ -44,15 +45,14 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
       if (!enabled) {
         Alert.alert(
           'Bluetooth Kapalı',
-          'Bluetooth yazıcıya bağlanmak için Bluetooth\'u açmanız gerekmektedir.',
+          Platform.OS === 'ios'
+            ? 'Bluetooth yazıcıya bağlanmak için iPhone Ayarlar > Bluetooth\'dan Bluetooth\'u açın.'
+            : 'Bluetooth yazıcıya bağlanmak için Bluetooth\'u açmanız gerekmektedir.',
           [
-            { text: 'İptal', style: 'cancel' },
-            {
-              text: 'Aç',
-              onPress: async () => {
-                await enableBluetooth();
-              },
-            },
+            { text: 'Tamam', style: 'cancel' },
+            ...(Platform.OS === 'android'
+              ? [{ text: 'Aç', onPress: async () => { await enableBluetooth(); } }]
+              : []),
           ],
         );
         setScanState('idle');
@@ -135,7 +135,9 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
 
           {/* Açıklama */}
           <Text style={styles.description}>
-            Yazıcınızın Bluetooth eşleştirmesini Android ayarlarından yaptıktan sonra aşağıdaki "Tara" butonuna basın.
+            {Platform.OS === 'ios'
+              ? 'Yazıcınızı iPhone Ayarlar > Bluetooth\'dan eşleştirdikten sonra "Tara" butonuna basın.\n⚠️ Yazıcınızın BLE (Bluetooth 4.0+) desteklemesi gerekir.'
+              : 'Yazıcınızın Bluetooth eşleştirmesini Android ayarlarından yaptıktan sonra aşağıdaki "Tara" butonuna basın.'}
           </Text>
 
           {/* Tara butonu */}

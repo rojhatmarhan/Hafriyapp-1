@@ -31,6 +31,8 @@ export interface PrintReceiptParams {
 // ─── Permissions ────────────────────────────────────────────────────────────
 
 export async function requestBluetoothPermissions(): Promise<boolean> {
+  // iOS: CoreBluetooth izni sistem tarafından otomatik yönetilir,
+  // ilk CBCentralManager init'inde kullanıcıya gösterilir.
   if (Platform.OS !== 'android') return true;
 
   try {
@@ -72,6 +74,10 @@ export async function isBluetoothEnabled(): Promise<boolean> {
 }
 
 export async function enableBluetooth(): Promise<boolean> {
+  // iOS: Bluetooth programatik olarak açılamaz.
+  // Sistem zaten CoreBluetooth üzerinden uyarı gösterir.
+  if (Platform.OS === 'ios') return false;
+
   try {
     await BluetoothManager.enableBluetooth();
     return true;
@@ -112,10 +118,12 @@ export async function getPairedAndScannedDevices(): Promise<{ paired: BluetoothD
 
   const toDevice = (d: any): BluetoothDevice => ({
     name: d.name?.trim() || d.address,
-    address: d.address,
+    // iOS: adres, MAC değil CBPeripheral UUID'dir (örn. "12345678-ABCD-...")
+    address: d.address || d.id || '',
   });
 
   return {
+    // iOS'ta 'paired' kavramı yoktur; tüm BLE cihazlar 'found'da gelir
     paired: (data.paired || []).map(toDevice),
     found: (data.found || []).map(toDevice),
   };
@@ -124,6 +132,8 @@ export async function getPairedAndScannedDevices(): Promise<{ paired: BluetoothD
 // ─── Bağlantı ───────────────────────────────────────────────────────────────
 
 export async function connectPrinter(address: string): Promise<boolean> {
+  if (!address) return false;
+
   try {
     await ensureBluetoothPermission();
     await BluetoothManager.connect(address);

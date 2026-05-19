@@ -1,3 +1,41 @@
+diff --git a/node_modules/react-native-bluetooth-escpos-printer/RNBluetoothEscposPrinter.podspec b/node_modules/react-native-bluetooth-escpos-printer/RNBluetoothEscposPrinter.podspec
+new file mode 100644
+index 0000000..1c45514
+--- /dev/null
++++ b/node_modules/react-native-bluetooth-escpos-printer/RNBluetoothEscposPrinter.podspec
+@@ -0,0 +1,32 @@
++require "json"
++
++package = JSON.parse(File.read(File.join(__dir__, "package.json")))
++
++Pod::Spec.new do |s|
++  s.name         = "RNBluetoothEscposPrinter"
++  s.version      = package["version"]
++  s.summary      = package["description"]
++  s.homepage     = "https://github.com/januslo/react-native-bluetooth-escpos-printer"
++  s.license      = "MIT"
++  s.author       = { "januslo" => "januslo@gmail.com" }
++  s.platform     = :ios, "11.0"
++  s.source       = { :path => "." }
++
++  # Ana modül kaynak dosyaları (ZXingObjC hariç)
++  s.source_files = "ios/*.{h,m}"
++
++  # ZXingObjC — bundled QR kod kütüphanesi
++  s.preserve_paths = "ios/ZXingObjC-3.2.2/**/*"
++
++  # Tüm kaynak dosyaları birlikte derle
++  s.subspec "ZXingObjC" do |zx|
++    zx.source_files    = "ios/ZXingObjC-3.2.2/ZXingObjC/**/*.{h,m}"
++    zx.public_header_files = "ios/ZXingObjC-3.2.2/ZXingObjC/**/*.h"
++    zx.xcconfig = { "OTHER_LDFLAGS" => "-ObjC" }
++  end
++
++  s.frameworks   = "CoreBluetooth"
++  s.requires_arc = true
++
++  s.dependency "React-Core"
++end
 diff --git a/node_modules/react-native-bluetooth-escpos-printer/android/build.gradle b/node_modules/react-native-bluetooth-escpos-printer/android/build.gradle
 index d86e4f5..66344cb 100644
 --- a/node_modules/react-native-bluetooth-escpos-printer/android/build.gradle
@@ -150,8 +188,7 @@ index 0000000..9e26dfe
 \ No newline at end of file
 diff --git a/node_modules/react-native-bluetooth-escpos-printer/android/build/intermediates/compile_r_class_jar/debug/generateDebugRFile/R.jar b/node_modules/react-native-bluetooth-escpos-printer/android/build/intermediates/compile_r_class_jar/debug/generateDebugRFile/R.jar
 new file mode 100644
-index 0000000..08a59d7
-Binary files /dev/null and b/node_modules/react-native-bluetooth-escpos-printer/android/build/intermediates/compile_r_class_jar/debug/generateDebugRFile/R.jar differ
+index 0000000..e69de29
 diff --git a/node_modules/react-native-bluetooth-escpos-printer/android/build/intermediates/compile_symbol_list/debug/generateDebugRFile/R.txt b/node_modules/react-native-bluetooth-escpos-printer/android/build/intermediates/compile_symbol_list/debug/generateDebugRFile/R.txt
 new file mode 100644
 index 0000000..e69de29
