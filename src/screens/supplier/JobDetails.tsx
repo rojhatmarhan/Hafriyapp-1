@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator,
   Image, Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
@@ -19,6 +19,9 @@ import {
   removePendingHaul,
   PendingHaul,
 } from '../../store/slices/pendingHaulSlice';
+import { captureRef } from 'react-native-view-shot';
+import QRCode from 'react-native-qrcode-svg';
+import { printImage } from '../../services/printService';
 
 const YELLOW = '#FFD500';
 const DARK = '#222';
@@ -155,6 +158,10 @@ export default function JobDetails() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
+
+  // ── Yazdırma
+  const [printTargetHaul, setPrintTargetHaul] = useState<HaulApi | null>(null);
+  const printReceiptRef = useRef<View>(null);
 
   // ── Sefer Gir modal
   const [addModal, setAddModal] = useState(false);
@@ -552,24 +559,30 @@ export default function JobDetails() {
     }
   };
 
-  // ── Yazdır (Share)
+  // ── Yazdır (Bluetooth görsel fiş)
   const triggerPrint = async (haul: HaulApi) => {
-    const lines = [
-      `🚛 HAFRİYAT FİŞİ`,
-      `━━━━━━━━━━━━━━━━━━━━`,
-      `Şantiye : ${haul.jobSiteName || job?.name || '-'}`,
-      `Tarih   : ${new Date(haul.timeOfHaul).toLocaleString('tr-TR')}`,
-      `━━━━━━━━━━━━━━━━━━━━`,
-      `Plaka   : ${haul.plateNumber}`,
-      `Döküm   : ${haul.dumpLocation || '-'}`,
-      haul.tonage > 0 ? `Tonaj   : ${haul.tonage.toFixed(2)} Ton` : '',
-      (haul.paymentType === 0 || haul.paymentType === 2) && haul.cashAmount > 0 ? `Nakit   : ${haul.cashAmount.toLocaleString('tr-TR')} TL` : '',
-      (haul.paymentType === 1 || haul.paymentType === 2) && haul.fuelAmount > 0 ? `Yakıt   : ${haul.fuelAmount.toLocaleString('tr-TR')} Lt` : '',
-      `━━━━━━━━━━━━━━━━━━━━`,
-    ].filter(Boolean).join('\n');
+    setPrintTargetHaul(haul);
+    await new Promise(r => setTimeout(r, 300));
+    if (!printReceiptRef.current) {
+      Alert.alert('Hata', 'Fiş görünümü hazırlanamadı, tekrar deneyin.');
+      return;
+    }
+    let base64: string;
     try {
-      await Share.share({ message: lines });
-    } catch { }
+      base64 = await captureRef(printReceiptRef, {
+        format: 'png',
+        quality: 1.0,
+        result: 'base64',
+      });
+    } catch (e) {
+      Alert.alert('Görüntü Hatası', 'Fiş yakalanamadı: ' + String(e));
+      return;
+    }
+    try {
+      await printImage(base64);
+    } catch (e) {
+      Alert.alert('Yazdırma Hatası', String(e));
+    }
   };
 
   const openPendingReceipt = (item: PendingHaul) => {
@@ -1699,6 +1712,130 @@ export default function JobDetails() {
           </View>
         </Modal>
       )}
+
+      {/* ═══════════════ GİZLİ PRINT VIEW (görünmez, 0,0 konumunda) ═══════════════ */}
+      {printTargetHaul && (() => {
+        const ph = printTargetHaul;
+        const logoUri = ph.companyLogoPath
+          ? `https://api.hafriyapp.com${ph.companyLogoPath.startsWith('/') ? '' : '/'}${ph.companyLogoPath}`
+          : null;
+        const timeStr = new Date(ph.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+        const dateStr = new Date(ph.timeOfHaul).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const ucretStr = [
+          ph.cashAmount > 0 ? `${ph.cashAmount.toLocaleString('tr-TR')}₺` : '',
+          ph.fuelAmount > 0 ? `${ph.fuelAmount.toLocaleString('tr-TR')}lt` : '',
+        ].filter(Boolean).join(' / ') || '-';
+        const rows = [
+          { label: 'Tarih :', value: dateStr },
+          { label: 'Seri No :', value: autoSerial(ph) },
+          { label: 'Plaka :', value: ph.plateNumber },
+          { label: 'Şoför :', value: ph.driverName || ph.driverPhone || '-' },
+          { label: 'Döküm :', value: ph.dumpLocation || '-' },
+          { label: 'Ücret :', value: ucretStr },
+          ...(ph.contactPhone ? [{ label: 'Yetkili :', value: ph.contactPhone }] : []),
+        ];
+        const OW = 384;
+        const OH = 640;
+        const CW = OH;
+        const CH = OW;
+        const tx = (OW - CW) / 2;
+        const ty = (OH - CH) / 2;
+        const FRAME = 10;
+        const PRINT_RIGHT_GAP = 20;
+        const FRAME_BOTTOM = Math.max(0, FRAME - PRINT_RIGHT_GAP);
+        return (
+          // opacity:0.001 → render edilir ama görünmez; pointerEvents→ dokunuşları engeller
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, opacity: 0.01 }}>
+            <View
+              ref={printReceiptRef}
+              collapsable={false}
+              style={{ width: OW, height: OH, overflow: 'hidden', backgroundColor: '#fff' }}
+            >
+              {/* Landscape card, rotated 90° CW */}
+              <View style={{
+                width: CW, height: CH,
+                transform: [{ translateX: tx }, { translateY: ty }, { rotate: '90deg' }],
+                backgroundColor: '#ffffff',
+                paddingTop: 27,
+                paddingRight: 18,
+                paddingBottom: 18,
+                paddingLeft: 18,
+              }}>
+                <View style={{
+                  position: 'absolute',
+                  top: FRAME + PRINT_RIGHT_GAP,
+                  right: FRAME,
+                  bottom: FRAME_BOTTOM,
+                  left: FRAME,
+                  borderWidth: 3,
+                  borderColor: '#000000',
+                  borderRadius: 16,
+                }} />
+                {/* Sağ üst saat */}
+                <Text style={{ position: 'absolute', top: 45, right: 26, fontSize: 24, fontWeight: '700', color: '#000' }}>
+                  {timeStr}
+                </Text>
+
+                {/* Header: Logo + Firma + Şantiye */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 13, marginBottom: 14, paddingLeft: 12, paddingRight: 72 }}>
+                  <View style={{
+                    width: 78, height: 78, borderRadius: 39, borderWidth: 2, borderColor: '#000',
+                    justifyContent: 'center', alignItems: 'center', marginRight: 14, overflow: 'hidden',
+                  }}>
+                    {logoUri
+                      ? <Image source={{ uri: logoUri }} style={{ width: 70, height: 70, borderRadius: 35 }} />
+                      : <Image source={require('../../../assets/icons/truck.png')} style={{ width: 54, height: 54 }} resizeMode="contain" />
+                    }
+                  </View>
+                  <View style={{ flex: 1, alignItems: 'center' }}>
+                    <Text numberOfLines={1} style={{ fontSize: 25, fontWeight: '800', letterSpacing: 0.3, color: '#000', textAlign: 'center' }}>
+                      {(ph.companyName || user?.companyName || 'HAFRİYAT').toUpperCase()}
+                    </Text>
+                    <Text numberOfLines={1} style={{ fontSize: 19, fontWeight: '700', letterSpacing: 0.2, color: '#000', textAlign: 'center', marginTop: 3 }}>
+                      {(ph.jobSiteName || job?.name || '-').toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* İçerik: Dikey metin + Satırlar + QR */}
+                <View style={{ flexDirection: 'row', alignItems: 'stretch', flex: 1, paddingLeft: 12, paddingRight: 12, paddingBottom: 12 }}>
+
+                  {/* Dikey HAFRİYAPP */}
+                  <View style={{ width: 34, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                    <Text style={{
+                      fontSize: 22, fontWeight: '900', letterSpacing: 4, color: '#000',
+                      transform: [{ rotate: '-90deg' }],
+                      width: 210, textAlign: 'center',
+                    }}>HAFRİYAPP</Text>
+                  </View>
+
+                  {/* Form satırları */}
+                  <View style={{ flex: 1, justifyContent: 'space-between', paddingTop: 4, paddingBottom: 4 }}>
+                    {rows.map(({ label, value }) => (
+                      <View key={label} style={{
+                        minHeight: 36,
+                        flexDirection: 'row', alignItems: 'flex-end',
+                        borderBottomWidth: 1.2, borderStyle: 'dotted', borderColor: '#000', paddingBottom: 3,
+                      }}>
+                        <Text style={{ color: '#222', fontWeight: '700', width: 98, fontSize: 17 }}>{label}</Text>
+                        <Text numberOfLines={1} style={{ fontWeight: '700', color: '#000', fontSize: 17, flex: 1 }}>{value}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  {/* QR Kod */}
+                  <View style={{ width: 124, justifyContent: 'flex-end', alignItems: 'flex-end', marginLeft: 14, paddingBottom: 2 }}>
+                    <View style={{ width: 112, height: 112, borderWidth: 2, borderColor: '#000', borderRadius: 8, padding: 5, backgroundColor: '#fff' }}>
+                      <QRCode value={autoSerial(ph) || 'HAFRIYAPP'} size={98} color="#000" backgroundColor="#fff" />
+                    </View>
+                  </View>
+
+                </View>
+              </View>
+            </View>
+          </View>
+        );
+      })()}
 
       {/* ═══════════════ İŞİ SİL ADIM 1 ═══════════════ */}
       <Modal visible={deleteStep1Visible} transparent animationType="fade" onRequestClose={() => setDeleteStep1Visible(false)}>

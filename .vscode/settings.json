@@ -1,3 +1,11 @@
 {
-      "prettier.requireConfig": true
+      "prettier.requireConfig": true,
+      "chat.tools.terminal.autoApprove": {
+            "npm install": true,
+            "npx patch-package": true,
+            "Add-Type": true,
+            "Test-Path": true,
+            "&": true,
+            "Get-Item": true
+      }
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,9 @@ import { useAppSelector } from '../../hooks';
 import { deleteVehicle, getVehicles, updateVehicle, createVehicle, assignDriver, getVehicleDriver, removeDriver } from '../../services/vehicleService';
 import { getHauls, updateHaulPayment, HaulApi } from '../../services/haulService';
 import { getCompanyById } from '../../services/userService';
+import { captureRef } from 'react-native-view-shot';
+import QRCode from 'react-native-qrcode-svg';
+import { printImage } from '../../services/printService';
 import RNBlobUtil from 'react-native-blob-util';
 import Clipboard from '@react-native-clipboard/clipboard';
 
@@ -86,6 +89,10 @@ export default function SupplierVehicles() {
   const [receiptVisible, setReceiptVisible] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<HaulApi | null>(null);
   const [cachedCompanyLogoPath, setCachedCompanyLogoPath] = useState<string | null>(null);
+
+  // ── Yazdırma
+  const [printTargetHaul, setPrintTargetHaul] = useState<HaulApi | null>(null);
+  const printReceiptRef = useRef<View>(null);
 
   // Seferler (Hauls)
   const [hauls, setHauls] = useState<HaulApi[]>([]);
@@ -420,24 +427,30 @@ export default function SupplierVehicles() {
     setConfirmPaymentModal(true);
   };
 
+  // ── Yazdır (Bluetooth görsel fiş)
   const triggerPrint = async (haul: HaulApi) => {
-    const lines = [
-      '🚛 HAFRİYAT FİŞİ',
-      '━━━━━━━━━━━━━━━━━━━━',
-      `Şantiye : ${haul.jobSiteName || '-'}`,
-      `Tarih   : ${new Date(haul.timeOfHaul).toLocaleString('tr-TR')}`,
-      '━━━━━━━━━━━━━━━━━━━━',
-      `Plaka   : ${haul.plateNumber}`,
-      haul.driverName || haul.driverPhone ? `Şoför   : ${haul.driverName || haul.driverPhone}` : '',
-      `Döküm   : ${haul.dumpLocation || '-'}`,
-      haul.tonage > 0 ? `Tonaj   : ${haul.tonage.toLocaleString('tr-TR')} kg` : '',
-      haul.cashAmount > 0 ? `Nakit   : ${haul.cashAmount.toLocaleString('tr-TR')} TL` : '',
-      haul.fuelAmount > 0 ? `Yakıt   : ${haul.fuelAmount.toLocaleString('tr-TR')} Lt` : '',
-      '━━━━━━━━━━━━━━━━━━━━',
-    ].filter(Boolean).join('\n');
+    setPrintTargetHaul(haul);
+    await new Promise(r => setTimeout(r, 300));
+    if (!printReceiptRef.current) {
+      Alert.alert('Hata', 'Fiş görünümü hazırlanamadı, tekrar deneyin.');
+      return;
+    }
+    let base64: string;
     try {
-      await Share.share({ message: lines });
-    } catch { }
+      base64 = await captureRef(printReceiptRef, {
+        format: 'png',
+        quality: 1.0,
+        result: 'base64',
+      });
+    } catch (e) {
+      Alert.alert('Görüntü Hatası', 'Fiş yakalanamadı: ' + String(e));
+      return;
+    }
+    try {
+      await printImage(base64);
+    } catch (e) {
+      Alert.alert('Yazdırma Hatası', String(e));
+    }
   };
 
   const formatHaulDate = (iso: string) => {
@@ -1321,6 +1334,113 @@ export default function SupplierVehicles() {
           </View>
         </Modal>
       )}
+
+      {/* ═══════════════ GİZLİ PRINT VIEW (görünmez, 0,0 konumunda) ═══════════════ */}
+      {printTargetHaul && (() => {
+        const ph = printTargetHaul;
+        const logoUri = ph.companyLogoPath
+          ? `https://api.hafriyapp.com${ph.companyLogoPath.startsWith('/') ? '' : '/'}${ph.companyLogoPath}`
+          : null;
+        const timeStr = new Date(ph.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+        const dateStr = new Date(ph.timeOfHaul).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const ucretStr = [
+          ph.cashAmount > 0 ? `${ph.cashAmount.toLocaleString('tr-TR')}₺` : '',
+          ph.fuelAmount > 0 ? `${ph.fuelAmount.toLocaleString('tr-TR')}lt` : '',
+        ].filter(Boolean).join(' / ') || '-';
+        const rows = [
+          { label: 'Tarih :', value: dateStr },
+          { label: 'Seri No :', value: autoSerial(ph) },
+          { label: 'Plaka :', value: ph.plateNumber },
+          { label: 'Şoför :', value: ph.driverName || ph.driverPhone || '-' },
+          { label: 'Döküm :', value: ph.dumpLocation || '-' },
+          { label: 'Ücret :', value: ucretStr },
+          ...(ph.contactPhone ? [{ label: 'Yetkili :', value: ph.contactPhone }] : []),
+        ];
+        const OW = 384; const OH = 620; // biraz daha uzun fiş
+        const BLEED_X = 16; // sağ/sol tam dolu baskı için taşırma
+        const BLEED_Y = 12; // üst/alt taşırma
+        const FRAME_INSET = 8; // görünür kenarlık içeride kalsın
+        const PRINT_RIGHT_GAP = 20;
+        const FRAME_BOTTOM = Math.max(0, FRAME_INSET - PRINT_RIGHT_GAP);
+        const CW = OH + BLEED_Y;
+        const CH = OW + BLEED_X;
+        const tx = (OW - CW) / 2;
+        const ty = (OH - CH) / 2;
+        return (
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, opacity: 0.001 }}>
+            <View
+              ref={printReceiptRef}
+              collapsable={false}
+              style={{ width: OW, height: OH, overflow: 'hidden', backgroundColor: '#fff' }}
+            >
+              <View style={{
+                width: CW, height: CH,
+                transform: [{ translateX: tx }, { translateY: ty }, { rotate: '90deg' }],
+                backgroundColor: '#ffffff',
+                paddingTop: 34, paddingRight: 22, paddingBottom: 20, paddingLeft: 22,
+              }}>
+                <View style={{
+                  position: 'absolute',
+                  top: FRAME_INSET + PRINT_RIGHT_GAP,
+                  right: FRAME_INSET,
+                  bottom: FRAME_BOTTOM,
+                  left: FRAME_INSET,
+                  borderWidth: 3,
+                  borderColor: '#000000',
+                  borderRadius: 16,
+                }} />
+                <Text style={{ position: 'absolute', top: 35, right: 14, fontSize: 26, fontWeight: '700', color: '#000' }}>
+                  {timeStr}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5, marginBottom: 8, paddingRight: 60 }}>
+                  <View style={{
+                    width: 82, height: 82, borderRadius: 41, borderWidth: 2, borderColor: '#000',
+                    justifyContent: 'center', alignItems: 'center', marginRight: 12, overflow: 'hidden',
+                  }}>
+                    {logoUri
+                      ? <Image source={{ uri: logoUri }} style={{ width: 74, height: 74, borderRadius: 37 }} />
+                      : <Image source={require('../../../assets/icons/truck.png')} style={{ width: 58, height: 58 }} resizeMode="contain" />
+                    }
+                  </View>
+                  <View style={{ flex: 1, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 27, fontWeight: '800', letterSpacing: 0.5, color: '#000', textAlign: 'center' }}>
+                      {(ph.companyName || user?.companyName || 'HAFRİYAT').toUpperCase()}
+                    </Text>
+                    <Text style={{ fontSize: 22, fontWeight: '700', letterSpacing: 0.3, color: '#000', textAlign: 'center', marginTop: 2 }}>
+                      {(ph.jobSiteName || '-').toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'stretch', flex: 1 }}>
+                  <View style={{ width: 34, alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
+                    <Text style={{
+                      fontSize: 26, fontWeight: '900', letterSpacing: 4, color: '#000',
+                      transform: [{ rotate: '-90deg' }],
+                      width: 240, textAlign: 'center',
+                    }}>HAFRİYAPP</Text>
+                  </View>
+                  <View style={{ flex: 1, justifyContent: 'space-between' }}>
+                    {rows.map(({ label, value }) => (
+                      <View key={label} style={{
+                        flexDirection: 'row', alignItems: 'flex-end',
+                        borderBottomWidth: 1.5, borderStyle: 'dotted', borderColor: '#000', paddingBottom: 1,
+                      }}>
+                        <Text style={{ color: '#888', fontWeight: '700', width: 96, fontSize: 19 }}>{label}</Text>
+                        <Text style={{ fontWeight: '700', color: '#000', fontSize: 19, flex: 1 }}>{value}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <View style={{ width: 128, justifyContent: 'flex-end', marginLeft: 14 }}>
+                    <View style={{ width: 120, height: 120, borderWidth: 2, borderColor: '#000', borderRadius: 8, padding: 5, backgroundColor: '#fff' }}>
+                      <QRCode value={autoSerial(ph) || 'HAFRIYAPP'} size={106} color="#000" backgroundColor="#fff" />
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </View>
+        );
+      })()}
 
       {/* ================= ÖDEME ONAY MODAL ================= */}
       <Modal visible={confirmPaymentModal} transparent animationType="fade">
