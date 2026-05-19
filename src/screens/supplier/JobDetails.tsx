@@ -1,9 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator,
-  Image, Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
-  TouchableWithoutFeedback, Keyboard, AppState, Share, RefreshControl, ActionSheetIOS,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Image, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, AppState, Share, RefreshControl, ActionSheetIOS } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
@@ -14,11 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NewJobModal from '../../components/NewJobModal';
 import { createHaul, updateHaulPayment, deleteHaul, HaulApi } from '../../services/haulService';
 import { getCompanyById } from '../../services/userService';
-import {
-  addPendingHaul,
-  removePendingHaul,
-  PendingHaul,
-} from '../../store/slices/pendingHaulSlice';
+import { addPendingHaul, removePendingHaul, PendingHaul } from '../../store/slices/pendingHaulSlice';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
 import { printImage } from '../../services/printService';
@@ -84,7 +76,7 @@ const getOffersFromJob = (job: any): Offer[] => {
           });
         });
       }
-    } catch { }
+    } catch {}
   } else {
     // ── Hafriyat: yeni birleşik format (isVisible) veya eski offer1Name + extraOffersJson
     try {
@@ -93,13 +85,12 @@ const getOffersFromJob = (job: any): Offer[] => {
         const hasIsVisible = 'isVisible' in extras[0] || 'IsVisible' in extras[0];
         if (hasIsVisible) {
           // Yeni format: isVisible'dan bağımsız tüm teklifleri göster (piyasada değil, işlerim içinde)
-          extras
-            .forEach((e: any) => {
-              const name = e.name || e.Name || '-';
-              const cash = parseFloat(e.cash ?? e.Cash ?? 0) || 0;
-              const fuel = parseFloat(e.fuel ?? e.Fuel ?? 0) || 0;
-              offers.push({ name, cash, fuel });
-            });
+          extras.forEach((e: any) => {
+            const name = e.name || e.Name || '-';
+            const cash = parseFloat(e.cash ?? e.Cash ?? 0) || 0;
+            const fuel = parseFloat(e.fuel ?? e.Fuel ?? 0) || 0;
+            offers.push({ name, cash, fuel });
+          });
         } else {
           // Eski format: offer1Name + extras
           if (job?.offer1Name) {
@@ -114,7 +105,7 @@ const getOffersFromJob = (job: any): Offer[] => {
           });
         }
       }
-    } catch { }
+    } catch {}
     // Fallback: eğer JSON yoksa offer1Name'e bak
     if (offers.length === 0 && job?.offer1Name) {
       offers.push({ name: job.offer1Name, cash: Number(job.offer1Cash) || 0, fuel: Number(job.offer1Fuel) || 0 });
@@ -139,6 +130,7 @@ export default function JobDetails() {
 
   const normalizeHaul = (h: HaulApi): HaulApi => ({
     ...h,
+    contactPhone: h.contactPhone || (h as any).ContactPhone || job?.contactPhone || user?.phoneNumber || undefined,
     driverName: h.driverName || (h as any).DriverName || undefined,
     driverPhone: h.driverPhone || (h as any).DriverPhone || undefined,
     companyLogoPath: h.companyLogoPath || (h as any).CompanyLogoPath || cachedCompanyLogoPath || undefined,
@@ -146,15 +138,17 @@ export default function JobDetails() {
     jobSiteName: h.jobSiteName || (h as any).JobSiteName || job?.name || undefined,
   });
 
+  const getAuthorizedContact = (haul?: HaulApi | null) => {
+    return haul?.contactPhone || job?.contactPhone || user?.phoneNumber || '-';
+  };
+
   // ── Ana liste
   const [selectedHaul, setSelectedHaul] = useState<HaulApi | null>(null);
   const [receiptVisible, setReceiptVisible] = useState(false);
   const [hauls, setHauls] = useState<HaulApi[]>([]);
   const [plateFilter, setPlateFilter] = useState('');
   const [cachedCompanyLogoPath, setCachedCompanyLogoPath] = useState<string | null>(null);
-  const [showHaulsToOwners, setShowHaulsToOwners] = useState<boolean>(
-    job?.isHaulVisibleToVehicleOwners ?? job?.showHaulsToVehicleOwners ?? true
-  );
+  const [showHaulsToOwners, setShowHaulsToOwners] = useState<boolean>(job?.isHaulVisibleToVehicleOwners ?? job?.showHaulsToVehicleOwners ?? true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -167,7 +161,7 @@ export default function JobDetails() {
   const [addModal, setAddModal] = useState(false);
   const [formPlate, setFormPlate] = useState('');
   const [selectedOfferIdx, setSelectedOfferIdx] = useState<number | null>(null);
-  const [formTonage, setFormTonage] = useState('');   // Kum/Mıcır: kg
+  const [formTonage, setFormTonage] = useState(''); // Kum/Mıcır: kg
   const [formNote, setFormNote] = useState('');
   const [formSaving, setFormSaving] = useState(false);
 
@@ -193,7 +187,7 @@ export default function JobDetails() {
     try {
       const raw = await AsyncStorage.getItem('recent_plates');
       if (raw) setRecentPlates(JSON.parse(raw));
-    } catch { }
+    } catch {}
   };
 
   const saveRecentPlate = async (plate: string) => {
@@ -203,7 +197,7 @@ export default function JobDetails() {
       const updated = [plate, ...existing.filter(p => p !== plate)].slice(0, 10);
       await AsyncStorage.setItem('recent_plates', JSON.stringify(updated));
       setRecentPlates(updated);
-    } catch { }
+    } catch {}
   };
 
   // ── Ayarlar: Düzenle / Yakıt Ekle / İşi Sil / İndir
@@ -244,7 +238,7 @@ export default function JobDetails() {
       if (data?.fuelStock != null) setFuelStock(data.fuelStock);
       const visible = data?.isHaulVisibleToVehicleOwners ?? data?.showHaulsToVehicleOwners;
       if (visible != null) setShowHaulsToOwners(visible);
-    } catch { }
+    } catch {}
   };
 
   // ── Seferleri yükle
@@ -298,7 +292,7 @@ export default function JobDetails() {
             timeOfHaul: pending.timeOfHaul,
             isPrintedReceipt: pending.isPrintedReceipt,
           },
-          token
+          token,
         );
         dispatch(removePendingHaul(pending.localId));
         synced++;
@@ -317,7 +311,7 @@ export default function JobDetails() {
     useCallback(() => {
       fetchHauls();
       syncPending();
-    }, [token, job?.id])
+    }, [token, job?.id]),
   );
 
   useEffect(() => {
@@ -331,18 +325,24 @@ export default function JobDetails() {
     if (!token || !job?.companyId) return;
     getCompanyById(job.companyId, token)
       .then(res => {
-        const companyData = res?.isSuccess ? res.data : (res?.data || res);
+        const companyData = res?.isSuccess ? res.data : res?.data || res;
         const path = companyData?.logoPath || companyData?.LogoPath || null;
         if (path) setCachedCompanyLogoPath(path);
       })
-      .catch(() => { });
+      .catch(() => {});
   }, [token, job?.companyId]);
 
   // ── Sefer Gir submit (teklif seçimli)
   const handleAddHaul = async (isPrinted: boolean) => {
     const cleanPlate = formPlate.replace(/\s/g, '').toUpperCase();
-    if (!cleanPlate) { Alert.alert('Eksik Bilgi', 'Plaka numarası zorunludur.'); return; }
-    if (selectedOfferIdx === null) { Alert.alert('Eksik Bilgi', isKum ? 'Rota seçiniz.' : 'Teklif seçiniz.'); return; }
+    if (!cleanPlate) {
+      Alert.alert('Eksik Bilgi', 'Plaka numarası zorunludur.');
+      return;
+    }
+    if (selectedOfferIdx === null) {
+      Alert.alert('Eksik Bilgi', isKum ? 'Rota seçiniz.' : 'Teklif seçiniz.');
+      return;
+    }
 
     const offer = offers[selectedOfferIdx];
 
@@ -355,9 +355,12 @@ export default function JobDetails() {
 
     if (isKum) {
       tonageKg = parseFloat(formTonage.replace(',', '.')) || 0;
-      if (tonageKg <= 0) { Alert.alert('Eksik Bilgi', 'Miktar (kg) giriniz.'); return; }
+      if (tonageKg <= 0) {
+        Alert.alert('Eksik Bilgi', 'Miktar (kg) giriniz.');
+        return;
+      }
       const cashPerTon = offer.cashPerTon ?? offer.cash;
-      cashAmount = parseFloat((cashPerTon * tonageKg / 1000).toFixed(2));
+      cashAmount = parseFloat(((cashPerTon * tonageKg) / 1000).toFixed(2));
       fuelAmount = 0;
       paymentType = 0;
     }
@@ -383,7 +386,7 @@ export default function JobDetails() {
             isPrintedReceipt: isPrinted,
             isVisibleToVehicleOwner: showHaulsToOwners,
           },
-          token!
+          token!,
         );
         setFormSaving(false);
         saveRecentPlate(cleanPlate);
@@ -425,7 +428,10 @@ export default function JobDetails() {
   // ── Manuel Ekle submit
   const handleManualHaul = async (isPrinted: boolean) => {
     const cleanPlate = manualPlate.replace(/\s/g, '').toUpperCase();
-    if (!cleanPlate) { Alert.alert('Eksik Bilgi', 'Plaka zorunludur.'); return; }
+    if (!cleanPlate) {
+      Alert.alert('Eksik Bilgi', 'Plaka zorunludur.');
+      return;
+    }
 
     let dumpLoc: string;
     let cash: number;
@@ -434,19 +440,34 @@ export default function JobDetails() {
     let paymentType: number;
 
     if (isKum) {
-      if (!manualLoading.trim()) { Alert.alert('Eksik Bilgi', 'Yükleme yeri zorunludur.'); return; }
-      if (!manualUnloading.trim()) { Alert.alert('Eksik Bilgi', 'Boşaltma yeri zorunludur.'); return; }
+      if (!manualLoading.trim()) {
+        Alert.alert('Eksik Bilgi', 'Yükleme yeri zorunludur.');
+        return;
+      }
+      if (!manualUnloading.trim()) {
+        Alert.alert('Eksik Bilgi', 'Boşaltma yeri zorunludur.');
+        return;
+      }
       const pricePerTon = parseFloat(manualPricePerTon.replace(',', '.')) || 0;
-      if (pricePerTon <= 0) { Alert.alert('Eksik Bilgi', 'Ton başına fiyat giriniz.'); return; }
+      if (pricePerTon <= 0) {
+        Alert.alert('Eksik Bilgi', 'Ton başına fiyat giriniz.');
+        return;
+      }
       const kg = parseFloat(manualTonage.replace(',', '.')) || 0;
-      if (kg <= 0) { Alert.alert('Eksik Bilgi', 'Miktar (kg) giriniz.'); return; }
+      if (kg <= 0) {
+        Alert.alert('Eksik Bilgi', 'Miktar (kg) giriniz.');
+        return;
+      }
       dumpLoc = `${manualLoading.trim()} → ${manualUnloading.trim()}`;
       tonage = kg;
-      cash = parseFloat((pricePerTon * kg / 1000).toFixed(2));
+      cash = parseFloat(((pricePerTon * kg) / 1000).toFixed(2));
       fuel = 0;
       paymentType = 0;
     } else {
-      if (!manualDump.trim()) { Alert.alert('Eksik Bilgi', 'Döküm yeri zorunludur.'); return; }
+      if (!manualDump.trim()) {
+        Alert.alert('Eksik Bilgi', 'Döküm yeri zorunludur.');
+        return;
+      }
       dumpLoc = manualDump.trim();
       cash = parseFloat(manualCash.replace(',', '.')) || 0;
       fuel = parseFloat(manualFuel.replace(',', '.')) || 0;
@@ -474,7 +495,7 @@ export default function JobDetails() {
             isPrintedReceipt: isPrinted,
             isVisibleToVehicleOwner: showHaulsToOwners,
           },
-          token!
+          token!,
         );
         setManualSaving(false);
         closeManualModal();
@@ -601,7 +622,7 @@ export default function JobDetails() {
       isPaid: false,
       isPrintedReceipt: item.isPrintedReceipt,
       paymentType: item.paymentType,
-      createdDate: item.createdAt,   // autoSerial bu alanı kullanır
+      createdDate: item.createdAt, // autoSerial bu alanı kullanır
       isVisibleToVehicleOwner: false,
       note: item.note,
     };
@@ -652,19 +673,15 @@ export default function JobDetails() {
     // Modal kapatılmadan openDocument sunamaz; önce kapat, animasyon bitince aç
     setDeleteStep1Visible(false);
     try {
-      const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' })
-        .fetch('GET', `https://api.hafriyapp.com/api/Haul/jobsite/${job.id}/export`, {
-          Authorization: `Bearer ${token}`,
-        });
+      const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' }).fetch('GET', `https://api.hafriyapp.com/api/Haul/jobsite/${job.id}/export`, {
+        Authorization: `Bearer ${token}`,
+      });
       const path = res.path();
       await new Promise<void>(r => setTimeout(r, 350));
       if (Platform.OS === 'ios') {
         await RNBlobUtil.ios.openDocument(path);
       } else {
-        await RNBlobUtil.android.actionViewIntent(
-          path,
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        );
+        await RNBlobUtil.android.actionViewIntent(path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       }
     } catch {
       Alert.alert('Hata', 'Excel dosyası indirilemedi.');
@@ -676,19 +693,25 @@ export default function JobDetails() {
   const handleSettingsPress = () => {
     const options = ['İptal', 'Düzenle', 'Yakıt Ekle', 'İndir', 'İşi Sil'];
     if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options, cancelButtonIndex: 0, destructiveButtonIndex: 4 },
-        idx => {
-          if (idx === 1) setEditModal(true);
-          if (idx === 2) { setFuelInput(''); setFuelModal(true); }
-          if (idx === 3) downloadExcel();
-          if (idx === 4) handleFinishJob();
-        },
-      );
+      ActionSheetIOS.showActionSheetWithOptions({ options, cancelButtonIndex: 0, destructiveButtonIndex: 4 }, idx => {
+        if (idx === 1) setEditModal(true);
+        if (idx === 2) {
+          setFuelInput('');
+          setFuelModal(true);
+        }
+        if (idx === 3) downloadExcel();
+        if (idx === 4) handleFinishJob();
+      });
     } else {
       Alert.alert('Ayarlar', '', [
         { text: 'Düzenle', onPress: () => setEditModal(true) },
-        { text: 'Yakıt Ekle', onPress: () => { setFuelInput(''); setFuelModal(true); } },
+        {
+          text: 'Yakıt Ekle',
+          onPress: () => {
+            setFuelInput('');
+            setFuelModal(true);
+          },
+        },
         { text: 'İndir', onPress: downloadExcel },
         { text: 'İşi Sil', style: 'destructive', onPress: handleFinishJob },
         { text: 'İptal', style: 'cancel' },
@@ -700,7 +723,10 @@ export default function JobDetails() {
   const handleAddFuel = async () => {
     if (!token || !job?.id) return;
     const amount = parseInt(fuelInput.replace(/[^0-9]/g, ''), 10);
-    if (!amount || amount <= 0) { Alert.alert('Hata', 'Geçerli bir miktar giriniz.'); return; }
+    if (!amount || amount <= 0) {
+      Alert.alert('Hata', 'Geçerli bir miktar giriniz.');
+      return;
+    }
     setFuelSaving(true);
     try {
       const currentStock = fuelStock;
@@ -768,37 +794,35 @@ export default function JobDetails() {
         <Text style={styles.backArrow}>←</Text>
       </TouchableOpacity>
       <View style={styles.headerContent}>
-        <Text style={styles.headerTitle} numberOfLines={1}>{job?.name || 'Şantiye'}</Text>
-        <Text style={styles.headerSubtitle}>{job?.provinceName} • {job?.isActive ? 'Aktif' : 'Pasif'}</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {job?.name || 'Şantiye'}
+        </Text>
+        <Text style={styles.headerSubtitle}>
+          {job?.provinceName} • {job?.isActive ? 'Aktif' : 'Pasif'}
+        </Text>
       </View>
       <TouchableOpacity style={styles.settingsBtn} onPress={handleSettingsPress} disabled={downloading}>
-        {downloading
-          ? <ActivityIndicator size="small" color="#444" />
-          : <Text style={styles.settingsBtnText}>⚙ Ayarlar</Text>
-        }
+        {downloading ? <ActivityIndicator size="small" color="#444" /> : <Text style={styles.settingsBtnText}>⚙ Ayarlar</Text>}
       </TouchableOpacity>
     </View>
   );
 
   const filteredHauls = plateFilter.trim()
     ? hauls.filter(h => {
-      const q = plateFilter.replace(/\s/g, '').toLowerCase();
-      const plate = h.plateNumber.replace(/\s/g, '').toLowerCase();
-      const serial = autoSerial(h).replace(/\s/g, '').toLowerCase();
-      return plate.includes(q) || serial.includes(q);
-    })
+        const q = plateFilter.replace(/\s/g, '').toLowerCase();
+        const plate = h.plateNumber.replace(/\s/g, '').toLowerCase();
+        const serial = autoSerial(h).replace(/\s/g, '').toLowerCase();
+        return plate.includes(q) || serial.includes(q);
+      })
     : hauls;
 
   // ── Özet çubuğu (compact tek satır)
   const renderSummaryCards = () => {
     const todayStr = new Date().toDateString();
-    const todayCount = hauls.filter(h => new Date(h.timeOfHaul).toDateString() === todayStr).length
-      + pendingForThisJob.filter(h => new Date(h.timeOfHaul).toDateString() === todayStr).length;
+    const todayCount = hauls.filter(h => new Date(h.timeOfHaul).toDateString() === todayStr).length + pendingForThisJob.filter(h => new Date(h.timeOfHaul).toDateString() === todayStr).length;
     const totalTonKg = hauls.reduce((a, h) => a + (h.tonage || 0), 0);
     const remainingFuel = fuelStock;
-    const totalTonDisplay = isKum
-      ? `${(totalTonKg / 1000).toFixed(1)}t`
-      : `${remainingFuel.toFixed(0)}lt`;
+    const totalTonDisplay = isKum ? `${(totalTonKg / 1000).toFixed(1)}t` : `${remainingFuel.toFixed(0)}lt`;
     const totalTonLabel = isKum ? 'Toplam Ton' : 'Kalan Yakıt';
 
     return (
@@ -852,28 +876,25 @@ export default function JobDetails() {
 
   const isWithinOneHour = (createdDate: string) => {
     const utc = createdDate.endsWith('Z') ? createdDate : createdDate + 'Z';
-    return (Date.now() - new Date(utc).getTime()) < 3600000;
+    return Date.now() - new Date(utc).getTime() < 3600000;
   };
 
   const handleDeleteHaul = (item: HaulApi) => {
-    Alert.alert(
-      'Seferi Sil',
-      `${item.plateNumber} - ${item.dumpLocation || ''} seferini silmek istediğinize emin misiniz?`,
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Sil', style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteHaul(item.id, token!);
-              setHauls(prev => prev.filter(h => h.id !== item.id));
-            } catch {
-              Alert.alert('Hata', 'Sefer silinemedi.');
-            }
-          },
+    Alert.alert('Seferi Sil', `${item.plateNumber} - ${item.dumpLocation || ''} seferini silmek istediğinize emin misiniz?`, [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteHaul(item.id, token!);
+            setHauls(prev => prev.filter(h => h.id !== item.id));
+          } catch {
+            Alert.alert('Hata', 'Sefer silinemedi.');
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
 
   // ── Material lookup helper (Kum/Mıcır)
@@ -887,25 +908,37 @@ export default function JobDetails() {
   const renderHaulItem = (item: HaulApi) => {
     const material = getMaterialFromDumpLocation(item.dumpLocation || '');
     return (
-      <TouchableOpacity key={item.id} style={[styles.haulCard, item.isPaid ? styles.haulCardPaid : styles.haulCardUnpaid]} activeOpacity={0.85} onPress={() => { setSelectedHaul(normalizeHaul(item)); setReceiptVisible(true); }}>
+      <TouchableOpacity
+        key={item.id}
+        style={[styles.haulCard, item.isPaid ? styles.haulCardPaid : styles.haulCardUnpaid]}
+        activeOpacity={0.85}
+        onPress={() => {
+          setSelectedHaul(normalizeHaul(item));
+          setReceiptVisible(true);
+        }}>
         <View style={styles.haulCardTop}>
           <View style={styles.haulSerialRow}>
-            <TouchableOpacity
-              onPress={() => copyWithFeedback(autoSerial(item), `${item.id}-auto`)}
-              activeOpacity={0.7}
-            >
+            <TouchableOpacity onPress={() => copyWithFeedback(autoSerial(item), `${item.id}-auto`)} activeOpacity={0.7}>
               <Text style={[styles.haulSerial, copiedKey === `${item.id}-auto` && styles.haulSerialCopied]}>
-                {copiedKey === `${item.id}-auto` ? '✓ ' : ''}{autoSerial(item)}
+                {copiedKey === `${item.id}-auto` ? '✓ ' : ''}
+                {autoSerial(item)}
               </Text>
             </TouchableOpacity>
           </View>
           {item.isPrintedReceipt && (
-            <View style={styles.printedBadge}><Text style={styles.printedBadgeText}>🖨 Yazdırıldı</Text></View>
+            <View style={styles.printedBadge}>
+              <Text style={styles.printedBadgeText}>🖨 Yazdırıldı</Text>
+            </View>
           )}
-          {item.isPaid
-            ? <View style={styles.statusPaid}><Text style={styles.statusPaidText}>✔ Ödendi</Text></View>
-            : <View style={styles.statusPending}><Text style={styles.statusPendingText}>⏳ Bekliyor</Text></View>
-          }
+          {item.isPaid ? (
+            <View style={styles.statusPaid}>
+              <Text style={styles.statusPaidText}>✔ Ödendi</Text>
+            </View>
+          ) : (
+            <View style={styles.statusPending}>
+              <Text style={styles.statusPendingText}>⏳ Bekliyor</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.haulCardMid}>
@@ -914,31 +947,37 @@ export default function JobDetails() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={styles.haulPlate}>{item.plateNumber}</Text>
               {!!material && (
-                <View style={styles.materialBadge}><Text style={styles.materialBadgeText}>{material}</Text></View>
+                <View style={styles.materialBadge}>
+                  <Text style={styles.materialBadgeText}>{material}</Text>
+                </View>
               )}
             </View>
           </View>
           <View style={{ alignItems: 'flex-end', gap: 4 }}>
-            {item.tonage > 0 && (
-              <Text style={styles.haulTonage}>
-                {isKum ? `${item.tonage.toLocaleString('tr-TR')} kg` : `${(item.tonage / 1000).toFixed(2)} t`}
-              </Text>
-            )}
+            {item.tonage > 0 && <Text style={styles.haulTonage}>{isKum ? `${item.tonage.toLocaleString('tr-TR')} kg` : `${(item.tonage / 1000).toFixed(2)} t`}</Text>}
             {(item.paymentType === 0 || item.paymentType === 2) && item.cashAmount > 0 && (
-              <View style={styles.cashBadge}><Text style={styles.cashBadgeText}>{item.cashAmount.toLocaleString('tr-TR')} ₺</Text></View>
+              <View style={styles.cashBadge}>
+                <Text style={styles.cashBadgeText}>{item.cashAmount.toLocaleString('tr-TR')} ₺</Text>
+              </View>
             )}
             {(item.paymentType === 1 || item.paymentType === 2) && item.fuelAmount > 0 && (
-              <View style={styles.fuelBadge}><Text style={styles.fuelBadgeText}>{item.fuelAmount.toLocaleString('tr-TR')} Lt</Text></View>
+              <View style={styles.fuelBadge}>
+                <Text style={styles.fuelBadgeText}>{item.fuelAmount.toLocaleString('tr-TR')} Lt</Text>
+              </View>
             )}
           </View>
         </View>
 
         {!!item.note && (
-          <Text style={styles.haulNoteText} numberOfLines={2}>💬 {item.note}</Text>
+          <Text style={styles.haulNoteText} numberOfLines={2}>
+            💬 {item.note}
+          </Text>
         )}
 
         <View style={styles.haulCardBot}>
-          <Text style={styles.haulDump} numberOfLines={1}>→ {item.dumpLocation || '-'}</Text>
+          <Text style={styles.haulDump} numberOfLines={1}>
+            → {item.dumpLocation || '-'}
+          </Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {!item.isPaid && item.isPrintedReceipt && (
               <TouchableOpacity style={styles.approveBtn} onPress={() => openPaymentConfirm(item)}>
@@ -951,7 +990,12 @@ export default function JobDetails() {
                 <Text style={styles.deleteBtnText}>🗑 Sil</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={styles.eyeBtn} onPress={() => { setSelectedHaul(normalizeHaul(item)); setReceiptVisible(true); }}>
+            <TouchableOpacity
+              style={styles.eyeBtn}
+              onPress={() => {
+                setSelectedHaul(normalizeHaul(item));
+                setReceiptVisible(true);
+              }}>
               <Text style={styles.eyeBtnText}>👁 Fiş</Text>
             </TouchableOpacity>
           </View>
@@ -964,26 +1008,14 @@ export default function JobDetails() {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       {renderHeader()}
 
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 20 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={['#1976D2']}
-            tintColor="#1976D2"
-          />
-        }
-      >
+      <ScrollView contentContainerStyle={{ paddingBottom: 20 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#1976D2']} tintColor="#1976D2" />}>
         <View style={styles.content}>
           {renderSummaryCards()}
 
           {/* Offline sync banner */}
           {pendingQueue.length > 0 && (
             <TouchableOpacity style={styles.syncBanner} onPress={syncPending} disabled={syncing}>
-              <Text style={styles.syncBannerText}>
-                {syncing ? '🔄 Senkronize ediliyor...' : `📡 ${pendingQueue.length} sefer gönderilmeyi bekliyor. Senkronize et`}
-              </Text>
+              <Text style={styles.syncBannerText}>{syncing ? '🔄 Senkronize ediliyor...' : `📡 ${pendingQueue.length} sefer gönderilmeyi bekliyor. Senkronize et`}</Text>
             </TouchableOpacity>
           )}
 
@@ -999,7 +1031,12 @@ export default function JobDetails() {
               <TouchableOpacity style={styles.manualBtn} onPress={() => setManualModal(true)}>
                 <Text style={styles.manualBtnText}>Manuel Ekle</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.addHaulBtn} onPress={() => { loadRecentPlates(); setAddModal(true); }}>
+              <TouchableOpacity
+                style={styles.addHaulBtn}
+                onPress={() => {
+                  loadRecentPlates();
+                  setAddModal(true);
+                }}>
                 <Text style={styles.addHaulBtnText}>＋ Sefer Gir</Text>
               </TouchableOpacity>
             </View>
@@ -1026,14 +1063,7 @@ export default function JobDetails() {
               {hauls.length > 0 && (
                 <View style={styles.searchBox}>
                   <Text style={styles.searchIcon}>🔍</Text>
-                  <TextInput
-                    style={styles.searchInput}
-                    placeholder="Plaka veya seri no ara..."
-                    placeholderTextColor="#aaa"
-                    value={plateFilter}
-                    onChangeText={setPlateFilter}
-                    autoCapitalize="characters"
-                  />
+                  <TextInput style={styles.searchInput} placeholder="Plaka veya seri no ara..." placeholderTextColor="#aaa" value={plateFilter} onChangeText={setPlateFilter} autoCapitalize="characters" />
                   {plateFilter.length > 0 && (
                     <TouchableOpacity onPress={() => setPlateFilter('')}>
                       <Text style={styles.searchClear}>✕</Text>
@@ -1063,7 +1093,7 @@ export default function JobDetails() {
                 <View style={styles.addCard}>
                   {/* Header */}
                   <View style={styles.addCardHeader}>
-                    <Text style={styles.addCardHeaderText}>🚛  Yeni Sefer Kaydı</Text>
+                    <Text style={styles.addCardHeaderText}>🚛 Yeni Sefer Kaydı</Text>
                     <TouchableOpacity onPress={closeAddModal} style={styles.closeX}>
                       <Text style={styles.closeXText}>✕</Text>
                     </TouchableOpacity>
@@ -1071,40 +1101,24 @@ export default function JobDetails() {
 
                   <View style={styles.addCardBody}>
                     {/* Plaka */}
-                    <Text style={styles.fieldLabel}>Plaka Numarası <Text style={styles.req}>*</Text></Text>
-                    <TextInput
-                      value={formPlate}
-                      onChangeText={t => setFormPlate(t.toUpperCase())}
-                      style={styles.plateInput}
-                      placeholder="34 ABC 123"
-                      autoCapitalize="characters"
-                      maxLength={14}
-                    />
-                    {recentPlates.length > 0 && (() => {
-                      const filtered = formPlate.trim()
-                        ? recentPlates.filter(p => p.includes(formPlate.trim().toUpperCase()))
-                        : recentPlates;
-                      if (filtered.length === 0) return null;
-                      return (
-                        <ScrollView
-                          horizontal
-                          showsHorizontalScrollIndicator={false}
-                          style={{ marginTop: 10 }}
-                          contentContainerStyle={styles.recentPlatesRow}
-                          keyboardShouldPersistTaps="handled"
-                        >
-                          {filtered.map(plate => (
-                            <TouchableOpacity
-                              key={plate}
-                              style={styles.recentPlateChip}
-                              onPress={() => setFormPlate(plate)}
-                            >
-                              <Text style={styles.recentPlateText}>{plate}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </ScrollView>
-                      );
-                    })()}
+                    <Text style={styles.fieldLabel}>
+                      Plaka Numarası <Text style={styles.req}>*</Text>
+                    </Text>
+                    <TextInput value={formPlate} onChangeText={t => setFormPlate(t.toUpperCase())} style={styles.plateInput} placeholder="34 ABC 123" autoCapitalize="characters" maxLength={14} />
+                    {recentPlates.length > 0 &&
+                      (() => {
+                        const filtered = formPlate.trim() ? recentPlates.filter(p => p.includes(formPlate.trim().toUpperCase())) : recentPlates;
+                        if (filtered.length === 0) return null;
+                        return (
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }} contentContainerStyle={styles.recentPlatesRow} keyboardShouldPersistTaps="handled">
+                            {filtered.map(plate => (
+                              <TouchableOpacity key={plate} style={styles.recentPlateChip} onPress={() => setFormPlate(plate)}>
+                                <Text style={styles.recentPlateText}>{plate}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        );
+                      })()}
 
                     {/* Rota / Teklif Seçiniz */}
                     <Text style={[styles.fieldLabel, { marginTop: 18 }]}>{isKum ? 'Rota Seçiniz' : 'Teklif Seçiniz'}</Text>
@@ -1117,10 +1131,14 @@ export default function JobDetails() {
                         <TouchableOpacity
                           key={idx}
                           style={[styles.offerItem, selectedOfferIdx === idx && styles.offerItemSelected]}
-                          onPress={() => { setSelectedOfferIdx(idx); Keyboard.dismiss(); }}
-                        >
+                          onPress={() => {
+                            setSelectedOfferIdx(idx);
+                            Keyboard.dismiss();
+                          }}>
                           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <Text style={[styles.offerName, { flex: 1 }]} numberOfLines={1}>{offer.name}</Text>
+                            <Text style={[styles.offerName, { flex: 1 }]} numberOfLines={1}>
+                              {offer.name}
+                            </Text>
                             {isKum && !!offer.material && (
                               <View style={styles.materialBadge}>
                                 <Text style={styles.materialBadgeText}>{offer.material}</Text>
@@ -1139,9 +1157,7 @@ export default function JobDetails() {
                               </View>
                             )}
                           </View>
-                          <View style={[styles.radioCircle, selectedOfferIdx === idx && styles.radioCircleSelected]}>
-                            {selectedOfferIdx === idx && <View style={styles.radioDot} />}
-                          </View>
+                          <View style={[styles.radioCircle, selectedOfferIdx === idx && styles.radioCircleSelected]}>{selectedOfferIdx === idx && <View style={styles.radioDot} />}</View>
                         </TouchableOpacity>
                       ))
                     )}
@@ -1149,37 +1165,23 @@ export default function JobDetails() {
                     {/* Kum/Mıcır: Miktar (kg) */}
                     {isKum && (
                       <>
-                        <Text style={[styles.fieldLabel, { marginTop: 18 }]}>Miktar (kg) <Text style={styles.req}>*</Text></Text>
-                        <TextInput
-                          value={formTonage}
-                          onChangeText={t => setFormTonage(t.replace(/[^0-9,]/g, ''))}
-                          style={styles.textInput}
-                          placeholder="Örn: 12000"
-                          keyboardType="decimal-pad"
-                        />
+                        <Text style={[styles.fieldLabel, { marginTop: 18 }]}>
+                          Miktar (kg) <Text style={styles.req}>*</Text>
+                        </Text>
+                        <TextInput value={formTonage} onChangeText={t => setFormTonage(t.replace(/[^0-9,]/g, ''))} style={styles.textInput} placeholder="Örn: 12000" keyboardType="decimal-pad" />
                         {selectedOfferIdx !== null && !!formTonage && (
                           <View style={styles.calcBox}>
-                            <Text style={styles.calcBoxText}>
-                              Hesaplanan Tutar: {(
-                                (offers[selectedOfferIdx]?.cashPerTon ?? offers[selectedOfferIdx]?.cash ?? 0) *
-                                (parseFloat(formTonage.replace(',', '.')) || 0) / 1000
-                              ).toFixed(2)} ₺
-                            </Text>
+                            <Text style={styles.calcBoxText}>Hesaplanan Tutar: {(((offers[selectedOfferIdx]?.cashPerTon ?? offers[selectedOfferIdx]?.cash ?? 0) * (parseFloat(formTonage.replace(',', '.')) || 0)) / 1000).toFixed(2)} ₺</Text>
                           </View>
                         )}
                       </>
                     )}
 
                     {/* Not */}
-                    <Text style={[styles.fieldLabel, { marginTop: 18 }]}>Opsiyonel <Text style={styles.optional}>(Not)</Text></Text>
-                    <TextInput
-                      value={formNote}
-                      onChangeText={setFormNote}
-                      style={styles.noteInput}
-                      placeholder="Örn: İrsaliye No, Açıklama"
-                      maxLength={250}
-                      multiline
-                    />
+                    <Text style={[styles.fieldLabel, { marginTop: 18 }]}>
+                      Opsiyonel <Text style={styles.optional}>(Not)</Text>
+                    </Text>
+                    <TextInput value={formNote} onChangeText={setFormNote} style={styles.noteInput} placeholder="Örn: İrsaliye No, Açıklama" maxLength={250} multiline />
                   </View>
 
                   {/* Footer butonları */}
@@ -1187,21 +1189,11 @@ export default function JobDetails() {
                     <TouchableOpacity style={styles.cancelBtn} onPress={closeAddModal}>
                       <Text style={styles.cancelBtnText}>İptal</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.sanalBtn, (!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving) && { opacity: 0.4 }]}
-                      onPress={() => handleAddHaul(false)}
-                      disabled={!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving}
-                    >
+                    <TouchableOpacity style={[styles.sanalBtn, (!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving) && { opacity: 0.4 }]} onPress={() => handleAddHaul(false)} disabled={!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving}>
                       <Text style={styles.sanalBtnText}>Sanal Fiş Kes</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.printSubmitBtn, (!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving) && { opacity: 0.4 }]}
-                      onPress={() => handleAddHaul(true)}
-                      disabled={!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving}
-                    >
-                      <Text style={styles.printSubmitBtnText}>
-                        {formSaving ? '...' : 'Fiş Kes ve Yazdır'}
-                      </Text>
+                    <TouchableOpacity style={[styles.printSubmitBtn, (!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving) && { opacity: 0.4 }]} onPress={() => handleAddHaul(true)} disabled={!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving}>
+                      <Text style={styles.printSubmitBtnText}>{formSaving ? '...' : 'Fiş Kes ve Yazdır'}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1220,7 +1212,7 @@ export default function JobDetails() {
                 <View style={styles.addCard}>
                   {/* Header */}
                   <View style={[styles.addCardHeader, { backgroundColor: '#546E7A' }]}>
-                    <Text style={styles.addCardHeaderText}>✏  Manuel Sefer Gir</Text>
+                    <Text style={styles.addCardHeaderText}>✏ Manuel Sefer Gir</Text>
                     <TouchableOpacity onPress={closeManualModal} style={styles.closeX}>
                       <Text style={styles.closeXText}>✕</Text>
                     </TouchableOpacity>
@@ -1228,168 +1220,92 @@ export default function JobDetails() {
 
                   <View style={styles.addCardBody}>
                     {/* Plaka */}
-                    <Text style={styles.fieldLabel}>Plaka Numarası <Text style={styles.req}>*</Text></Text>
-                    <TextInput
-                      value={manualPlate}
-                      onChangeText={t => setManualPlate(t.toUpperCase())}
-                      style={styles.plateInput}
-                      placeholder="34 ABC 123"
-                      autoCapitalize="characters"
-                      maxLength={14}
-                    />
+                    <Text style={styles.fieldLabel}>
+                      Plaka Numarası <Text style={styles.req}>*</Text>
+                    </Text>
+                    <TextInput value={manualPlate} onChangeText={t => setManualPlate(t.toUpperCase())} style={styles.plateInput} placeholder="34 ABC 123" autoCapitalize="characters" maxLength={14} />
 
                     {isKum ? (
                       <>
                         {/* Yükleme Yeri */}
-                        <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Yükleme Yeri <Text style={styles.req}>*</Text></Text>
-                        <TextInput
-                          value={manualLoading}
-                          onChangeText={setManualLoading}
-                          style={styles.textInput}
-                          placeholder="Örn: Ocak Adı"
-                        />
+                        <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+                          Yükleme Yeri <Text style={styles.req}>*</Text>
+                        </Text>
+                        <TextInput value={manualLoading} onChangeText={setManualLoading} style={styles.textInput} placeholder="Örn: Ocak Adı" />
 
                         {/* Boşaltma Yeri */}
-                        <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Boşaltma Yeri <Text style={styles.req}>*</Text></Text>
-                        <TextInput
-                          value={manualUnloading}
-                          onChangeText={setManualUnloading}
-                          style={styles.textInput}
-                          placeholder="Örn: Şantiye Adı"
-                        />
+                        <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+                          Boşaltma Yeri <Text style={styles.req}>*</Text>
+                        </Text>
+                        <TextInput value={manualUnloading} onChangeText={setManualUnloading} style={styles.textInput} placeholder="Örn: Şantiye Adı" />
 
                         {/* Malzeme */}
-                        <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Malzeme <Text style={styles.optional}>(Opsiyonel)</Text></Text>
-                        <TextInput
-                          value={manualMaterial}
-                          onChangeText={setManualMaterial}
-                          style={styles.textInput}
-                          placeholder="Örn: Kum, Mıcır"
-                        />
+                        <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+                          Malzeme <Text style={styles.optional}>(Opsiyonel)</Text>
+                        </Text>
+                        <TextInput value={manualMaterial} onChangeText={setManualMaterial} style={styles.textInput} placeholder="Örn: Kum, Mıcır" />
 
                         {/* Fiyat/ton + Miktar */}
                         <View style={{ flexDirection: 'row', gap: 12, marginTop: 14 }}>
                           <View style={{ flex: 1 }}>
-                            <Text style={[styles.fieldLabel, { color: '#2E7D32' }]}>Fiyat (₺/ton) <Text style={styles.req}>*</Text></Text>
-                            <TextInput
-                              value={manualPricePerTon}
-                              onChangeText={t => setManualPricePerTon(t.replace(/[^0-9,]/g, ''))}
-                              style={styles.textInput}
-                              placeholder="0"
-                              keyboardType="decimal-pad"
-                            />
+                            <Text style={[styles.fieldLabel, { color: '#2E7D32' }]}>
+                              Fiyat (₺/ton) <Text style={styles.req}>*</Text>
+                            </Text>
+                            <TextInput value={manualPricePerTon} onChangeText={t => setManualPricePerTon(t.replace(/[^0-9,]/g, ''))} style={styles.textInput} placeholder="0" keyboardType="decimal-pad" />
                           </View>
                           <View style={{ flex: 1 }}>
-                            <Text style={[styles.fieldLabel, { color: '#E65100' }]}>Miktar (kg) <Text style={styles.req}>*</Text></Text>
-                            <TextInput
-                              value={manualTonage}
-                              onChangeText={t => setManualTonage(t.replace(/[^0-9,]/g, ''))}
-                              style={styles.textInput}
-                              placeholder="0"
-                              keyboardType="decimal-pad"
-                            />
+                            <Text style={[styles.fieldLabel, { color: '#E65100' }]}>
+                              Miktar (kg) <Text style={styles.req}>*</Text>
+                            </Text>
+                            <TextInput value={manualTonage} onChangeText={t => setManualTonage(t.replace(/[^0-9,]/g, ''))} style={styles.textInput} placeholder="0" keyboardType="decimal-pad" />
                           </View>
                         </View>
 
                         {/* Hesaplanan Tutar */}
                         {!!manualPricePerTon && !!manualTonage && (
                           <View style={styles.calcBox}>
-                            <Text style={styles.calcBoxText}>
-                              Hesaplanan Tutar: {(
-                                (parseFloat(manualPricePerTon.replace(',', '.')) || 0) *
-                                (parseFloat(manualTonage.replace(',', '.')) || 0) / 1000
-                              ).toFixed(2)} ₺
-                            </Text>
+                            <Text style={styles.calcBoxText}>Hesaplanan Tutar: {(((parseFloat(manualPricePerTon.replace(',', '.')) || 0) * (parseFloat(manualTonage.replace(',', '.')) || 0)) / 1000).toFixed(2)} ₺</Text>
                           </View>
                         )}
                       </>
                     ) : (
                       <>
                         {/* Döküm Yeri */}
-                        <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Döküm Yeri / Açıklama <Text style={styles.req}>*</Text></Text>
-                        <TextInput
-                          value={manualDump}
-                          onChangeText={setManualDump}
-                          style={styles.textInput}
-                          placeholder="Örn: Serbest Döküm"
-                        />
+                        <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+                          Döküm Yeri / Açıklama <Text style={styles.req}>*</Text>
+                        </Text>
+                        <TextInput value={manualDump} onChangeText={setManualDump} style={styles.textInput} placeholder="Örn: Serbest Döküm" />
 
                         {/* Nakit + Mazot */}
                         <View style={{ flexDirection: 'row', gap: 12, marginTop: 14 }}>
                           <View style={{ flex: 1 }}>
                             <Text style={[styles.fieldLabel, { color: '#2E7D32' }]}>Nakit (TL)</Text>
-                            <TextInput
-                              value={manualCash}
-                              onChangeText={t => setManualCash(t.replace(/[^0-9,]/g, ''))}
-                              style={styles.textInput}
-                              placeholder="0"
-                              keyboardType="decimal-pad"
-                            />
+                            <TextInput value={manualCash} onChangeText={t => setManualCash(t.replace(/[^0-9,]/g, ''))} style={styles.textInput} placeholder="0" keyboardType="decimal-pad" />
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={[styles.fieldLabel, { color: '#E65100' }]}>Mazot (Lt)</Text>
-                            <TextInput
-                              value={manualFuel}
-                              onChangeText={t => setManualFuel(t.replace(/[^0-9,]/g, ''))}
-                              style={styles.textInput}
-                              placeholder="0"
-                              keyboardType="decimal-pad"
-                            />
+                            <TextInput value={manualFuel} onChangeText={t => setManualFuel(t.replace(/[^0-9,]/g, ''))} style={styles.textInput} placeholder="0" keyboardType="decimal-pad" />
                           </View>
                         </View>
-
                       </>
                     )}
 
                     {/* Not */}
-                    <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Not <Text style={styles.optional}>(Opsiyonel)</Text></Text>
-                    <TextInput
-                      value={manualNote}
-                      onChangeText={setManualNote}
-                      style={styles.noteInput}
-                      placeholder="Örn: İrsaliye No, Açıklama"
-                      maxLength={250}
-                      multiline
-                    />
+                    <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+                      Not <Text style={styles.optional}>(Opsiyonel)</Text>
+                    </Text>
+                    <TextInput value={manualNote} onChangeText={setManualNote} style={styles.noteInput} placeholder="Örn: İrsaliye No, Açıklama" maxLength={250} multiline />
                   </View>
 
                   <View style={[styles.addCardFooter, { justifyContent: 'flex-end', gap: 8 }]}>
                     <TouchableOpacity style={styles.cancelBtn} onPress={closeManualModal}>
                       <Text style={styles.cancelBtnText}>İptal</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.manualReceiptBtn, (
-                        !manualPlate ||
-                        (isKum ? (!manualLoading || !manualUnloading || !manualPricePerTon || !manualTonage) : !manualDump) ||
-                        manualSaving
-                      ) && { opacity: 0.4 }]}
-                      onPress={() => handleManualHaul(false)}
-                      disabled={
-                        !manualPlate ||
-                        (isKum ? (!manualLoading || !manualUnloading || !manualPricePerTon || !manualTonage) : !manualDump) ||
-                        manualSaving
-                      }
-                    >
-                      <Text style={styles.manualReceiptBtnText}>
-                        {manualSaving ? 'Kaydediliyor...' : 'Sanal Fiş Kes'}
-                      </Text>
+                    <TouchableOpacity style={[styles.manualReceiptBtn, (!manualPlate || (isKum ? !manualLoading || !manualUnloading || !manualPricePerTon || !manualTonage : !manualDump) || manualSaving) && { opacity: 0.4 }]} onPress={() => handleManualHaul(false)} disabled={!manualPlate || (isKum ? !manualLoading || !manualUnloading || !manualPricePerTon || !manualTonage : !manualDump) || manualSaving}>
+                      <Text style={styles.manualReceiptBtnText}>{manualSaving ? 'Kaydediliyor...' : 'Sanal Fiş Kes'}</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.manualSaveBtn, (
-                        !manualPlate ||
-                        (isKum ? (!manualLoading || !manualUnloading || !manualPricePerTon || !manualTonage) : !manualDump) ||
-                        manualSaving
-                      ) && { opacity: 0.4 }]}
-                      onPress={() => handleManualHaul(true)}
-                      disabled={
-                        !manualPlate ||
-                        (isKum ? (!manualLoading || !manualUnloading || !manualPricePerTon || !manualTonage) : !manualDump) ||
-                        manualSaving
-                      }
-                    >
-                      <Text style={styles.manualSaveBtnText}>
-                        {manualSaving ? 'Kaydediliyor...' : 'Fiş Kes ve Yazdır'}
-                      </Text>
+                    <TouchableOpacity style={[styles.manualSaveBtn, (!manualPlate || (isKum ? !manualLoading || !manualUnloading || !manualPricePerTon || !manualTonage : !manualDump) || manualSaving) && { opacity: 0.4 }]} onPress={() => handleManualHaul(true)} disabled={!manualPlate || (isKum ? !manualLoading || !manualUnloading || !manualPricePerTon || !manualTonage : !manualDump) || manualSaving}>
+                      <Text style={styles.manualSaveBtnText}>{manualSaving ? 'Kaydediliyor...' : 'Fiş Kes ve Yazdır'}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1403,7 +1319,7 @@ export default function JobDetails() {
       <Modal visible={editModal} animationType="slide">
         <NewJobModal
           initialJob={job}
-          onClose={(refresh) => {
+          onClose={refresh => {
             setEditModal(false);
             if (refresh) fetchHauls();
           }}
@@ -1429,21 +1345,14 @@ export default function JobDetails() {
                     <Text style={styles.fuelInfoValue}>{fuelStock} lt</Text>
                   </View>
 
-                  <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Eklenecek Miktar (Litre) <Text style={styles.req}>*</Text></Text>
-                  <TextInput
-                    value={fuelInput}
-                    onChangeText={t => setFuelInput(t.replace(/[^0-9]/g, ''))}
-                    style={styles.textInput}
-                    keyboardType="number-pad"
-                    placeholder="Örn: 500"
-                    autoFocus
-                  />
+                  <Text style={[styles.fieldLabel, { marginTop: 16 }]}>
+                    Eklenecek Miktar (Litre) <Text style={styles.req}>*</Text>
+                  </Text>
+                  <TextInput value={fuelInput} onChangeText={t => setFuelInput(t.replace(/[^0-9]/g, ''))} style={styles.textInput} keyboardType="number-pad" placeholder="Örn: 500" autoFocus />
 
                   {!!fuelInput && parseInt(fuelInput) > 0 && (
                     <View style={styles.fuelCalcBox}>
-                      <Text style={styles.fuelCalcText}>
-                        Yeni Stok: {fuelStock + parseInt(fuelInput)} lt
-                      </Text>
+                      <Text style={styles.fuelCalcText}>Yeni Stok: {fuelStock + parseInt(fuelInput)} lt</Text>
                     </View>
                   )}
                 </View>
@@ -1452,14 +1361,8 @@ export default function JobDetails() {
                   <TouchableOpacity style={styles.cancelBtn} onPress={() => setFuelModal(false)}>
                     <Text style={styles.cancelBtnText}>İptal</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.fuelSaveBtn, (!fuelInput || fuelSaving) && { opacity: 0.4 }]}
-                    onPress={handleAddFuel}
-                    disabled={!fuelInput || fuelSaving}
-                  >
-                    <Text style={styles.fuelSaveBtnText}>
-                      {fuelSaving ? 'Ekleniyor...' : '⛽ Yakıt Ekle'}
-                    </Text>
+                  <TouchableOpacity style={[styles.fuelSaveBtn, (!fuelInput || fuelSaving) && { opacity: 0.4 }]} onPress={handleAddFuel} disabled={!fuelInput || fuelSaving}>
+                    <Text style={styles.fuelSaveBtnText}>{fuelSaving ? 'Ekleniyor...' : '⛽ Yakıt Ekle'}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1494,18 +1397,10 @@ export default function JobDetails() {
                 {/* Ödeme Türü */}
                 <Text style={[styles.fieldLabel, { marginHorizontal: 16 }]}>Ödeme Türü</Text>
                 <View style={styles.payTypeRow}>
-                  <TouchableOpacity
-                    style={[styles.payTypeBtn, paymentType === 0 && styles.payTypeActive, !(paymentHaul?.cashAmount > 0) && { opacity: 0.35 }]}
-                    onPress={() => setPaymentType(0)}
-                    disabled={!(paymentHaul?.cashAmount > 0)}
-                  >
+                  <TouchableOpacity style={[styles.payTypeBtn, paymentType === 0 && styles.payTypeActive, !(paymentHaul?.cashAmount > 0) && { opacity: 0.35 }]} onPress={() => setPaymentType(0)} disabled={!(paymentHaul?.cashAmount > 0)}>
                     <Text style={[styles.payTypeText, paymentType === 0 && styles.payTypeTextActive]}>💵 Nakit (₺)</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.payTypeBtn, paymentType === 1 && styles.payTypeActive, !(paymentHaul?.fuelAmount > 0) && { opacity: 0.35 }]}
-                    onPress={() => setPaymentType(1)}
-                    disabled={!(paymentHaul?.fuelAmount > 0)}
-                  >
+                  <TouchableOpacity style={[styles.payTypeBtn, paymentType === 1 && styles.payTypeActive, !(paymentHaul?.fuelAmount > 0) && { opacity: 0.35 }]} onPress={() => setPaymentType(1)} disabled={!(paymentHaul?.fuelAmount > 0)}>
                     <Text style={[styles.payTypeText, paymentType === 1 && styles.payTypeTextActive]}>⛽ Yakıt (Lt)</Text>
                   </TouchableOpacity>
                 </View>
@@ -1515,20 +1410,12 @@ export default function JobDetails() {
                   {paymentType === 0 ? (
                     <>
                       <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Nakit Tutar (₺)</Text>
-                      <TextInput
-                        value={paymentCash}
-                        editable={false}
-                        style={[styles.textInput, styles.textInputReadonly]}
-                      />
+                      <TextInput value={paymentCash} editable={false} style={[styles.textInput, styles.textInputReadonly]} />
                     </>
                   ) : (
                     <>
                       <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Yakıt Miktarı (Litre)</Text>
-                      <TextInput
-                        value={paymentFuel}
-                        editable={false}
-                        style={[styles.textInput, styles.textInputReadonly]}
-                      />
+                      <TextInput value={paymentFuel} editable={false} style={[styles.textInput, styles.textInputReadonly]} />
                     </>
                   )}
                 </View>
@@ -1538,14 +1425,8 @@ export default function JobDetails() {
                   <TouchableOpacity style={styles.cancelBtn} onPress={closePaymentModal}>
                     <Text style={styles.cancelBtnText}>İptal</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.approveConfirmBtn, paymentSaving && { opacity: 0.5 }]}
-                    onPress={handleConfirmPayment}
-                    disabled={paymentSaving}
-                  >
-                    <Text style={styles.approveConfirmBtnText}>
-                      {paymentSaving ? 'Kaydediliyor...' : '✔ Ödemeyi Onayla'}
-                    </Text>
+                  <TouchableOpacity style={[styles.approveConfirmBtn, paymentSaving && { opacity: 0.5 }]} onPress={handleConfirmPayment} disabled={paymentSaving}>
+                    <Text style={styles.approveConfirmBtnText}>{paymentSaving ? 'Kaydediliyor...' : '✔ Ödemeyi Onayla'}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1559,10 +1440,8 @@ export default function JobDetails() {
         <Modal visible={receiptVisible} transparent animationType="fade" onRequestClose={() => setReceiptVisible(false)}>
           <View style={styles.modalOverlay}>
             <View style={styles.receiptWrapper}>
-
               {/* ── Fiş Kart ── */}
               <View style={styles.receiptCard}>
-
                 {/* Sol dikey şerit */}
                 <View style={styles.receiptStrip}>
                   <Text style={styles.receiptStripText}>HAFRİYAPP</Text>
@@ -1570,46 +1449,22 @@ export default function JobDetails() {
 
                 {/* Ana içerik */}
                 <View style={styles.receiptMain}>
-
                   {/* Başlık: Logo + Firma/Şantiye + Saat */}
                   <View style={styles.receiptHead}>
-                    <View style={styles.receiptLogoBox}>
-                      {selectedHaul.companyLogoPath ? (
-                        <Image
-                          source={{ uri: `https://api.hafriyapp.com${selectedHaul.companyLogoPath.startsWith('/') ? '' : '/'}${selectedHaul.companyLogoPath}` }}
-                          style={styles.receiptLogoImg}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <Image
-                          source={require('../../../assets/icons/truck.png')}
-                          style={styles.receiptLogoImg}
-                          resizeMode="contain"
-                        />
-                      )}
-                    </View>
+                    <View style={styles.receiptLogoBox}>{selectedHaul.companyLogoPath ? <Image source={{ uri: `https://api.hafriyapp.com${selectedHaul.companyLogoPath.startsWith('/') ? '' : '/'}${selectedHaul.companyLogoPath}` }} style={styles.receiptLogoImg} resizeMode="cover" /> : <Image source={require('../../../assets/icons/truck.png')} style={styles.receiptLogoImg} resizeMode="contain" />}</View>
                     <View style={styles.receiptCompanyBlock}>
-                      <Text style={styles.receiptCompanyName}>
-                        {(selectedHaul.companyName || user?.companyName || '').toUpperCase()}
-                      </Text>
-                      <Text style={styles.receiptJobSiteName}>
-                        {(selectedHaul.jobSiteName || job?.name || '').toUpperCase()}
-                      </Text>
+                      <Text style={styles.receiptCompanyName}>{(selectedHaul.companyName || user?.companyName || '').toUpperCase()}</Text>
+                      <Text style={styles.receiptJobSiteName}>{(selectedHaul.jobSiteName || job?.name || '').toUpperCase()}</Text>
                     </View>
-                    <Text style={styles.receiptTimeText}>
-                      {new Date(selectedHaul.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
+                    <Text style={styles.receiptTimeText}>{new Date(selectedHaul.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</Text>
                   </View>
 
                   {/* Gövde: Satırlar (sol) + QR (sağ) */}
                   <View style={styles.receiptBodyWrap}>
                     <View style={styles.receiptBody}>
-
                       <View style={styles.receiptRow}>
                         <Text style={styles.receiptRowLabel}>Tarih :</Text>
-                        <Text style={styles.receiptRowValue}>
-                          {new Date(selectedHaul.timeOfHaul).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                        </Text>
+                        <Text style={styles.receiptRowValue}>{new Date(selectedHaul.timeOfHaul).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</Text>
                       </View>
 
                       <View style={styles.receiptRow}>
@@ -1624,9 +1479,7 @@ export default function JobDetails() {
 
                       <View style={styles.receiptRow}>
                         <Text style={styles.receiptRowLabel}>Şoför :</Text>
-                        <Text style={styles.receiptRowValue}>
-                          {selectedHaul.driverName || selectedHaul.driverPhone || '-'}
-                        </Text>
+                        <Text style={styles.receiptRowValue}>{selectedHaul.driverName || selectedHaul.driverPhone || '-'}</Text>
                       </View>
 
                       <View style={styles.receiptRow}>
@@ -1643,199 +1496,199 @@ export default function JobDetails() {
 
                       <View style={styles.receiptRow}>
                         <Text style={styles.receiptRowLabel}>Ücret :</Text>
-                        <Text style={[styles.receiptRowValue, { fontWeight: '800' }]}>
-                          {[
-                            selectedHaul.cashAmount > 0 ? `${selectedHaul.cashAmount.toLocaleString('tr-TR')}₺` : '',
-                            selectedHaul.fuelAmount > 0 ? `${selectedHaul.fuelAmount.toLocaleString('tr-TR')}lt` : '',
-                          ].filter(Boolean).join(' / ') || '-'}
-                        </Text>
+                        <Text style={[styles.receiptRowValue, { fontWeight: '800' }]}>{[selectedHaul.cashAmount > 0 ? `${selectedHaul.cashAmount.toLocaleString('tr-TR')}₺` : '', selectedHaul.fuelAmount > 0 ? `${selectedHaul.fuelAmount.toLocaleString('tr-TR')}lt` : ''].filter(Boolean).join(' / ') || '-'}</Text>
                       </View>
 
                       <View style={styles.receiptRow}>
                         <Text style={styles.receiptRowLabel}>Durum :</Text>
-                        <Text style={[styles.receiptRowValue, {
-                          color: selectedHaul.isPaid ? '#2E7D32' : '#E65100',
-                          fontWeight: '800',
-                        }]}>
+                        <Text
+                          style={[
+                            styles.receiptRowValue,
+                            {
+                              color: selectedHaul.isPaid ? '#2E7D32' : '#E65100',
+                              fontWeight: '800',
+                            },
+                          ]}>
                           {selectedHaul.isPaid ? '✔ Ödendi' : '⏳ Bekliyor'}
                         </Text>
                       </View>
 
-                      {!!selectedHaul.contactPhone && (
-                        <View style={[styles.receiptRow, { borderBottomWidth: 0 }]}>
-                          <Text style={styles.receiptRowLabel}>Yetkili :</Text>
-                          <Text style={styles.receiptRowValue}>{selectedHaul.contactPhone}</Text>
-                        </View>
-                      )}
+                      <View style={[styles.receiptRow, { borderBottomWidth: 0 }]}>
+                        <Text style={styles.receiptRowLabel}>Yetkili :</Text>
+                        <Text style={styles.receiptRowValue}>{getAuthorizedContact(selectedHaul)}</Text>
+                      </View>
                     </View>
 
                     {/* QR Kod — sağ taraf */}
                     {selectedHaul.qrCodeBase64 && (
                       <View style={styles.receiptQRBox}>
-                        <Image
-                          source={{ uri: `data:image/png;base64,${selectedHaul.qrCodeBase64}` }}
-                          style={styles.receiptQRImg}
-                        />
+                        <Image source={{ uri: `data:image/png;base64,${selectedHaul.qrCodeBase64}` }} style={styles.receiptQRImg} />
                       </View>
                     )}
                   </View>
-
                 </View>
               </View>
 
               {/* Footer butonlar */}
               <View style={styles.receiptFooterRow}>
-                <TouchableOpacity
-                  style={styles.receiptCloseBtnNew}
-                  onPress={() => setReceiptVisible(false)}
-                >
+                <TouchableOpacity style={styles.receiptCloseBtnNew} onPress={() => setReceiptVisible(false)}>
                   <Text style={styles.receiptCloseBtnNewText}>Kapat</Text>
                 </TouchableOpacity>
                 {!selectedHaul.isPaid && !selectedHaul.isPrintedReceipt ? (
                   <TouchableOpacity
                     style={styles.receiptApproveBtnNew}
-                    onPress={() => { setReceiptVisible(false); openPaymentConfirm(selectedHaul); }}
-                  >
+                    onPress={() => {
+                      setReceiptVisible(false);
+                      openPaymentConfirm(selectedHaul);
+                    }}>
                     <Text style={styles.receiptApproveBtnNewText}>Onayla</Text>
                   </TouchableOpacity>
                 ) : (
-                  <TouchableOpacity
-                    style={styles.receiptPrintBtnNew}
-                    onPress={() => triggerPrint(selectedHaul)}
-                  >
+                  <TouchableOpacity style={styles.receiptPrintBtnNew} onPress={() => triggerPrint(selectedHaul)}>
                     <Text style={styles.receiptPrintBtnNewText}>Yazdır</Text>
                   </TouchableOpacity>
                 )}
               </View>
-
             </View>
           </View>
         </Modal>
       )}
 
       {/* ═══════════════ GİZLİ PRINT VIEW (görünmez, 0,0 konumunda) ═══════════════ */}
-      {printTargetHaul && (() => {
-        const ph = printTargetHaul;
-        const logoUri = ph.companyLogoPath
-          ? `https://api.hafriyapp.com${ph.companyLogoPath.startsWith('/') ? '' : '/'}${ph.companyLogoPath}`
-          : null;
-        const timeStr = new Date(ph.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-        const dateStr = new Date(ph.timeOfHaul).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const ucretStr = [
-          ph.cashAmount > 0 ? `${ph.cashAmount.toLocaleString('tr-TR')}₺` : '',
-          ph.fuelAmount > 0 ? `${ph.fuelAmount.toLocaleString('tr-TR')}lt` : '',
-        ].filter(Boolean).join(' / ') || '-';
-        const rows = [
-          { label: 'Tarih :', value: dateStr },
-          { label: 'Seri No :', value: autoSerial(ph) },
-          { label: 'Plaka :', value: ph.plateNumber },
-          { label: 'Şoför :', value: ph.driverName || ph.driverPhone || '-' },
-          { label: 'Döküm :', value: ph.dumpLocation || '-' },
-          { label: 'Ücret :', value: ucretStr },
-          ...(ph.contactPhone ? [{ label: 'Yetkili :', value: ph.contactPhone }] : []),
-        ];
-        const OW = 384;
-        const OH = 640;
-        const CW = OH;
-        const CH = OW;
-        const tx = (OW - CW) / 2;
-        const ty = (OH - CH) / 2;
-        const FRAME = 10;
-        const PRINT_RIGHT_GAP = 20;
-        const FRAME_BOTTOM = Math.max(0, FRAME - PRINT_RIGHT_GAP);
-        return (
-          // opacity:0.001 → render edilir ama görünmez; pointerEvents→ dokunuşları engeller
-          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, opacity: 0.01 }}>
-            <View
-              ref={printReceiptRef}
-              collapsable={false}
-              style={{ width: OW, height: OH, overflow: 'hidden', backgroundColor: '#fff' }}
-            >
-              {/* Landscape card, rotated 90° CW */}
-              <View style={{
-                width: CW, height: CH,
-                transform: [{ translateX: tx }, { translateY: ty }, { rotate: '90deg' }],
-                backgroundColor: '#ffffff',
-                paddingTop: 27,
-                paddingRight: 18,
-                paddingBottom: 18,
-                paddingLeft: 18,
-              }}>
-                <View style={{
-                  position: 'absolute',
-                  top: FRAME + PRINT_RIGHT_GAP,
-                  right: FRAME,
-                  bottom: FRAME_BOTTOM,
-                  left: FRAME,
-                  borderWidth: 3,
-                  borderColor: '#000000',
-                  borderRadius: 16,
-                }} />
-                {/* Sağ üst saat */}
-                <Text style={{ position: 'absolute', top: 45, right: 26, fontSize: 24, fontWeight: '700', color: '#000' }}>
-                  {timeStr}
-                </Text>
-
-                {/* Header: Logo + Firma + Şantiye */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 13, marginBottom: 14, paddingLeft: 12, paddingRight: 72 }}>
-                  <View style={{
-                    width: 78, height: 78, borderRadius: 39, borderWidth: 2, borderColor: '#000',
-                    justifyContent: 'center', alignItems: 'center', marginRight: 14, overflow: 'hidden',
+      {printTargetHaul &&
+        (() => {
+          const ph = printTargetHaul;
+          const logoUri = ph.companyLogoPath ? `https://api.hafriyapp.com${ph.companyLogoPath.startsWith('/') ? '' : '/'}${ph.companyLogoPath}` : null;
+          const timeStr = new Date(ph.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+          const dateStr = new Date(ph.timeOfHaul).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          const ucretStr = [ph.cashAmount > 0 ? `${ph.cashAmount.toLocaleString('tr-TR')}₺` : '', ph.fuelAmount > 0 ? `${ph.fuelAmount.toLocaleString('tr-TR')}lt` : ''].filter(Boolean).join(' / ') || '-';
+          const rows = [
+            { label: 'Tarih :', value: dateStr },
+            { label: 'Seri No :', value: autoSerial(ph) },
+            { label: 'Plaka :', value: ph.plateNumber },
+            { label: 'Şoför :', value: ph.driverName || ph.driverPhone || '-' },
+            { label: 'Döküm :', value: ph.dumpLocation || '-' },
+            { label: 'Ücret :', value: ucretStr },
+            { label: 'Yetkili :', value: getAuthorizedContact(ph) },
+          ];
+          const OW = 384;
+          const OH = 640;
+          const CW = OH;
+          const CH = OW;
+          const tx = (OW - CW) / 2;
+          const ty = (OH - CH) / 2;
+          const FRAME = 10;
+          const PRINT_RIGHT_GAP = 20;
+          const FRAME_BOTTOM = Math.max(0, FRAME - PRINT_RIGHT_GAP);
+          return (
+            // opacity:0.001 → render edilir ama görünmez; pointerEvents→ dokunuşları engeller
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, opacity: 0.01 }}>
+              <View ref={printReceiptRef} collapsable={false} style={{ width: OW, height: OH, overflow: 'hidden', backgroundColor: '#fff' }}>
+                {/* Landscape card, rotated 90° CW */}
+                <View
+                  style={{
+                    width: CW,
+                    height: CH,
+                    transform: [{ translateX: tx }, { translateY: ty }, { rotate: '90deg' }],
+                    backgroundColor: '#ffffff',
+                    paddingTop: 27,
+                    paddingRight: 18,
+                    paddingBottom: 18,
+                    paddingLeft: 18,
                   }}>
-                    {logoUri
-                      ? <Image source={{ uri: logoUri }} style={{ width: 70, height: 70, borderRadius: 35 }} />
-                      : <Image source={require('../../../assets/icons/truck.png')} style={{ width: 54, height: 54 }} resizeMode="contain" />
-                    }
-                  </View>
-                  <View style={{ flex: 1, alignItems: 'center' }}>
-                    <Text numberOfLines={1} style={{ fontSize: 25, fontWeight: '800', letterSpacing: 0.3, color: '#000', textAlign: 'center' }}>
-                      {(ph.companyName || user?.companyName || 'HAFRİYAT').toUpperCase()}
-                    </Text>
-                    <Text numberOfLines={1} style={{ fontSize: 19, fontWeight: '700', letterSpacing: 0.2, color: '#000', textAlign: 'center', marginTop: 3 }}>
-                      {(ph.jobSiteName || job?.name || '-').toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
+                  <View
+                    style={{
+                      position: 'absolute',
+                      top: FRAME + PRINT_RIGHT_GAP,
+                      right: FRAME,
+                      bottom: FRAME_BOTTOM,
+                      left: FRAME,
+                      borderWidth: 3,
+                      borderColor: '#000000',
+                      borderRadius: 16,
+                    }}
+                  />
+                  {/* Sağ üst saat */}
+                  <Text style={{ position: 'absolute', top: 42, right: 24, fontSize: 28, fontWeight: '700', color: '#000' }}>{timeStr}</Text>
 
-                {/* İçerik: Dikey metin + Satırlar + QR */}
-                <View style={{ flexDirection: 'row', alignItems: 'stretch', flex: 1, paddingLeft: 12, paddingRight: 12, paddingBottom: 12 }}>
-
-                  {/* Dikey HAFRİYAPP */}
-                  <View style={{ width: 34, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                    <Text style={{
-                      fontSize: 22, fontWeight: '900', letterSpacing: 4, color: '#000',
-                      transform: [{ rotate: '-90deg' }],
-                      width: 210, textAlign: 'center',
-                    }}>HAFRİYAPP</Text>
-                  </View>
-
-                  {/* Form satırları */}
-                  <View style={{ flex: 1, justifyContent: 'space-between', paddingTop: 4, paddingBottom: 4 }}>
-                    {rows.map(({ label, value }) => (
-                      <View key={label} style={{
-                        minHeight: 36,
-                        flexDirection: 'row', alignItems: 'flex-end',
-                        borderBottomWidth: 1.2, borderStyle: 'dotted', borderColor: '#000', paddingBottom: 3,
+                  {/* Header: Logo + Firma + Şantiye */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 13, marginBottom: 14, paddingLeft: 12, paddingRight: 72 }}>
+                    <View
+                      style={{
+                        width: 78,
+                        height: 78,
+                        borderRadius: 39,
+                        borderWidth: 2,
+                        borderColor: '#000',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        marginRight: 14,
+                        overflow: 'hidden',
                       }}>
-                        <Text style={{ color: '#222', fontWeight: '700', width: 98, fontSize: 17 }}>{label}</Text>
-                        <Text numberOfLines={1} style={{ fontWeight: '700', color: '#000', fontSize: 17, flex: 1 }}>{value}</Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  {/* QR Kod */}
-                  <View style={{ width: 124, justifyContent: 'flex-end', alignItems: 'flex-end', marginLeft: 14, paddingBottom: 2 }}>
-                    <View style={{ width: 112, height: 112, borderWidth: 2, borderColor: '#000', borderRadius: 8, padding: 5, backgroundColor: '#fff' }}>
-                      <QRCode value={autoSerial(ph) || 'HAFRIYAPP'} size={98} color="#000" backgroundColor="#fff" />
+                      {logoUri ? <Image source={{ uri: logoUri }} style={{ width: 70, height: 70, borderRadius: 35 }} /> : <Image source={require('../../../assets/icons/truck.png')} style={{ width: 54, height: 54 }} resizeMode="contain" />}
+                    </View>
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                      <Text numberOfLines={1} style={{ fontSize: 29, fontWeight: '800', letterSpacing: 0.3, color: '#000', textAlign: 'center' }}>
+                        {(ph.companyName || user?.companyName || 'HAFRİYAT').toUpperCase()}
+                      </Text>
+                      <Text numberOfLines={1} style={{ fontSize: 22, fontWeight: '700', letterSpacing: 0.2, color: '#000', textAlign: 'center', marginTop: 4 }}>
+                        {(ph.jobSiteName || job?.name || '-').toUpperCase()}
+                      </Text>
                     </View>
                   </View>
 
+                  {/* İçerik: Dikey metin + Satırlar + QR */}
+                  <View style={{ flexDirection: 'row', alignItems: 'stretch', flex: 1, paddingLeft: 12, paddingRight: 12, paddingBottom: 12 }}>
+                    {/* Dikey HAFRİYAPP */}
+                    <View style={{ width: 34, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                      <Text
+                        style={{
+                          fontSize: 26,
+                          fontWeight: '900',
+                          letterSpacing: 4,
+                          color: '#000',
+                          transform: [{ rotate: '-90deg' }],
+                          width: 210,
+                          textAlign: 'center',
+                        }}>
+                        HAFRİYAPP
+                      </Text>
+                    </View>
+
+                    {/* Form satırları */}
+                    <View style={{ flex: 1, justifyContent: 'space-between', paddingTop: 4, paddingBottom: 4 }}>
+                      {rows.map(({ label, value }) => (
+                        <View
+                          key={label}
+                          style={{
+                            minHeight: 42,
+                            flexDirection: 'row',
+                            alignItems: 'flex-end',
+                            borderBottomWidth: 1.2,
+                            borderStyle: 'dotted',
+                            borderColor: '#000',
+                            paddingBottom: 3,
+                          }}>
+                          <Text style={{ color: '#222', fontWeight: '700', width: 108, fontSize: 20 }}>{label}</Text>
+                          <Text numberOfLines={1} style={{ fontWeight: '700', color: '#000', fontSize: 20, flex: 1 }}>
+                            {value}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+
+                    {/* QR Kod */}
+                    <View style={{ width: 124, justifyContent: 'flex-end', alignItems: 'flex-end', marginLeft: 14, paddingBottom: 2 }}>
+                      <View style={{ width: 112, height: 112, borderWidth: 2, borderColor: '#000', borderRadius: 8, padding: 5, backgroundColor: '#fff' }}>
+                        <QRCode value={autoSerial(ph) || 'HAFRIYAPP'} size={98} color="#000" backgroundColor="#fff" />
+                      </View>
+                    </View>
+                  </View>
                 </View>
               </View>
             </View>
-          </View>
-        );
-      })()}
+          );
+        })()}
 
       {/* ═══════════════ İŞİ SİL ADIM 1 ═══════════════ */}
       <Modal visible={deleteStep1Visible} transparent animationType="fade" onRequestClose={() => setDeleteStep1Visible(false)}>
@@ -1843,7 +1696,7 @@ export default function JobDetails() {
           <View style={styles.deleteModal}>
             {/* Başlık */}
             <View style={styles.deleteModalHeader}>
-              <Text style={styles.deleteModalHeaderText}>⚠️  İşi Silmek İstiyorsunuz</Text>
+              <Text style={styles.deleteModalHeaderText}>⚠️ İşi Silmek İstiyorsunuz</Text>
             </View>
             {/* Gövde */}
             <View style={styles.deleteModalBody}>
@@ -1864,20 +1717,16 @@ export default function JobDetails() {
                 <Text style={{ fontWeight: '700' }}>Silinen veriler geri alınamaz!</Text>
               </Text>
               {hauls.length > 0 && (
-                <TouchableOpacity
-                  style={styles.deleteExcelBtn}
-                  onPress={downloadExcel}
-                  disabled={downloading}
-                >
-                  <Text style={styles.deleteExcelBtnText}>
-                    {downloading ? 'İndiriliyor...' : '📥  Excel İndir (Yedek Al)'}
-                  </Text>
+                <TouchableOpacity style={styles.deleteExcelBtn} onPress={downloadExcel} disabled={downloading}>
+                  <Text style={styles.deleteExcelBtnText}>{downloading ? 'İndiriliyor...' : '📥  Excel İndir (Yedek Al)'}</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
                 style={styles.deleteProceedBtn}
-                onPress={() => { setDeleteStep1Visible(false); setDeleteStep2Visible(true); }}
-              >
+                onPress={() => {
+                  setDeleteStep1Visible(false);
+                  setDeleteStep2Visible(true);
+                }}>
                 <Text style={styles.deleteProceedBtnText}>Devam Et — İşi Sil</Text>
               </TouchableOpacity>
             </View>
@@ -1895,7 +1744,7 @@ export default function JobDetails() {
           <View style={styles.deleteModal}>
             {/* Başlık */}
             <View style={[styles.deleteModalHeader, { backgroundColor: '#D32F2F' }]}>
-              <Text style={styles.deleteModalHeaderText}>🚫  Son Onay — Geri Dönüş Yok!</Text>
+              <Text style={styles.deleteModalHeaderText}>🚫 Son Onay — Geri Dönüş Yok!</Text>
             </View>
             {/* Gövde */}
             <View style={styles.deleteModalBody}>
@@ -1903,17 +1752,9 @@ export default function JobDetails() {
               <Text style={[styles.deleteModalJobName, { fontSize: 15 }]}>
                 <Text style={{ fontWeight: '700' }}>{job?.name}</Text> işi ve tüm sefer kayıtları kalıcı olarak silinecek.
               </Text>
-              <Text style={[styles.deleteModalWarning, { color: '#D32F2F', fontWeight: '700', marginTop: 8 }]}>
-                Bu işlem geri alınamaz!
-              </Text>
-              <TouchableOpacity
-                style={[styles.deleteProceedBtn, { backgroundColor: '#D32F2F', marginTop: 16 }]}
-                onPress={handleConfirmDelete}
-                disabled={deleting}
-              >
-                <Text style={styles.deleteProceedBtnText}>
-                  {deleting ? 'Siliniyor...' : 'Evet, İşi ve Tüm Seferleri Sil'}
-                </Text>
+              <Text style={[styles.deleteModalWarning, { color: '#D32F2F', fontWeight: '700', marginTop: 8 }]}>Bu işlem geri alınamaz!</Text>
+              <TouchableOpacity style={[styles.deleteProceedBtn, { backgroundColor: '#D32F2F', marginTop: 16 }]} onPress={handleConfirmDelete} disabled={deleting}>
+                <Text style={styles.deleteProceedBtnText}>{deleting ? 'Siliniyor...' : 'Evet, İşi ve Tüm Seferleri Sil'}</Text>
               </TouchableOpacity>
             </View>
             {/* Footer */}
@@ -1923,7 +1764,6 @@ export default function JobDetails() {
           </View>
         </View>
       </Modal>
-
     </SafeAreaView>
   );
 }
@@ -1932,8 +1772,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFBEA' },
 
   header: {
-    flexDirection: 'row', alignItems: 'center', padding: 16,
-    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
   backBtn: { padding: 8 },
   backArrow: { fontSize: 24, color: '#333' },
@@ -1954,9 +1798,18 @@ const styles = StyleSheet.create({
   content: { padding: 16 },
 
   summaryBar: {
-    flexDirection: 'row', backgroundColor: '#fff', borderRadius: 14, marginBottom: 12,
-    paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 6, elevation: 3,
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    marginBottom: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
+    elevation: 3,
   },
   summaryItem: { flex: 1, alignItems: 'center' },
   summaryValue: { fontSize: 20, fontWeight: '800', color: DARK },
@@ -1964,15 +1817,24 @@ const styles = StyleSheet.create({
   summaryDivider: { width: 1, height: 36, backgroundColor: '#EEEEEE' },
 
   syncBanner: {
-    backgroundColor: '#E3F2FD', borderRadius: 12, padding: 12, marginBottom: 12,
-    borderWidth: 1, borderColor: '#90CAF9',
+    backgroundColor: '#E3F2FD',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#90CAF9',
   },
   syncBannerText: { color: '#1565C0', fontWeight: '700', fontSize: 13, textAlign: 'center' },
 
   listHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: '#fff', paddingVertical: 12, paddingHorizontal: 12,
-    borderRadius: 12, marginBottom: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginBottom: 12,
   },
   listTitle: { fontSize: 15, fontWeight: '800', color: DARK },
   refreshIconBtn: { padding: 4 },
@@ -1984,8 +1846,12 @@ const styles = StyleSheet.create({
 
   pendingTitle: { fontSize: 12, fontWeight: '700', color: '#E65100', marginBottom: 6 },
   pendingRow: {
-    backgroundColor: '#FFF8E1', borderLeftWidth: 4, borderLeftColor: '#FFA000',
-    borderRadius: 10, padding: 12, marginBottom: 8,
+    backgroundColor: '#FFF8E1',
+    borderLeftWidth: 4,
+    borderLeftColor: '#FFA000',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
   },
   pendingBadge: { backgroundColor: '#FFE0B2', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, alignSelf: 'flex-start', marginBottom: 4 },
   pendingBadgeText: { fontSize: 11, fontWeight: '700', color: '#E65100' },
@@ -1994,8 +1860,15 @@ const styles = StyleSheet.create({
   pendingPayType: { fontSize: 12, color: '#555', marginTop: 2 },
 
   haulCard: {
-    borderRadius: 14, padding: 14, marginBottom: 10, borderLeftWidth: 4,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 4,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderLeftWidth: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
   },
   haulCardPaid: { backgroundColor: '#fff', borderLeftColor: '#4CAF50' },
   haulCardUnpaid: { backgroundColor: '#FFFDE7', borderLeftColor: '#FFC107' },
@@ -2058,16 +1931,25 @@ const styles = StyleSheet.create({
   // ── Sefer Gir / Manuel Ekle card
   addCard: { width: '92%', backgroundColor: '#fff', borderRadius: 18, overflow: 'hidden', marginVertical: 20 },
   addCardHeader: {
-    backgroundColor: '#1976D2', flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', paddingVertical: 18, paddingHorizontal: 20,
+    backgroundColor: '#1976D2',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 18,
+    paddingHorizontal: 20,
   },
   addCardHeaderText: { fontSize: 18, fontWeight: '800', color: '#fff' },
   closeX: { padding: 4 },
   closeXText: { fontSize: 20, color: 'rgba(255,255,255,0.8)', fontWeight: '700' },
   addCardBody: { padding: 20 },
   addCardFooter: {
-    flexDirection: 'row', gap: 8, padding: 16, backgroundColor: '#F9F9F9',
-    borderTopWidth: 1, borderTopColor: '#eee', flexWrap: 'wrap',
+    flexDirection: 'row',
+    gap: 8,
+    padding: 16,
+    backgroundColor: '#F9F9F9',
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    flexWrap: 'wrap',
   },
 
   // Fields
@@ -2075,22 +1957,40 @@ const styles = StyleSheet.create({
   req: { color: '#E53935' },
   optional: { fontWeight: '400', color: '#aaa' },
   plateInput: {
-    borderWidth: 1.5, borderColor: '#ddd', borderRadius: 10,
-    paddingVertical: 14, paddingHorizontal: 14,
-    fontSize: 18, fontWeight: '700', textAlign: 'center', letterSpacing: 1,
+    borderWidth: 1.5,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: 1,
     backgroundColor: '#FAFAFA',
   },
   textInput: {
-    borderWidth: 1.5, borderColor: '#ddd', borderRadius: 10,
-    paddingVertical: 12, paddingHorizontal: 14, fontSize: 15, backgroundColor: '#FAFAFA',
+    borderWidth: 1.5,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    backgroundColor: '#FAFAFA',
   },
   textInputReadonly: {
-    backgroundColor: '#F0F0F0', borderColor: '#e0e0e0', color: '#555',
+    backgroundColor: '#F0F0F0',
+    borderColor: '#e0e0e0',
+    color: '#555',
   },
   noteInput: {
-    borderWidth: 1.5, borderColor: '#ddd', borderRadius: 10,
-    paddingVertical: 12, paddingHorizontal: 14, fontSize: 14,
-    minHeight: 60, textAlignVertical: 'top',
+    borderWidth: 1.5,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 14,
+    minHeight: 60,
+    textAlignVertical: 'top',
   },
 
   // Material badge (Kum/Mıcır)
@@ -2105,8 +2005,14 @@ const styles = StyleSheet.create({
   noOfferBox: { backgroundColor: '#FFF8E1', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#FFD54F' },
   noOfferText: { color: '#E65100', fontSize: 13, fontWeight: '600' },
   offerItem: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    padding: 14, borderWidth: 1.5, borderColor: '#E0E0E0', borderRadius: 12, marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    marginBottom: 8,
     backgroundColor: '#FAFAFA',
   },
   offerItemSelected: { borderColor: '#1976D2', backgroundColor: '#E3F2FD' },

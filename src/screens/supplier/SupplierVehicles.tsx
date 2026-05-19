@@ -1,24 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SectionList,
-  FlatList,
-  TouchableOpacity,
-  Modal,
-  ScrollView,
-  TextInput,
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableWithoutFeedback,
-  Pressable,
-  Alert,
-  Image,
-  RefreshControl,
-  Share,
-} from 'react-native';
+import { View, Text, StyleSheet, SectionList, FlatList, TouchableOpacity, Modal, ScrollView, TextInput, Keyboard, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Pressable, Alert, Image, RefreshControl, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppSelector } from '../../hooks';
 import { deleteVehicle, getVehicles, updateVehicle, createVehicle, assignDriver, getVehicleDriver, removeDriver } from '../../services/vehicleService';
@@ -52,7 +33,6 @@ type VehicleUI = {
   companyName?: string;
   driverName?: string | null;
 };
-
 
 // Sabit trips kaldırıldı — gerçek API verisi kullanılıyor
 
@@ -128,16 +108,16 @@ export default function SupplierVehicles() {
 
   const handleCreateVehicle = async () => {
     if (!token || !companyId) {
-      Alert.alert("Hata", "Firma bilgisi eksik. Lütfen tekrar giriş yapın.");
+      Alert.alert('Hata', 'Firma bilgisi eksik. Lütfen tekrar giriş yapın.');
       return;
     }
     if (!newPlate) {
-      Alert.alert("Eksik Bilgi", "Lütfen plaka giriniz.");
+      Alert.alert('Eksik Bilgi', 'Lütfen plaka giriniz.');
       return;
     }
     const rawPhone = newDriverPhone.replace(/\D/g, '');
     if (!rawPhone || rawPhone.length < 10) {
-      Alert.alert("Eksik Bilgi", "Lütfen şoför telefon numarasını giriniz.");
+      Alert.alert('Eksik Bilgi', 'Lütfen şoför telefon numarasını giriniz.');
       return;
     }
 
@@ -148,14 +128,14 @@ export default function SupplierVehicles() {
 
       await createVehicle(plateForApi, companyId, driverPhoneNumber, token);
 
-      Alert.alert("Başarılı", "Araç ve şoför başarıyla eklendi.");
+      Alert.alert('Başarılı', 'Araç ve şoför başarıyla eklendi.');
       setAddVehicleModal(false);
       setNewPlate('');
       setNewDriverPhone('');
       fetchVehicles();
     } catch (error: any) {
-      const errorMsg = error.response?.data?.message || "Araç eklenirken bir sorun oluştu.";
-      Alert.alert("Hata", errorMsg);
+      const errorMsg = error.response?.data?.message || 'Araç eklenirken bir sorun oluştu.';
+      Alert.alert('Hata', errorMsg);
     } finally {
       setSaving(false);
     }
@@ -173,11 +153,10 @@ export default function SupplierVehicles() {
       setNewDriverPhone('');
       Keyboard.dismiss();
 
-      Alert.alert("Başarılı", "Şoför başarıyla kaldırıldı.");
-
+      Alert.alert('Başarılı', 'Şoför başarıyla kaldırıldı.');
     } catch (error: any) {
       console.log('Remove driver error:', error);
-      Alert.alert("Hata", "Şoför kaldırılırken bir sorun oluştu.");
+      Alert.alert('Hata', 'Şoför kaldırılırken bir sorun oluştu.');
     } finally {
       setSaving(false);
     }
@@ -189,7 +168,7 @@ export default function SupplierVehicles() {
     // Sadece rakamları al
     const cleanPhone = newDriverPhone.replace(/\D/g, '');
     if (cleanPhone.length < 10) {
-      Alert.alert("Hata", "Geçerli bir telefon numarası giriniz.");
+      Alert.alert('Hata', 'Geçerli bir telefon numarası giriniz.');
       return;
     }
 
@@ -199,18 +178,17 @@ export default function SupplierVehicles() {
 
       await assignDriver(selectedVehicle.id, cleanPhone, token);
 
-      Alert.alert("Başarılı", "Şoför ataması yapıldı.");
+      Alert.alert('Başarılı', 'Şoför ataması yapıldı.');
 
       // Modal kapat ve yenile
       setVehicleModal(false);
       setSelectedVehicle(null);
       setNewDriverPhone('');
       fetchVehicles();
-
     } catch (error: any) {
       console.log('Assign Driver error:', error);
-      const errorMsg = error.response?.data?.message || "Şoför atanırken bir sorun oluştu.";
-      Alert.alert("Hata", errorMsg);
+      const errorMsg = error.response?.data?.message || 'Şoför atanırken bir sorun oluştu.';
+      Alert.alert('Hata', errorMsg);
     } finally {
       setSaving(false);
     }
@@ -245,27 +223,20 @@ export default function SupplierVehicles() {
     if (part3) formatted += ` ${part3}`;
     if (part4) formatted += ` ${part4}`;
 
-
-
     return formatted;
   };
 
   const mapVehicleFromApi = (item: VehicleApi): VehicleUI => ({
     id: item.id,
-    plate: item.plateNumber.replace(
-      /^(\d{2})([A-Z]+)(\d+)$/,
-      '$1 $2 $3'
-    ), // 11ASD1234 → 11 ASD 1234
+    plate: item.plateNumber.replace(/^(\d{2})([A-Z]+)(\d+)$/, '$1 $2 $3'), // 11ASD1234 → 11 ASD 1234
     canEdit: item.canEdit,
     canDelete: item.canDelete,
     createdDate: item.createdDate,
     companyName: item.companyName,
   });
-  const normalizedPlate = (value: string) =>
-    value.replace(/\s/g, '').toUpperCase();
+  const normalizedPlate = (value: string) => value.replace(/\s/g, '').toUpperCase();
 
-  const isPlateChanged =
-    normalizedPlate(plate) !== normalizedPlate(initialPlate);
+  const isPlateChanged = normalizedPlate(plate) !== normalizedPlate(initialPlate);
 
   const handleDeleteVehicle = async () => {
     if (!token || !selectedVehicle?.id) return;
@@ -296,11 +267,7 @@ export default function SupplierVehicles() {
 
   const handleCloseVehicleModal = () => {
     if (driverMissing) {
-      Alert.alert(
-        'Şoför Numarası Gerekli',
-        'Şoför numarası boş geçilemez. Şoför yoksa kendi numaranızı yazın.',
-        [{ text: 'Tamam' }]
-      );
+      Alert.alert('Şoför Numarası Gerekli', 'Şoför numarası boş geçilemez. Şoför yoksa kendi numaranızı yazın.', [{ text: 'Tamam' }]);
       return;
     }
     Keyboard.dismiss();
@@ -311,10 +278,7 @@ export default function SupplierVehicles() {
     if (!token || !selectedVehicle?.id) return;
 
     if (driverMissing) {
-      Alert.alert(
-        'Şoför Numarası Gerekli',
-        'Şoför numarası boş geçilemez. Şoför yoksa kendi numaranızı yazın.'
-      );
+      Alert.alert('Şoför Numarası Gerekli', 'Şoför numarası boş geçilemez. Şoför yoksa kendi numaranızı yazın.');
       return;
     }
 
@@ -325,12 +289,7 @@ export default function SupplierVehicles() {
 
       console.log('✏️ Güncellenecek plaka:', plateForApi);
 
-      await updateVehicle(
-        selectedVehicle.id,
-        plateForApi,
-        selectedVehicle.companyId,
-        token
-      );
+      await updateVehicle(selectedVehicle.id, plateForApi, selectedVehicle.companyId, token);
 
       // modal kapat
       setVehicleModal(false);
@@ -346,8 +305,6 @@ export default function SupplierVehicles() {
       setSaving(false);
     }
   };
-
-
 
   const openVehicleDetail = async (item: any) => {
     setSelectedVehicle(item);
@@ -365,10 +322,7 @@ export default function SupplierVehicles() {
     try {
       const driverData = await getVehicleDriver(item.id, token);
       if (driverData) {
-        const displayName =
-          driverData.displayName ||
-          [driverData.firstName, driverData.lastName].filter(Boolean).join(' ') ||
-          driverData.phoneNumber;
+        const displayName = driverData.displayName || [driverData.firstName, driverData.lastName].filter(Boolean).join(' ') || driverData.phoneNumber;
 
         setDriver({
           id: driverData.id || driverData.userId || '',
@@ -386,35 +340,33 @@ export default function SupplierVehicles() {
     }
   };
 
-
   const confirmDeleteWithAlert = () => {
-    Alert.alert(
-      'Aracı Sil',
-      'Bu işlem geri alınamaz. Emin misiniz?',
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Sil',
-          style: 'destructive',
-          onPress: handleDeleteVehicle,
-        },
-      ]
-    );
+    Alert.alert('Aracı Sil', 'Bu işlem geri alınamaz. Emin misiniz?', [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: handleDeleteVehicle,
+      },
+    ]);
   };
 
   const openReceipt = (item: HaulApi) => {
     const normalizedPlate = (item.plateNumber || '').replace(/\s/g, '').toUpperCase();
-    const matchedVehicle = vehicles.find(
-      v => v.plate.replace(/\s/g, '').toUpperCase() === normalizedPlate
-    );
+    const matchedVehicle = vehicles.find(v => v.plate.replace(/\s/g, '').toUpperCase() === normalizedPlate);
     setSelectedTrip({
       ...item,
+      contactPhone: item.contactPhone || (item as any).ContactPhone || user?.phoneNumber || undefined,
       driverName: item.driverName || (item as any).DriverName || matchedVehicle?.driverName || undefined,
       driverPhone: item.driverPhone || (item as any).DriverPhone || undefined,
       companyLogoPath: item.companyLogoPath || (item as any).CompanyLogoPath || cachedCompanyLogoPath || undefined,
       companyName: item.companyName || (item as any).CompanyName || user?.companyName || undefined,
     });
     setReceiptVisible(true);
+  };
+
+  const getAuthorizedContact = (haul?: HaulApi | null) => {
+    return haul?.contactPhone || user?.phoneNumber || '-';
   };
 
   const openPaymentConfirm = (item: HaulApi) => {
@@ -487,14 +439,10 @@ export default function SupplierVehicles() {
       const mapped = data.map(mapVehicleFromApi);
 
       // Batch-fetch driver names
-      const driverResults = await Promise.all(
-        mapped.map((v: VehicleUI) => getVehicleDriver(v.id, token).catch(() => null))
-      );
+      const driverResults = await Promise.all(mapped.map((v: VehicleUI) => getVehicleDriver(v.id, token).catch(() => null)));
       const mappedWithDrivers: VehicleUI[] = mapped.map((v: VehicleUI, i: number) => {
         const d = driverResults[i];
-        const driverName = d
-          ? d.displayName || [d.firstName, d.lastName].filter(Boolean).join(' ') || d.phoneNumber || null
-          : null;
+        const driverName = d ? d.displayName || [d.firstName, d.lastName].filter(Boolean).join(' ') || d.phoneNumber || null : null;
         return { ...v, driverName };
       });
 
@@ -511,24 +459,25 @@ export default function SupplierVehicles() {
         grouped[key].push(vehicle);
       });
 
-      const sectionsData = Object.keys(grouped).map(key => {
-        const groupItems = grouped[key];
-        const chunkedData: VehicleUI[][] = [];
-        for (let i = 0; i < groupItems.length; i += 2) {
-          chunkedData.push(groupItems.slice(i, i + 2));
-        }
-        return {
-          title: key,
-          data: chunkedData
-        };
-      }).sort((a, b) => {
-        if (a.title === 'Kendi Araçlarım') return -1;
-        if (b.title === 'Kendi Araçlarım') return 1;
-        return a.title.localeCompare(b.title);
-      });
+      const sectionsData = Object.keys(grouped)
+        .map(key => {
+          const groupItems = grouped[key];
+          const chunkedData: VehicleUI[][] = [];
+          for (let i = 0; i < groupItems.length; i += 2) {
+            chunkedData.push(groupItems.slice(i, i + 2));
+          }
+          return {
+            title: key,
+            data: chunkedData,
+          };
+        })
+        .sort((a, b) => {
+          if (a.title === 'Kendi Araçlarım') return -1;
+          if (b.title === 'Kendi Araçlarım') return 1;
+          return a.title.localeCompare(b.title);
+        });
 
       setSections(sectionsData);
-
     } catch (e) {
       setError('Araçlar yüklenemedi');
     } finally {
@@ -546,18 +495,14 @@ export default function SupplierVehicles() {
       const lastDay = new Date(year, month, 0).getDate();
       const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
       const monthLabel = filterMonth ? `${year}_${String(month).padStart(2, '0')}` : String(year);
-      const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' })
-        .fetch('GET', `https://api.hafriyapp.com/api/Haul/my/filtered/export?startDate=${startDate}&endDate=${endDate}`, {
-          Authorization: `Bearer ${token}`,
-        });
+      const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' }).fetch('GET', `https://api.hafriyapp.com/api/Haul/my/filtered/export?startDate=${startDate}&endDate=${endDate}`, {
+        Authorization: `Bearer ${token}`,
+      });
       const path = res.path();
       if (Platform.OS === 'ios') {
         await RNBlobUtil.ios.openDocument(path);
       } else {
-        await RNBlobUtil.android.actionViewIntent(
-          path,
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        );
+        await RNBlobUtil.android.actionViewIntent(path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       }
     } catch {
       Alert.alert('Hata', 'Excel dosyası indirilemedi.');
@@ -572,8 +517,7 @@ export default function SupplierVehicles() {
       setHaulsLoading(true);
       setHaulsError(null);
       const data = await getHauls(token);
-      const sorted = [...data]
-        .sort((a, b) => new Date(b.timeOfHaul).getTime() - new Date(a.timeOfHaul).getTime());
+      const sorted = [...data].sort((a, b) => new Date(b.timeOfHaul).getTime() - new Date(a.timeOfHaul).getTime());
       setHauls(sorted);
     } catch {
       setHaulsError('Seferler yüklenemedi');
@@ -587,8 +531,7 @@ export default function SupplierVehicles() {
     setHaulsRefreshing(true);
     try {
       const data = await getHauls(token);
-      const sorted = [...data]
-        .sort((a, b) => new Date(b.timeOfHaul).getTime() - new Date(a.timeOfHaul).getTime());
+      const sorted = [...data].sort((a, b) => new Date(b.timeOfHaul).getTime() - new Date(a.timeOfHaul).getTime());
       setHauls(sorted);
       setHaulsError(null);
     } catch {
@@ -612,7 +555,7 @@ export default function SupplierVehicles() {
           tonage: paymentHaul.tonage,
           dumpLocation: paymentHaul.dumpLocation,
         },
-        token
+        token,
       );
       setConfirmPaymentModal(false);
       setPaymentHaul(null);
@@ -637,34 +580,24 @@ export default function SupplierVehicles() {
     if (!token || !companyId) return;
     getCompanyById(companyId, token)
       .then(res => {
-        const companyData = res?.isSuccess ? res.data : (res?.data || res);
+        const companyData = res?.isSuccess ? res.data : res?.data || res;
         const path = companyData?.logoPath || companyData?.LogoPath || null;
         if (path) setCachedCompanyLogoPath(path);
       })
       .catch(() => {});
   }, [token, companyId]);
 
-
   /* ================= RENDERS ================= */
 
   const renderVehicle = ({ item }: { item: VehicleUI[] }) => (
     <View style={{ flexDirection: 'row', gap: 10 }}>
-      {item.map((vehicle) => (
-        <TouchableOpacity
-          key={vehicle.id}
-          style={[styles.vehicleCard, { flex: 1 }]}
-          activeOpacity={0.85}
-          onPress={() => openVehicleDetail(vehicle)}
-        >
+      {item.map(vehicle => (
+        <TouchableOpacity key={vehicle.id} style={[styles.vehicleCard, { flex: 1 }]} activeOpacity={0.85} onPress={() => openVehicleDetail(vehicle)}>
           <View style={styles.plateBox}>
             <Text style={styles.plateText}>{vehicle.plate}</Text>
           </View>
 
-          {vehicle.driverName ? (
-            <Text style={styles.vehicleDriverName}>{vehicle.driverName}</Text>
-          ) : (
-            <Text style={styles.vehicleNoDriver}>Şoför Atanmamış</Text>
-          )}
+          {vehicle.driverName ? <Text style={styles.vehicleDriverName}>{vehicle.driverName}</Text> : <Text style={styles.vehicleNoDriver}>Şoför Atanmamış</Text>}
 
           <Text style={styles.vehicleDate}>Kayıt: {formatDateDMY(vehicle.createdDate)}</Text>
         </TouchableOpacity>
@@ -697,16 +630,12 @@ export default function SupplierVehicles() {
   const TR_MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
   // Mevcut haul listesinden benzersiz yılları çıkar
-  const availableYears = Array.from(
-    new Set(hauls.map(h => new Date(h.timeOfHaul).getFullYear()))
-  ).sort((a, b) => b - a);
+  const availableYears = Array.from(new Set(hauls.map(h => new Date(h.timeOfHaul).getFullYear()))).sort((a, b) => b - a);
 
   const isToday = (iso: string) => {
     const d = new Date(iso);
     const now = new Date();
-    return d.getDate() === now.getDate() &&
-      d.getMonth() === now.getMonth() &&
-      d.getFullYear() === now.getFullYear();
+    return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   };
 
   // Aktif filtreye göre gösterilecek sefer listesi
@@ -716,12 +645,7 @@ export default function SupplierVehicles() {
     if (filterMonth !== null && d.getMonth() + 1 !== filterMonth) return false;
     if (haulFilter) {
       const q = haulFilter.toLowerCase();
-      if (
-        !h.plateNumber.toLowerCase().includes(q) &&
-        !(h.jobSiteName || '').toLowerCase().includes(q) &&
-        !(h.dumpLocation || '').toLowerCase().includes(q) &&
-        !(h.serialNumber || '').toLowerCase().includes(q)
-      ) return false;
+      if (!h.plateNumber.toLowerCase().includes(q) && !(h.jobSiteName || '').toLowerCase().includes(q) && !(h.dumpLocation || '').toLowerCase().includes(q) && !(h.serialNumber || '').toLowerCase().includes(q)) return false;
     }
     return true;
   });
@@ -733,20 +657,14 @@ export default function SupplierVehicles() {
     const paid = item.isPaid;
 
     return (
-      <View style={[
-        styles.haulCard,
-        paid ? styles.haulCardPaid : styles.haulCardUnpaid,
-        today && styles.haulCardToday,
-      ]}>
+      <View style={[styles.haulCard, paid ? styles.haulCardPaid : styles.haulCardUnpaid, today && styles.haulCardToday]}>
         {/* Üst Satır: Seri No + Bugün Badge */}
         <View style={styles.haulCardTopRow}>
           <View style={styles.serialBox}>
-            <TouchableOpacity
-              onPress={() => copyWithFeedback(autoSerial(item), `${item.id}-sn`)}
-              activeOpacity={0.7}
-            >
+            <TouchableOpacity onPress={() => copyWithFeedback(autoSerial(item), `${item.id}-sn`)} activeOpacity={0.7}>
               <Text style={[styles.serialAuto, copiedKey === `${item.id}-sn` && styles.serialCopied]}>
-                {copiedKey === `${item.id}-sn` ? '✓ ' : ''}{autoSerial(item)}
+                {copiedKey === `${item.id}-sn` ? '✓ ' : ''}
+                {autoSerial(item)}
               </Text>
             </TouchableOpacity>
           </View>
@@ -776,9 +694,7 @@ export default function SupplierVehicles() {
           </View>
           {/* Tonaj + Ödeme Badge */}
           <View style={{ alignItems: 'flex-end', gap: 4 }}>
-            {item.tonage > 0 && (
-              <Text style={styles.tonageText}>{item.tonage} kg</Text>
-            )}
+            {item.tonage > 0 && <Text style={styles.tonageText}>{item.tonage} kg</Text>}
             {item.cashAmount > 0 && (
               <View style={styles.cashBadge}>
                 <Text style={styles.cashBadgeText}>{item.cashAmount.toLocaleString('tr-TR')} ₺</Text>
@@ -811,10 +727,7 @@ export default function SupplierVehicles() {
           </TouchableOpacity>
 
           {!paid && !item.isPrintedReceipt ? (
-            <TouchableOpacity
-              style={styles.haulApproveBtn}
-              onPress={() => openPaymentConfirm(item)}
-            >
+            <TouchableOpacity style={styles.haulApproveBtn} onPress={() => openPaymentConfirm(item)}>
               <Text style={styles.haulApproveBtnText}>✔ Onayla</Text>
             </TouchableOpacity>
           ) : paid ? (
@@ -836,31 +749,17 @@ export default function SupplierVehicles() {
       {/* TABS */}
       <View style={styles.tabRow}>
         <View style={styles.tabs}>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'vehicles' && styles.tabActive]}
-            onPress={() => setActiveTab('vehicles')}
-          >
-            <Text style={activeTab === 'vehicles' ? styles.tabTextActive : styles.tabText}>
-              Araçlar ({vehicles.length})
-            </Text>
+          <TouchableOpacity style={[styles.tabBtn, activeTab === 'vehicles' && styles.tabActive]} onPress={() => setActiveTab('vehicles')}>
+            <Text style={activeTab === 'vehicles' ? styles.tabTextActive : styles.tabText}>Araçlar ({vehicles.length})</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'trips' && styles.tabActive]}
-            onPress={() => setActiveTab('trips')}
-          >
-            <Text style={activeTab === 'trips' ? styles.tabTextActive : styles.tabText}>
-              Seferler ({filteredHauls.length})
-            </Text>
+          <TouchableOpacity style={[styles.tabBtn, activeTab === 'trips' && styles.tabActive]} onPress={() => setActiveTab('trips')}>
+            <Text style={activeTab === 'trips' ? styles.tabTextActive : styles.tabText}>Seferler ({filteredHauls.length})</Text>
           </TouchableOpacity>
         </View>
 
         {activeTab === 'trips' ? (
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={onHaulsRefresh}
-            disabled={haulsRefreshing}
-          >
+          <TouchableOpacity style={styles.addBtn} onPress={onHaulsRefresh} disabled={haulsRefreshing}>
             <Text style={styles.addBtnText}>{haulsRefreshing ? '⏳ Yenileniyor...' : '🔄 Yenile'}</Text>
           </TouchableOpacity>
         ) : (
@@ -871,17 +770,7 @@ export default function SupplierVehicles() {
       </View>
 
       {/* ================= VEHICLES ================= */}
-      {activeTab === 'vehicles' && (
-        <SectionList
-          sections={sections}
-          keyExtractor={(item) => item[0].id}
-          renderItem={renderVehicle}
-          renderSectionHeader={renderSectionHeader}
-          contentContainerStyle={{ paddingTop: 12, paddingBottom: 20, gap: 10, paddingHorizontal: 5 }}
-          stickySectionHeadersEnabled={false}
-          renderSectionFooter={() => <View style={{ height: 10 }} />}
-        />
-      )}
+      {activeTab === 'vehicles' && <SectionList sections={sections} keyExtractor={item => item[0].id} renderItem={renderVehicle} renderSectionHeader={renderSectionHeader} contentContainerStyle={{ paddingTop: 12, paddingBottom: 20, gap: 10, paddingHorizontal: 5 }} stickySectionHeadersEnabled={false} renderSectionFooter={() => <View style={{ height: 10 }} />} />}
 
       {/* ================= TRIPS ================= */}
       {activeTab === 'trips' && (
@@ -914,14 +803,7 @@ export default function SupplierVehicles() {
               {/* Metin arama */}
               <View style={styles.searchBox}>
                 <Text style={styles.searchIcon}>🔍</Text>
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Plaka veya şantiye ara..."
-                  placeholderTextColor="#aaa"
-                  value={haulFilter}
-                  onChangeText={setHaulFilter}
-                  autoCapitalize="characters"
-                />
+                <TextInput style={styles.searchInput} placeholder="Plaka veya şantiye ara..." placeholderTextColor="#aaa" value={haulFilter} onChangeText={setHaulFilter} autoCapitalize="characters" />
                 {haulFilter.length > 0 && (
                   <TouchableOpacity onPress={() => setHaulFilter('')}>
                     <Text style={styles.searchClear}>✕</Text>
@@ -931,15 +813,15 @@ export default function SupplierVehicles() {
 
               {/* Yıl / Ay filtresi */}
               <View style={styles.dateFilterRow}>
-                <TouchableOpacity
-                  style={[styles.dateFilterBtn, filterYear !== null && styles.dateFilterBtnActive]}
-                  onPress={() => setYearPickerVisible(true)}
-                >
-                  <Text style={[styles.dateFilterBtnText, filterYear !== null && styles.dateFilterBtnTextActive]}>
-                    📅 {filterYear !== null ? String(filterYear) : 'Yıl'}
-                  </Text>
+                <TouchableOpacity style={[styles.dateFilterBtn, filterYear !== null && styles.dateFilterBtnActive]} onPress={() => setYearPickerVisible(true)}>
+                  <Text style={[styles.dateFilterBtnText, filterYear !== null && styles.dateFilterBtnTextActive]}>📅 {filterYear !== null ? String(filterYear) : 'Yıl'}</Text>
                   {filterYear !== new Date().getFullYear() && filterYear !== null && (
-                    <TouchableOpacity onPress={() => { setFilterYear(new Date().getFullYear()); setFilterMonth(new Date().getMonth() + 1); }} style={styles.dateFilterClear}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setFilterYear(new Date().getFullYear());
+                        setFilterMonth(new Date().getMonth() + 1);
+                      }}
+                      style={styles.dateFilterClear}>
                       <Text style={styles.dateFilterClearText}>✕</Text>
                     </TouchableOpacity>
                   )}
@@ -947,11 +829,11 @@ export default function SupplierVehicles() {
 
                 <TouchableOpacity
                   style={[styles.dateFilterBtn, filterMonth !== null && styles.dateFilterBtnActive]}
-                  onPress={() => { if (filterYear !== null) setMonthPickerVisible(true); else setMonthPickerVisible(true); }}
-                >
-                  <Text style={[styles.dateFilterBtnText, filterMonth !== null && styles.dateFilterBtnTextActive]}>
-                    🗓 {filterMonth !== null ? TR_MONTHS[filterMonth - 1] : 'Ay'}
-                  </Text>
+                  onPress={() => {
+                    if (filterYear !== null) setMonthPickerVisible(true);
+                    else setMonthPickerVisible(true);
+                  }}>
+                  <Text style={[styles.dateFilterBtnText, filterMonth !== null && styles.dateFilterBtnTextActive]}>🗓 {filterMonth !== null ? TR_MONTHS[filterMonth - 1] : 'Ay'}</Text>
                   {filterMonth !== null && filterMonth !== new Date().getMonth() + 1 && (
                     <TouchableOpacity onPress={() => setFilterMonth(new Date().getMonth() + 1)} style={styles.dateFilterClear}>
                       <Text style={styles.dateFilterClearText}>✕</Text>
@@ -960,10 +842,7 @@ export default function SupplierVehicles() {
                 </TouchableOpacity>
 
                 {haulFilter ? (
-                  <TouchableOpacity
-                    style={styles.dateFilterResetBtn}
-                    onPress={() => setHaulFilter('')}
-                  >
+                  <TouchableOpacity style={styles.dateFilterResetBtn} onPress={() => setHaulFilter('')}>
                     <Text style={styles.dateFilterResetText}>Temizle</Text>
                   </TouchableOpacity>
                 ) : null}
@@ -994,14 +873,7 @@ export default function SupplierVehicles() {
               renderItem={renderTrip}
               contentContainerStyle={{ paddingBottom: 20, gap: 10 }}
               showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl
-                  refreshing={haulsRefreshing}
-                  onRefresh={onHaulsRefresh}
-                  colors={['#1976D2']}
-                  tintColor="#1976D2"
-                />
-              }
+              refreshControl={<RefreshControl refreshing={haulsRefreshing} onRefresh={onHaulsRefresh} colors={['#1976D2']} tintColor="#1976D2" />}
               ListEmptyComponent={
                 <View style={styles.centerBox}>
                   <Text style={styles.emptyText}>Filtre sonucu bulunamadı.</Text>
@@ -1016,22 +888,14 @@ export default function SupplierVehicles() {
       <Modal visible={vehicleModal} transparent animationType="fade" onRequestClose={handleCloseVehicleModal}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={{ width: '100%' }}
-            >
-              <ScrollView
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={{ alignItems: 'center' }}
-              >
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
+              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ alignItems: 'center' }}>
                 <View style={styles.editCard}>
                   {/* HEADER */}
                   <View style={styles.headerRow}>
                     <Text style={styles.editTitle}>🚚 Araç Düzenle</Text>
 
-                    <Pressable
-                      onPress={handleCloseVehicleModal}
-                    >
+                    <Pressable onPress={handleCloseVehicleModal}>
                       <Text style={styles.closeX}>✕</Text>
                     </Pressable>
                   </View>
@@ -1039,45 +903,22 @@ export default function SupplierVehicles() {
                   {/* SUCCESS */}
                   {driverRemoved && (
                     <View style={styles.successBox}>
-                      <Text style={styles.successText}>
-                        ✔ Şoför başarıyla kaldırıldı.
-                      </Text>
+                      <Text style={styles.successText}>✔ Şoför başarıyla kaldırıldı.</Text>
                     </View>
                   )}
 
                   {/* PLAKA */}
                   <Text style={styles.label}>Plaka Numarası *</Text>
-                  <TextInput
-                    value={plate}
-                    onChangeText={setPlate}
-                    style={styles.plateInput}
-                    placeholder="Plaka giriniz"
-                    autoCapitalize="characters"
-                  />
+                  <TextInput value={plate} onChangeText={setPlate} style={styles.plateInput} placeholder="Plaka giriniz" autoCapitalize="characters" />
 
                   {/* ACTIONS */}
                   <View style={styles.actionRow}>
-                    <TouchableOpacity
-                      style={[
-                        styles.saveBtn,
-                        !isPlateChanged && { opacity: 0.5 },
-                      ]}
-                      disabled={!isPlateChanged || saving}
-                      onPress={handleUpdatePlate}
-                    >
-                      <Text style={styles.saveText}>
-                        {saving ? 'Kaydediliyor…' : '✔ Kaydet'}
-                      </Text>
+                    <TouchableOpacity style={[styles.saveBtn, !isPlateChanged && { opacity: 0.5 }]} disabled={!isPlateChanged || saving} onPress={handleUpdatePlate}>
+                      <Text style={styles.saveText}>{saving ? 'Kaydediliyor…' : '✔ Kaydet'}</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={styles.confirmDeleteBtn}
-                      onPress={confirmDeleteWithAlert}
-                      disabled={deleting}
-                    >
-                      <Text style={{ color: '#fff', fontWeight: '700' }}>
-                        {deleting ? 'Siliniyor...' : 'Plakayı Sil'}
-                      </Text>
+                    <TouchableOpacity style={styles.confirmDeleteBtn} onPress={confirmDeleteWithAlert} disabled={deleting}>
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>{deleting ? 'Siliniyor...' : 'Plakayı Sil'}</Text>
                     </TouchableOpacity>
                   </View>
 
@@ -1093,20 +934,14 @@ export default function SupplierVehicles() {
                         <Text style={styles.driverPhone}>{driver.phone}</Text>
                       </View>
 
-                      <TouchableOpacity
-                        style={styles.removeBtn}
-                        onPress={handleRemoveDriver}
-                      >
+                      <TouchableOpacity style={styles.removeBtn} onPress={handleRemoveDriver}>
                         <Text style={styles.removeText}>Kaldır</Text>
                       </TouchableOpacity>
                     </View>
                   ) : (
                     <>
                       <View style={styles.warningBox}>
-                        <Text style={styles.warningText}>
-                          ⚠ Bu araca henüz şoför atanmamış. Aşağıdan şoför
-                          atayabilirsiniz.
-                        </Text>
+                        <Text style={styles.warningText}>⚠ Bu araca henüz şoför atanmamış. Aşağıdan şoför atayabilirsiniz.</Text>
                       </View>
 
                       <Text style={styles.label}>Şoför Telefon Numarası *</Text>
@@ -1114,7 +949,7 @@ export default function SupplierVehicles() {
                       <View style={styles.assignRow}>
                         <TextInput
                           value={newDriverPhone}
-                          onChangeText={text => setNewDriverPhone(formatPhone(text))} //newDriverPhone.replace(/\s/g, '') servise giderken boşlukları siler 
+                          onChangeText={text => setNewDriverPhone(formatPhone(text))} //newDriverPhone.replace(/\s/g, '') servise giderken boşlukları siler
                           style={styles.phoneInput}
                           keyboardType="phone-pad"
                           placeholder="05__ ___ __ __"
@@ -1123,24 +958,13 @@ export default function SupplierVehicles() {
                           onSubmitEditing={Keyboard.dismiss}
                         />
 
-                        <TouchableOpacity
-                          style={[
-                            styles.assignBtn,
-                            !newDriverPhone && { opacity: 0.5 },
-                          ]}
-                          disabled={!newDriverPhone || saving}
-                          onPress={handleAssignDriver}
-                        >
+                        <TouchableOpacity style={[styles.assignBtn, !newDriverPhone && { opacity: 0.5 }]} disabled={!newDriverPhone || saving} onPress={handleAssignDriver}>
                           <Text style={styles.assignText}>👤 Şoför Ata</Text>
                         </TouchableOpacity>
                       </View>
 
-                      <Text style={styles.helpText}>
-                        ℹ Şoför olarak atanacak kişinin telefon numarasını girin.
-                      </Text>
-                      <Text style={styles.helpText}>
-                        💡 Şoför yoksa kendi numaranızı yazın.
-                      </Text>
+                      <Text style={styles.helpText}>ℹ Şoför olarak atanacak kişinin telefon numarasını girin.</Text>
+                      <Text style={styles.helpText}>💡 Şoför yoksa kendi numaranızı yazın.</Text>
                     </>
                   )}
                 </View>
@@ -1153,18 +977,11 @@ export default function SupplierVehicles() {
         <Modal visible={deleteConfirm} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.confirmCard}>
-              <Text style={{ fontSize: 16, fontWeight: '800', marginBottom: 10 }}>
-                Aracı silmek istiyor musunuz?
-              </Text>
-              <Text style={{ color: '#666', marginBottom: 20 }}>
-                Bu işlem geri alınamaz.
-              </Text>
+              <Text style={{ fontSize: 16, fontWeight: '800', marginBottom: 10 }}>Aracı silmek istiyor musunuz?</Text>
+              <Text style={{ color: '#666', marginBottom: 20 }}>Bu işlem geri alınamaz.</Text>
 
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <TouchableOpacity
-                  style={styles.cancelBtn}
-                  onPress={() => setDeleteConfirm(false)}
-                >
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setDeleteConfirm(false)}>
                   <Text>Vazgeç</Text>
                 </TouchableOpacity>
 
@@ -1177,19 +994,13 @@ export default function SupplierVehicles() {
         </Modal>
       </Modal>
 
-
-
-
-
       {/* ================= RECEIPT MODAL ================= */}
       {selectedTrip && (
         <Modal visible={receiptVisible} transparent animationType="fade" onRequestClose={() => setReceiptVisible(false)}>
           <View style={styles.modalOverlay}>
             <View style={styles.receiptWrapper}>
-
               {/* ── Fiş Kart ── */}
               <View style={styles.receiptCard}>
-
                 {/* Sol dikey şerit */}
                 <View style={styles.receiptStrip}>
                   <Text style={styles.receiptStripText}>HAFRİYAPP</Text>
@@ -1197,46 +1008,22 @@ export default function SupplierVehicles() {
 
                 {/* Ana içerik */}
                 <View style={styles.receiptMain}>
-
                   {/* Başlık: Logo + Firma/Şantiye + Saat */}
                   <View style={styles.receiptHead}>
-                    <View style={styles.receiptLogoBox}>
-                      {selectedTrip.companyLogoPath ? (
-                        <Image
-                          source={{ uri: `https://api.hafriyapp.com${selectedTrip.companyLogoPath.startsWith('/') ? '' : '/'}${selectedTrip.companyLogoPath}` }}
-                          style={styles.receiptLogoImg}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <Image
-                          source={require('../../../assets/icons/truck.png')}
-                          style={styles.receiptLogoImg}
-                          resizeMode="contain"
-                        />
-                      )}
-                    </View>
+                    <View style={styles.receiptLogoBox}>{selectedTrip.companyLogoPath ? <Image source={{ uri: `https://api.hafriyapp.com${selectedTrip.companyLogoPath.startsWith('/') ? '' : '/'}${selectedTrip.companyLogoPath}` }} style={styles.receiptLogoImg} resizeMode="cover" /> : <Image source={require('../../../assets/icons/truck.png')} style={styles.receiptLogoImg} resizeMode="contain" />}</View>
                     <View style={styles.receiptCompanyBlock}>
-                      <Text style={styles.receiptCompany}>
-                        {(selectedTrip.companyName || user?.companyName || '').toUpperCase()}
-                      </Text>
-                      <Text style={styles.receiptJobsite}>
-                        {(selectedTrip.jobSiteName || '').toUpperCase()}
-                      </Text>
+                      <Text style={styles.receiptCompany}>{(selectedTrip.companyName || user?.companyName || '').toUpperCase()}</Text>
+                      <Text style={styles.receiptJobsite}>{(selectedTrip.jobSiteName || '').toUpperCase()}</Text>
                     </View>
-                    <Text style={styles.receiptBigTime}>
-                      {new Date(selectedTrip.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
+                    <Text style={styles.receiptBigTime}>{new Date(selectedTrip.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</Text>
                   </View>
 
                   {/* Gövde: Satırlar (sol) + QR (sağ) */}
                   <View style={styles.receiptBodyWrap}>
                     <View style={styles.receiptBody}>
-
                       <View style={styles.receiptRow}>
                         <Text style={styles.receiptRowLabel}>Tarih :</Text>
-                        <Text style={styles.receiptRowValue}>
-                          {new Date(selectedTrip.timeOfHaul).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                        </Text>
+                        <Text style={styles.receiptRowValue}>{new Date(selectedTrip.timeOfHaul).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</Text>
                       </View>
 
                       <View style={styles.receiptRow}>
@@ -1251,9 +1038,7 @@ export default function SupplierVehicles() {
 
                       <View style={styles.receiptRow}>
                         <Text style={styles.receiptRowLabel}>Şoför :</Text>
-                        <Text style={styles.receiptRowValue}>
-                          {selectedTrip.driverName || selectedTrip.driverPhone || '-'}
-                        </Text>
+                        <Text style={styles.receiptRowValue}>{selectedTrip.driverName || selectedTrip.driverPhone || '-'}</Text>
                       </View>
 
                       <View style={styles.receiptRow}>
@@ -1270,186 +1055,185 @@ export default function SupplierVehicles() {
 
                       <View style={styles.receiptRow}>
                         <Text style={styles.receiptRowLabel}>Ücret :</Text>
-                        <Text style={[styles.receiptRowValue, { fontWeight: '800' }]}>
-                          {[
-                            selectedTrip.cashAmount > 0 ? `${selectedTrip.cashAmount.toLocaleString('tr-TR')}₺` : '',
-                            selectedTrip.fuelAmount > 0 ? `${selectedTrip.fuelAmount.toLocaleString('tr-TR')}lt` : '',
-                          ].filter(Boolean).join(' / ') || '-'}
-                        </Text>
+                        <Text style={[styles.receiptRowValue, { fontWeight: '800' }]}>{[selectedTrip.cashAmount > 0 ? `${selectedTrip.cashAmount.toLocaleString('tr-TR')}₺` : '', selectedTrip.fuelAmount > 0 ? `${selectedTrip.fuelAmount.toLocaleString('tr-TR')}lt` : ''].filter(Boolean).join(' / ') || '-'}</Text>
                       </View>
 
                       <View style={styles.receiptRow}>
                         <Text style={styles.receiptRowLabel}>Durum :</Text>
-                        <Text style={[styles.receiptRowValue, {
-                          color: selectedTrip.isPaid ? '#2E7D32' : '#E65100',
-                          fontWeight: '800',
-                        }]}>
+                        <Text
+                          style={[
+                            styles.receiptRowValue,
+                            {
+                              color: selectedTrip.isPaid ? '#2E7D32' : '#E65100',
+                              fontWeight: '800',
+                            },
+                          ]}>
                           {selectedTrip.isPaid ? '✔ Ödendi' : '⏳ Bekliyor'}
                         </Text>
                       </View>
 
-                      {!!selectedTrip.contactPhone && (
-                        <View style={[styles.receiptRow, { borderBottomWidth: 0 }]}>
-                          <Text style={styles.receiptRowLabel}>Yetkili :</Text>
-                          <Text style={styles.receiptRowValue}>{selectedTrip.contactPhone}</Text>
-                        </View>
-                      )}
+                      <View style={[styles.receiptRow, { borderBottomWidth: 0 }]}>
+                        <Text style={styles.receiptRowLabel}>Yetkili :</Text>
+                        <Text style={styles.receiptRowValue}>{getAuthorizedContact(selectedTrip)}</Text>
+                      </View>
                     </View>
 
                     {/* QR Kod — sağ taraf */}
                     {selectedTrip.qrCodeBase64 && (
                       <View style={styles.receiptQRBox}>
-                        <Image
-                          source={{ uri: `data:image/png;base64,${selectedTrip.qrCodeBase64}` }}
-                          style={styles.receiptQRImg}
-                        />
+                        <Image source={{ uri: `data:image/png;base64,${selectedTrip.qrCodeBase64}` }} style={styles.receiptQRImg} />
                       </View>
                     )}
                   </View>
-
                 </View>
               </View>
 
               {/* Footer butonlar — kart dışında */}
               <View style={styles.receiptFooterRow}>
-                <TouchableOpacity
-                  style={styles.receiptCloseBtnNew}
-                  onPress={() => setReceiptVisible(false)}
-                >
+                <TouchableOpacity style={styles.receiptCloseBtnNew} onPress={() => setReceiptVisible(false)}>
                   <Text style={styles.receiptCloseBtnNewText}>Kapat</Text>
                 </TouchableOpacity>
                 {!selectedTrip.isPaid && !selectedTrip.isPrintedReceipt ? (
                   <TouchableOpacity
                     style={styles.receiptApproveBtnNew}
-                    onPress={() => { setReceiptVisible(false); openPaymentConfirm(selectedTrip); }}
-                  >
+                    onPress={() => {
+                      setReceiptVisible(false);
+                      openPaymentConfirm(selectedTrip);
+                    }}>
                     <Text style={styles.receiptApproveBtnNewText}>Onayla</Text>
                   </TouchableOpacity>
-                ) : (
-                  null
-                )}
+                ) : null}
               </View>
-
             </View>
           </View>
         </Modal>
       )}
 
       {/* ═══════════════ GİZLİ PRINT VIEW (görünmez, 0,0 konumunda) ═══════════════ */}
-      {printTargetHaul && (() => {
-        const ph = printTargetHaul;
-        const logoUri = ph.companyLogoPath
-          ? `https://api.hafriyapp.com${ph.companyLogoPath.startsWith('/') ? '' : '/'}${ph.companyLogoPath}`
-          : null;
-        const timeStr = new Date(ph.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-        const dateStr = new Date(ph.timeOfHaul).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const ucretStr = [
-          ph.cashAmount > 0 ? `${ph.cashAmount.toLocaleString('tr-TR')}₺` : '',
-          ph.fuelAmount > 0 ? `${ph.fuelAmount.toLocaleString('tr-TR')}lt` : '',
-        ].filter(Boolean).join(' / ') || '-';
-        const rows = [
-          { label: 'Tarih :', value: dateStr },
-          { label: 'Seri No :', value: autoSerial(ph) },
-          { label: 'Plaka :', value: ph.plateNumber },
-          { label: 'Şoför :', value: ph.driverName || ph.driverPhone || '-' },
-          { label: 'Döküm :', value: ph.dumpLocation || '-' },
-          { label: 'Ücret :', value: ucretStr },
-          ...(ph.contactPhone ? [{ label: 'Yetkili :', value: ph.contactPhone }] : []),
-        ];
-        const OW = 384; const OH = 620; // biraz daha uzun fiş
-        const BLEED_X = 16; // sağ/sol tam dolu baskı için taşırma
-        const BLEED_Y = 12; // üst/alt taşırma
-        const FRAME_INSET = 8; // görünür kenarlık içeride kalsın
-        const PRINT_RIGHT_GAP = 20;
-        const FRAME_BOTTOM = Math.max(0, FRAME_INSET - PRINT_RIGHT_GAP);
-        const CW = OH + BLEED_Y;
-        const CH = OW + BLEED_X;
-        const tx = (OW - CW) / 2;
-        const ty = (OH - CH) / 2;
-        return (
-          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, opacity: 0.001 }}>
-            <View
-              ref={printReceiptRef}
-              collapsable={false}
-              style={{ width: OW, height: OH, overflow: 'hidden', backgroundColor: '#fff' }}
-            >
-              <View style={{
-                width: CW, height: CH,
-                transform: [{ translateX: tx }, { translateY: ty }, { rotate: '90deg' }],
-                backgroundColor: '#ffffff',
-                paddingTop: 34, paddingRight: 22, paddingBottom: 20, paddingLeft: 22,
-              }}>
-                <View style={{
-                  position: 'absolute',
-                  top: FRAME_INSET + PRINT_RIGHT_GAP,
-                  right: FRAME_INSET,
-                  bottom: FRAME_BOTTOM,
-                  left: FRAME_INSET,
-                  borderWidth: 3,
-                  borderColor: '#000000',
-                  borderRadius: 16,
-                }} />
-                <Text style={{ position: 'absolute', top: 35, right: 14, fontSize: 26, fontWeight: '700', color: '#000' }}>
-                  {timeStr}
-                </Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5, marginBottom: 8, paddingRight: 60 }}>
-                  <View style={{
-                    width: 82, height: 82, borderRadius: 41, borderWidth: 2, borderColor: '#000',
-                    justifyContent: 'center', alignItems: 'center', marginRight: 12, overflow: 'hidden',
+      {printTargetHaul &&
+        (() => {
+          const ph = printTargetHaul;
+          const logoUri = ph.companyLogoPath ? `https://api.hafriyapp.com${ph.companyLogoPath.startsWith('/') ? '' : '/'}${ph.companyLogoPath}` : null;
+          const timeStr = new Date(ph.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+          const dateStr = new Date(ph.timeOfHaul).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          const ucretStr = [ph.cashAmount > 0 ? `${ph.cashAmount.toLocaleString('tr-TR')}₺` : '', ph.fuelAmount > 0 ? `${ph.fuelAmount.toLocaleString('tr-TR')}lt` : ''].filter(Boolean).join(' / ') || '-';
+          const rows = [
+            { label: 'Tarih :', value: dateStr },
+            { label: 'Seri No :', value: autoSerial(ph) },
+            { label: 'Plaka :', value: ph.plateNumber },
+            { label: 'Şoför :', value: ph.driverName || ph.driverPhone || '-' },
+            { label: 'Döküm :', value: ph.dumpLocation || '-' },
+            { label: 'Ücret :', value: ucretStr },
+            { label: 'Yetkili :', value: getAuthorizedContact(ph) },
+          ];
+          const OW = 384;
+          const OH = 620; // biraz daha uzun fiş
+          const BLEED_X = 16; // sağ/sol tam dolu baskı için taşırma
+          const BLEED_Y = 12; // üst/alt taşırma
+          const FRAME_INSET = 8; // görünür kenarlık içeride kalsın
+          const PRINT_RIGHT_GAP = 20;
+          const FRAME_BOTTOM = Math.max(0, FRAME_INSET - PRINT_RIGHT_GAP);
+          const CW = OH + BLEED_Y;
+          const CH = OW + BLEED_X;
+          const tx = (OW - CW) / 2;
+          const ty = (OH - CH) / 2;
+          return (
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, opacity: 0.001 }}>
+              <View ref={printReceiptRef} collapsable={false} style={{ width: OW, height: OH, overflow: 'hidden', backgroundColor: '#fff' }}>
+                <View
+                  style={{
+                    width: CW,
+                    height: CH,
+                    transform: [{ translateX: tx }, { translateY: ty }, { rotate: '90deg' }],
+                    backgroundColor: '#ffffff',
+                    paddingTop: 34,
+                    paddingRight: 22,
+                    paddingBottom: 20,
+                    paddingLeft: 22,
                   }}>
-                    {logoUri
-                      ? <Image source={{ uri: logoUri }} style={{ width: 74, height: 74, borderRadius: 37 }} />
-                      : <Image source={require('../../../assets/icons/truck.png')} style={{ width: 58, height: 58 }} resizeMode="contain" />
-                    }
-                  </View>
-                  <View style={{ flex: 1, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 27, fontWeight: '800', letterSpacing: 0.5, color: '#000', textAlign: 'center' }}>
-                      {(ph.companyName || user?.companyName || 'HAFRİYAT').toUpperCase()}
-                    </Text>
-                    <Text style={{ fontSize: 22, fontWeight: '700', letterSpacing: 0.3, color: '#000', textAlign: 'center', marginTop: 2 }}>
-                      {(ph.jobSiteName || '-').toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'stretch', flex: 1 }}>
-                  <View style={{ width: 34, alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
-                    <Text style={{
-                      fontSize: 26, fontWeight: '900', letterSpacing: 4, color: '#000',
-                      transform: [{ rotate: '-90deg' }],
-                      width: 240, textAlign: 'center',
-                    }}>HAFRİYAPP</Text>
-                  </View>
-                  <View style={{ flex: 1, justifyContent: 'space-between' }}>
-                    {rows.map(({ label, value }) => (
-                      <View key={label} style={{
-                        flexDirection: 'row', alignItems: 'flex-end',
-                        borderBottomWidth: 1.5, borderStyle: 'dotted', borderColor: '#000', paddingBottom: 1,
+                  <View
+                    style={{
+                      position: 'absolute',
+                      top: FRAME_INSET + PRINT_RIGHT_GAP,
+                      right: FRAME_INSET,
+                      bottom: FRAME_BOTTOM,
+                      left: FRAME_INSET,
+                      borderWidth: 3,
+                      borderColor: '#000000',
+                      borderRadius: 16,
+                    }}
+                  />
+                  <Text style={{ position: 'absolute', top: 32, right: 12, fontSize: 30, fontWeight: '700', color: '#000' }}>{timeStr}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5, marginBottom: 8, paddingRight: 60 }}>
+                    <View
+                      style={{
+                        width: 82,
+                        height: 82,
+                        borderRadius: 41,
+                        borderWidth: 2,
+                        borderColor: '#000',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        marginRight: 12,
+                        overflow: 'hidden',
                       }}>
-                        <Text style={{ color: '#888', fontWeight: '700', width: 96, fontSize: 19 }}>{label}</Text>
-                        <Text style={{ fontWeight: '700', color: '#000', fontSize: 19, flex: 1 }}>{value}</Text>
-                      </View>
-                    ))}
+                      {logoUri ? <Image source={{ uri: logoUri }} style={{ width: 74, height: 74, borderRadius: 37 }} /> : <Image source={require('../../../assets/icons/truck.png')} style={{ width: 58, height: 58 }} resizeMode="contain" />}
+                    </View>
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 31, fontWeight: '800', letterSpacing: 0.5, color: '#000', textAlign: 'center' }}>{(ph.companyName || user?.companyName || 'HAFRİYAT').toUpperCase()}</Text>
+                      <Text style={{ fontSize: 25, fontWeight: '700', letterSpacing: 0.3, color: '#000', textAlign: 'center', marginTop: 4 }}>{(ph.jobSiteName || '-').toUpperCase()}</Text>
+                    </View>
                   </View>
-                  <View style={{ width: 128, justifyContent: 'flex-end', marginLeft: 14 }}>
-                    <View style={{ width: 120, height: 120, borderWidth: 2, borderColor: '#000', borderRadius: 8, padding: 5, backgroundColor: '#fff' }}>
-                      <QRCode value={autoSerial(ph) || 'HAFRIYAPP'} size={106} color="#000" backgroundColor="#fff" />
+                  <View style={{ flexDirection: 'row', alignItems: 'stretch', flex: 1 }}>
+                    <View style={{ width: 34, alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
+                      <Text
+                        style={{
+                          fontSize: 30,
+                          fontWeight: '900',
+                          letterSpacing: 4,
+                          color: '#000',
+                          transform: [{ rotate: '-90deg' }],
+                          width: 240,
+                          textAlign: 'center',
+                        }}>
+                        HAFRİYAPP
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1, justifyContent: 'space-between' }}>
+                      {rows.map(({ label, value }) => (
+                        <View
+                          key={label}
+                          style={{
+                            minHeight: 40,
+                            flexDirection: 'row',
+                            alignItems: 'flex-end',
+                            borderBottomWidth: 1.5,
+                            borderStyle: 'dotted',
+                            borderColor: '#000',
+                            paddingBottom: 2,
+                          }}>
+                          <Text style={{ color: '#888', fontWeight: '700', width: 108, fontSize: 22 }}>{label}</Text>
+                          <Text style={{ fontWeight: '700', color: '#000', fontSize: 22, flex: 1 }}>{value}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    <View style={{ width: 128, justifyContent: 'flex-end', marginLeft: 14 }}>
+                      <View style={{ width: 120, height: 120, borderWidth: 2, borderColor: '#000', borderRadius: 8, padding: 5, backgroundColor: '#fff' }}>
+                        <QRCode value={autoSerial(ph) || 'HAFRIYAPP'} size={106} color="#000" backgroundColor="#fff" />
+                      </View>
                     </View>
                   </View>
                 </View>
               </View>
             </View>
-          </View>
-        );
-      })()}
+          );
+        })()}
 
       {/* ================= ÖDEME ONAY MODAL ================= */}
       <Modal visible={confirmPaymentModal} transparent animationType="fade">
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={{ width: '100%' }}
-            >
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
               <View style={styles.paymentCard}>
                 <View style={styles.headerRow}>
                   <Text style={styles.editTitle}>💰 Ödeme Onayla</Text>
@@ -1469,54 +1253,28 @@ export default function SupplierVehicles() {
                 {/* Ödeme Türü Seçimi */}
                 <Text style={styles.label}>Ödeme Türü</Text>
                 <View style={styles.payTypeRow}>
-                  <TouchableOpacity
-                    style={[styles.payTypeBtn, paymentType === 0 && styles.payTypeActive, !(paymentHaul?.cashAmount > 0) && { opacity: 0.35 }]}
-                    onPress={() => setPaymentType(0)}
-                    disabled={!(paymentHaul?.cashAmount > 0)}
-                  >
-                    <Text style={[styles.payTypeText, paymentType === 0 && styles.payTypeTextActive]}>
-                      💵 Nakit (₺)
-                    </Text>
+                  <TouchableOpacity style={[styles.payTypeBtn, paymentType === 0 && styles.payTypeActive, !(paymentHaul?.cashAmount > 0) && { opacity: 0.35 }]} onPress={() => setPaymentType(0)} disabled={!(paymentHaul?.cashAmount > 0)}>
+                    <Text style={[styles.payTypeText, paymentType === 0 && styles.payTypeTextActive]}>💵 Nakit (₺)</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.payTypeBtn, paymentType === 1 && styles.payTypeActive, !(paymentHaul?.fuelAmount > 0) && { opacity: 0.35 }]}
-                    onPress={() => setPaymentType(1)}
-                    disabled={!(paymentHaul?.fuelAmount > 0)}
-                  >
-                    <Text style={[styles.payTypeText, paymentType === 1 && styles.payTypeTextActive]}>
-                      ⛽ Yakıt (Lt)
-                    </Text>
+                  <TouchableOpacity style={[styles.payTypeBtn, paymentType === 1 && styles.payTypeActive, !(paymentHaul?.fuelAmount > 0) && { opacity: 0.35 }]} onPress={() => setPaymentType(1)} disabled={!(paymentHaul?.fuelAmount > 0)}>
+                    <Text style={[styles.payTypeText, paymentType === 1 && styles.payTypeTextActive]}>⛽ Yakıt (Lt)</Text>
                   </TouchableOpacity>
                 </View>
 
                 {paymentType === 0 ? (
                   <>
                     <Text style={styles.label}>Nakit Tutar (₺)</Text>
-                    <TextInput
-                      value={paymentCash}
-                      editable={false}
-                      style={[styles.plateInput, styles.inputReadonly]}
-                    />
+                    <TextInput value={paymentCash} editable={false} style={[styles.plateInput, styles.inputReadonly]} />
                   </>
                 ) : (
                   <>
                     <Text style={styles.label}>Yakıt Miktarı (Litre)</Text>
-                    <TextInput
-                      value={paymentFuel}
-                      editable={false}
-                      style={[styles.plateInput, styles.inputReadonly]}
-                    />
+                    <TextInput value={paymentFuel} editable={false} style={[styles.plateInput, styles.inputReadonly]} />
                   </>
                 )}
 
-                <TouchableOpacity
-                  style={[styles.saveBigBtn, paymentSaving && { opacity: 0.6 }]}
-                  onPress={handleConfirmPayment}
-                  disabled={paymentSaving}
-                >
-                  <Text style={styles.saveBigText}>
-                    {paymentSaving ? 'Kaydediliyor...' : '✔ Ödemeyi Onayla'}
-                  </Text>
+                <TouchableOpacity style={[styles.saveBigBtn, paymentSaving && { opacity: 0.6 }]} onPress={handleConfirmPayment} disabled={paymentSaving}>
+                  <Text style={styles.saveBigText}>{paymentSaving ? 'Kaydediliyor...' : '✔ Ödemeyi Onayla'}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity onPress={() => setConfirmPaymentModal(false)}>
@@ -1531,14 +1289,8 @@ export default function SupplierVehicles() {
       <Modal visible={addVehicleModal} transparent animationType="fade">
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={{ width: '100%' }}
-            >
-              <ScrollView
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={{ alignItems: 'center' }}
-              >
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
+              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ alignItems: 'center' }}>
                 <View style={styles.addCard}>
                   {/* HEADER */}
                   <View style={styles.addHeader}>
@@ -1549,13 +1301,7 @@ export default function SupplierVehicles() {
                   {/* PLAKA */}
                   <View style={{ padding: '5%' }}>
                     <Text style={styles.label}>PLAKA NUMARASI *</Text>
-                    <TextInput
-                      value={newPlate}
-                      onChangeText={setNewPlate}
-                      style={styles.plateInput}
-                      placeholder="34 ABC 123"
-                      autoCapitalize="characters"
-                    />
+                    <TextInput value={newPlate} onChangeText={setNewPlate} style={styles.plateInput} placeholder="34 ABC 123" autoCapitalize="characters" />
                     <Text style={styles.hint}>ℹ Örn: 34 ABC 123</Text>
 
                     <View style={styles.divider} />
@@ -1571,22 +1317,11 @@ export default function SupplierVehicles() {
                       maxLength={14} // boşluklar dahil
                     />
 
-                    <Text style={styles.helpText}>
-                      ℹ Şoförün telefon numarasını girin.
-                    </Text>
-                    <Text style={styles.helpText}>
-                      💡 Kendiniz kullanacaksanız kendi numaranızı yazın.
-                    </Text>
+                    <Text style={styles.helpText}>ℹ Şoförün telefon numarasını girin.</Text>
+                    <Text style={styles.helpText}>💡 Kendiniz kullanacaksanız kendi numaranızı yazın.</Text>
 
                     {/* SAVE */}
-                    <TouchableOpacity
-                      style={[
-                        styles.saveBigBtn,
-                        (!newPlate || newDriverPhone.replace(/\D/g, '').length < 10) && { opacity: 0.5 },
-                      ]}
-                      disabled={!newPlate || newDriverPhone.replace(/\D/g, '').length < 10 || saving}
-                      onPress={handleCreateVehicle}
-                    >
+                    <TouchableOpacity style={[styles.saveBigBtn, (!newPlate || newDriverPhone.replace(/\D/g, '').length < 10) && { opacity: 0.5 }]} disabled={!newPlate || newDriverPhone.replace(/\D/g, '').length < 10 || saving} onPress={handleCreateVehicle}>
                       <Text style={styles.saveBigText}>✔ Aracı Kaydet</Text>
                     </TouchableOpacity>
 
@@ -1597,8 +1332,7 @@ export default function SupplierVehicles() {
                         setAddVehicleModal(false);
                         setNewPlate('');
                         setNewDriverPhone('');
-                      }}
-                    >
+                      }}>
                       <Text style={styles.cancelText}>İptal</Text>
                     </TouchableOpacity>
                   </View>
@@ -1627,11 +1361,12 @@ export default function SupplierVehicles() {
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={[styles.pickerItem, filterYear === item && styles.pickerItemActive]}
-                      onPress={() => { setFilterYear(item); setFilterMonth(null); setYearPickerVisible(false); }}
-                    >
-                      <Text style={[styles.pickerItemText, filterYear === item && styles.pickerItemTextActive]}>
-                        {item}
-                      </Text>
+                      onPress={() => {
+                        setFilterYear(item);
+                        setFilterMonth(null);
+                        setYearPickerVisible(false);
+                      }}>
+                      <Text style={[styles.pickerItemText, filterYear === item && styles.pickerItemTextActive]}>{item}</Text>
                       {filterYear === item && <Text style={{ color: '#1976D2', fontWeight: '800' }}>✔</Text>}
                     </TouchableOpacity>
                   )}
@@ -1661,11 +1396,11 @@ export default function SupplierVehicles() {
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={[styles.pickerItem, filterMonth === item.month && styles.pickerItemActive]}
-                      onPress={() => { setFilterMonth(item.month); setMonthPickerVisible(false); }}
-                    >
-                      <Text style={[styles.pickerItemText, filterMonth === item.month && styles.pickerItemTextActive]}>
-                        {item.name}
-                      </Text>
+                      onPress={() => {
+                        setFilterMonth(item.month);
+                        setMonthPickerVisible(false);
+                      }}>
+                      <Text style={[styles.pickerItemText, filterMonth === item.month && styles.pickerItemTextActive]}>{item.name}</Text>
                       {filterMonth === item.month && <Text style={{ color: '#1976D2', fontWeight: '800' }}>✔</Text>}
                     </TouchableOpacity>
                   )}
@@ -1676,7 +1411,6 @@ export default function SupplierVehicles() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-
     </SafeAreaView>
   );
 }
@@ -1724,7 +1458,7 @@ const styles = StyleSheet.create({
     padding: 14,
     width: '48%',
     marginBottom: 12,
-    shadowColor: "#000",
+    shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 1,
@@ -2228,7 +1962,9 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   inputReadonly: {
-    backgroundColor: '#F0F0F0', borderColor: '#e0e0e0', color: '#555',
+    backgroundColor: '#F0F0F0',
+    borderColor: '#e0e0e0',
+    color: '#555',
   },
   headerRow: {
     flexDirection: 'row',
