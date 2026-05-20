@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   ActivityIndicator, Alert, Modal, ScrollView, Image, RefreshControl, TextInput,
+  Keyboard, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -80,6 +81,14 @@ export default function DriverJobs() {
   const [addVehicleLoading, setAddVehicleLoading] = useState(false);
   const [leaveLoading, setLeaveLoading] = useState(false);
 
+  // Ödeme Onay Modal
+  const [confirmPaymentModal, setConfirmPaymentModal] = useState(false);
+  const [paymentHaul, setPaymentHaul] = useState<HaulApi | null>(null);
+  const [paymentSaving, setPaymentSaving] = useState(false);
+  const [paymentType, setPaymentType] = useState<0 | 1>(0); // 0=Nakit, 1=Yakıt
+  const [paymentCash, setPaymentCash] = useState('');
+  const [paymentFuel, setPaymentFuel] = useState('');
+
   useFocusEffect(
     useCallback(() => {
       fetchVehicle();
@@ -113,10 +122,15 @@ export default function DriverJobs() {
       const hiddenIds = new Set(
         jobs.filter((j: any) => j.isHaulVisibleToVehicleOwners === false).map((j: any) => j.id)
       );
+      const filtered = [...data].filter(h => !hiddenIds.has(h.jobSiteId));
+      if (filtered.length > 0) {
+        const sample = filtered[0] as any;
+        console.log('[DriverJobs] Haul sample keys:', Object.keys(sample));
+        console.log('[DriverJobs] driverName:', sample.driverName, '| DriverName:', sample.DriverName);
+        console.log('[DriverJobs] driverPhone:', sample.driverPhone, '| DriverPhone:', sample.DriverPhone);
+      }
       setHauls(
-        [...data]
-          .filter(h => !hiddenIds.has(h.jobSiteId))
-          .sort((a, b) => new Date(b.timeOfHaul).getTime() - new Date(a.timeOfHaul).getTime())
+        filtered.sort((a, b) => new Date(b.timeOfHaul).getTime() - new Date(a.timeOfHaul).getTime())
       );
     } catch {
       Alert.alert('Hata', 'Seferler yüklenemedi.');
@@ -163,33 +177,64 @@ export default function DriverJobs() {
     ]);
   };
 
-  const handleApprove = async (item: HaulApi) => {
-    Alert.alert(
-      'Ödemeyi Onayla',
-      `${item.companyName || item.jobSiteName} - ${formatHaulDate(item.timeOfHaul)} tarihli seferin ödemesini onaylıyor musunuz?`,
-      [
-        { text: 'İptal', style: 'cancel' },
-        {
-          text: 'Onayla',
-          onPress: async () => {
-            setApprovingId(item.id);
-            try {
-              await updateHaulPayment({ haulId: item.id, isPaid: true }, token);
-              setHauls(prev => prev.map(h => h.id === item.id ? { ...h, isPaid: true } : h));
-              if (selectedTrip?.id === item.id) setSelectedTrip({ ...item, isPaid: true });
-            } catch {
-              Alert.alert('Hata', 'Ödeme onaylanamadı.');
-            } finally {
-              setApprovingId(null);
-            }
-          },
-        },
-      ],
-    );
+  const openPaymentConfirm = (item: HaulApi) => {
+    setPaymentHaul(item);
+    const hasCash = (item.cashAmount ?? 0) > 0;
+    const hasFuel = (item.fuelAmount ?? 0) > 0;
+    setPaymentType(!hasCash && hasFuel ? 1 : 0);
+    setPaymentCash(hasCash ? String(item.cashAmount) : '');
+    setPaymentFuel(hasFuel ? String(item.fuelAmount) : '');
+    setConfirmPaymentModal(true);
   };
 
+  const handleConfirmPayment = async () => {
+    if (!token || !paymentHaul) return;
+    setPaymentSaving(true);
+    try {
+      await updateHaulPayment(
+        {
+          haulId: paymentHaul.id,
+          isPaid: true,
+          paymentType,
+          cashAmount: paymentType === 0 ? parseFloat(paymentCash) || 0 : 0,
+          fuelAmount: paymentType === 1 ? parseFloat(paymentFuel) || 0 : 0,
+          tonage: paymentHaul.tonage,
+          dumpLocation: paymentHaul.dumpLocation,
+        },
+        token,
+      );
+      setHauls(prev => prev.map(h => h.id === paymentHaul.id ? { ...h, isPaid: true } : h));
+      if (selectedTrip?.id === paymentHaul.id) setSelectedTrip({ ...paymentHaul, isPaid: true });
+      setConfirmPaymentModal(false);
+      setPaymentHaul(null);
+      setPaymentCash('');
+      setPaymentFuel('');
+      Alert.alert('Başarılı', 'Ödeme onaylandı.');
+    } catch (error: any) {
+      console.log('[ÖDEME HATA] status:', error?.response?.status);
+      console.log('[ÖDEME HATA] data:', JSON.stringify(error?.response?.data));
+      console.log('[ÖDEME HATA] haulId gönderilen:', paymentHaul?.id);
+      console.log('[ÖDEME HATA] paymentType:', paymentType, '| cash:', paymentType === 0 ? parseFloat(paymentCash) || 0 : 0, '| fuel:', paymentType === 1 ? parseFloat(paymentFuel) || 0 : 0);
+      const msg = error?.response?.data?.message || error?.response?.data?.title || error?.message || 'Ödeme onaylanırken hata oluştu.';
+      Alert.alert('Hata', msg);
+    } finally {
+      setPaymentSaving(false);
+    }
+  };
+
+  // Eski handleApprove — artık openPaymentConfirm kullanılıyor
+  const handleApprove = (item: HaulApi) => openPaymentConfirm(item);
+
   const openReceipt = (item: HaulApi) => {
-    setSelectedTrip(item);
+    console.log('[FİŞ] Ham API verisi:', JSON.stringify(item, null, 2));
+    setSelectedTrip({
+      ...item,
+      driverName: item.driverName || (item as any).DriverName || undefined,
+      driverPhone: item.driverPhone || (item as any).DriverPhone || undefined,
+      companyName: item.companyName || (item as any).CompanyName || undefined,
+      companyLogoPath: item.companyLogoPath || (item as any).CompanyLogoPath || undefined,
+      contactPhone: item.contactPhone || (item as any).ContactPhone || undefined,
+    });
     setReceiptVisible(true);
   };
 
@@ -431,12 +476,10 @@ export default function DriverJobs() {
                       <Text style={styles.receiptRowLabel}>Plaka :</Text>
                       <Text style={styles.receiptRowValue}>{item.plateNumber}</Text>
                     </View>
-                    {!!item.driverName && (
-                      <View style={styles.receiptRow}>
-                        <Text style={styles.receiptRowLabel}>Şoför :</Text>
-                        <Text style={styles.receiptRowValue}>{item.driverName}</Text>
-                      </View>
-                    )}
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptRowLabel}>Şoför :</Text>
+                      <Text style={styles.receiptRowValue}>{item.driverName && item.driverPhone && item.driverName !== item.driverPhone ? `${item.driverName} - ${item.driverPhone}` : item.driverName || item.driverPhone || '-'}</Text>
+                    </View>
                     <View style={styles.receiptRow}>
                       <Text style={styles.receiptRowLabel}>Döküm :</Text>
                       <Text style={styles.receiptRowValue}>{item.dumpLocation || '-'}</Text>
@@ -493,10 +536,10 @@ export default function DriverJobs() {
               {!item.isPaid && !item.isPrintedReceipt && (
                 <TouchableOpacity
                   style={styles.receiptApproveBtn}
-                  onPress={() => { setReceiptVisible(false); handleApprove(item); }}
-                  disabled={approvingId === item.id}
+                  onPress={() => { setReceiptVisible(false); setTimeout(() => openPaymentConfirm(item), 300); }}
+                  disabled={paymentSaving}
                 >
-                  {approvingId === item.id
+                  {paymentSaving
                     ? <ActivityIndicator color="#fff" />
                     : <Text style={styles.receiptApproveBtnText}>Onayla</Text>}
                 </TouchableOpacity>
@@ -508,6 +551,82 @@ export default function DriverJobs() {
       </Modal>
     );
   };
+
+  /* ─── ÖDEME ONAY MODAL ─── */
+  const renderConfirmPaymentModal = () => (
+    <Modal visible={confirmPaymentModal} transparent animationType="fade" onRequestClose={() => setConfirmPaymentModal(false)}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
+            <View style={styles.paymentCard}>
+              <View style={styles.paymentCardHeader}>
+                <Text style={styles.paymentCardTitle}>💰 Ödeme Onayla</Text>
+                <Pressable onPress={() => setConfirmPaymentModal(false)}>
+                  <Text style={styles.paymentCardClose}>✕</Text>
+                </Pressable>
+              </View>
+
+              {paymentHaul && (
+                <>
+                  <View style={styles.paymentInfoBox}>
+                    <Text style={styles.paymentInfoPlate}>{paymentHaul.plateNumber}</Text>
+                    <Text style={styles.paymentInfoDate}>{formatHaulDate(paymentHaul.timeOfHaul)}</Text>
+                    <Text style={styles.paymentInfoSite}>{paymentHaul.jobSiteName}</Text>
+                  </View>
+
+                  <Text style={styles.paymentLabel}>Ödeme Türü</Text>
+                  <View style={styles.payTypeRow}>
+                    <TouchableOpacity
+                      style={[styles.payTypeBtn, paymentType === 0 && styles.payTypeActive, !((paymentHaul.cashAmount ?? 0) > 0) && { opacity: 0.35 }]}
+                      onPress={() => setPaymentType(0)}
+                      disabled={!((paymentHaul.cashAmount ?? 0) > 0)}
+                    >
+                      <Text style={[styles.payTypeText, paymentType === 0 && styles.payTypeTextActive]}>💵 Nakit (₺)</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.payTypeBtn, paymentType === 1 && styles.payTypeActive, !((paymentHaul.fuelAmount ?? 0) > 0) && { opacity: 0.35 }]}
+                      onPress={() => setPaymentType(1)}
+                      disabled={!((paymentHaul.fuelAmount ?? 0) > 0)}
+                    >
+                      <Text style={[styles.payTypeText, paymentType === 1 && styles.payTypeTextActive]}>⛽ Yakıt (Lt)</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {paymentType === 0 ? (
+                    <>
+                      <Text style={styles.paymentLabel}>Nakit Tutar (₺)</Text>
+                      <View style={styles.paymentAmountChip}>
+                        <Text style={styles.paymentAmountChipText}>💵 {paymentHaul.cashAmount.toLocaleString('tr-TR')} ₺</Text>
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.paymentLabel}>Yakıt Miktarı (Litre)</Text>
+                      <View style={styles.paymentAmountChip}>
+                        <Text style={styles.paymentAmountChipText}>⛽ {paymentHaul.fuelAmount.toLocaleString('tr-TR')} Lt</Text>
+                      </View>
+                    </>
+                  )}
+                </>
+              )}
+
+              <TouchableOpacity
+                style={[styles.paymentConfirmBtn, paymentSaving && { opacity: 0.6 }]}
+                onPress={handleConfirmPayment}
+                disabled={paymentSaving}
+              >
+                <Text style={styles.paymentConfirmBtnText}>{paymentSaving ? 'Kaydediliyor...' : '✔ Ödemeyi Onayla'}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => setConfirmPaymentModal(false)}>
+                <Text style={styles.paymentCancelText}>İptal</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
 
   /* ─── ARAÇ EKLEME MODAL ─── */
   const renderAddVehicleModal = () => (
@@ -629,6 +748,7 @@ export default function DriverJobs() {
       )}
 
       {renderReceipt()}
+      {renderConfirmPaymentModal()}
       {renderAddVehicleModal()}
     </SafeAreaView>
   );
@@ -813,6 +933,42 @@ const styles = StyleSheet.create({
     borderRadius: 12, paddingVertical: 14, alignItems: 'center',
   },
   receiptApproveBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+
+  // Ödeme Onay Modal
+  paymentCard: {
+    backgroundColor: '#fff', borderRadius: 16, padding: 20, marginHorizontal: 20,
+    shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, elevation: 8,
+  },
+  paymentCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  paymentCardTitle: { fontSize: 17, fontWeight: '800', color: '#222' },
+  paymentCardClose: { fontSize: 20, color: '#888', paddingHorizontal: 4 },
+  paymentInfoBox: {
+    backgroundColor: '#FFF9E6', borderRadius: 10, padding: 12, marginBottom: 16,
+    borderWidth: 1, borderColor: '#FFD500',
+  },
+  paymentInfoPlate: { fontSize: 18, fontWeight: '800', color: '#222', marginBottom: 2 },
+  paymentInfoDate: { fontSize: 13, color: '#666', marginBottom: 2 },
+  paymentInfoSite: { fontSize: 13, color: '#444' },
+  paymentAmountRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
+  paymentAmountChip: {
+    backgroundColor: '#E8F5E9', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8,
+    borderWidth: 1, borderColor: '#C8E6C9', marginBottom: 16,
+  },
+  paymentAmountChipText: { fontSize: 15, fontWeight: '700', color: '#2E7D32' },
+  paymentLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 8 },
+  payTypeRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  payTypeBtn: {
+    flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center',
+    borderWidth: 1.5, borderColor: '#ddd', backgroundColor: '#f7f7f7',
+  },
+  payTypeActive: { borderColor: '#FFD500', backgroundColor: '#FFF9E0' },
+  payTypeText: { fontSize: 14, fontWeight: '600', color: '#888' },
+  payTypeTextActive: { color: '#222', fontWeight: '800' },
+  paymentConfirmBtn: {
+    backgroundColor: '#222', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginBottom: 12,
+  },
+  paymentConfirmBtnText: { color: '#FFD500', fontWeight: '800', fontSize: 16 },
+  paymentCancelText: { textAlign: 'center', color: '#888', fontSize: 14, paddingVertical: 8 },
 });
 
 /* ─── ARAÇ BANNER STİLLERİ ─── */

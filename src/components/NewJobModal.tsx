@@ -111,7 +111,7 @@ export default function NewJobModal({ onClose, initialJob }: NewJobModalProps) {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [fuelStock, setFuelStock] = useState('');
-  const [isActive, setIsActive] = useState(true);
+  // isActive artık nakliyeciOpen'dan okunuyor (ayrı state yok)
   const [showHaulsToVehicleOwners, setShowHaulsToVehicleOwners] = useState(true);
 
   /* Picker modal state */
@@ -150,7 +150,8 @@ export default function NewJobModal({ onClose, initialJob }: NewJobModalProps) {
       setFuelStock(String(initialJob.fuelStock || ''));
       setStartTime(initialJob.loadingStartTime || '');
       setEndTime(initialJob.loadingEndTime || '');
-      setIsActive(true); // Yükleme Açık her zaman true — buton gizli
+      // Yayında mı? → Nakliyeci Çağır açık/kapalı
+      setNakliyeciOpen(initialJob.isActive === true);
       // API bu alanı henüz dönmüyor, AsyncStorage'dan oku
       getHaulsVisibility(initialJob.id).then(cached => {
         const apiValue = initialJob.isHaulVisibleToVehicleOwners ?? initialJob.showHaulsToVehicleOwners;
@@ -356,16 +357,18 @@ export default function NewJobModal({ onClose, initialJob }: NewJobModalProps) {
 
       if (isKum) {
         if (routes.length > 0) {
-          extraOffersJson = JSON.stringify({
-            date: sandDate,
-            routes: routes.map((r, idx) => ({
-              offerNo: idx + 1,
+          extraOffersJson = JSON.stringify(
+            routes.map(r => ({
               loading: r.loadLocation,
               unloading: r.unloadLocation,
               cash: toDecimalOrNull(r.cashPerTon) ?? 0,
               material: r.material,
-            })),
-          });
+              price: 0,
+              unit: '',
+              ton: 0,
+              type: 1,
+            }))
+          );
         }
       } else {
         // Hafriyat: unified JSON format (all offers with isVisible)
@@ -381,83 +384,49 @@ export default function NewJobModal({ onClose, initialJob }: NewJobModalProps) {
         }
       }
 
-      const hasCash = isKum
-        ? routes.some(r => (toDecimalOrNull(r.cashPerTon) ?? 0) > 0)
-        : offers.some(o => (toDecimalOrNull(o.cash) ?? 0) > 0);
-
-      const hasFuel = isKum
-        ? false
-        : offers.some(o => (toDecimalOrNull(o.fuel) ?? 0) > 0);
-
       if (token) {
+        // Ortak payload — hem CREATE hem UPDATE aynı yapı (camelCase)
+        const contactPhoneArray = phones.filter(p => p.trim() !== '');
+        const payload = {
+          companyId,
+          name: siteName,
+          jobType: isKum ? 1 : 0,
+          provinceCode: nakliyeciOpen ? (provinceCode ?? 0) : 0,
+          districtName: nakliyeciOpen ? districtName : '',
+          locationUrl: nakliyeciOpen ? locationUrl : '',
+          description,
+          signDescription,
+          contactPhone: nakliyeciOpen ? contactPhonesString : '',
+          contactPhones: nakliyeciOpen ? contactPhoneArray : [],
+          fuelStock: isKum ? 0 : toIntOr0(fuelStock),
+          extraOffersJson,
+          offer1Name: null,
+          offer1Cash: null,
+          offer1Fuel: null,
+          offer2Name: null,
+          offer2Cash: null,
+          offer2Fuel: null,
+          hasFuel: false,
+          fuelLiters: null,
+          hasSand: false,
+          sandFuelLiters: null,
+          hasCash: false,
+          cashAmount: null,
+          loadingStartTime: startTime || null,
+          loadingEndTime: endTime || null,
+          isActive: nakliyeciOpen,
+          isHaulVisibleToVehicleOwners: showHaulsToVehicleOwners,
+        };
+
         if (initialJob) {
-          // UPDATE — camelCase payload
-          const payload = {
-            companyId,
-            name: siteName,
-            jobType: isKum ? 1 : 0,
-            provinceCode: provinceCode ?? 0,
-            districtName,
-            locationUrl,
-            description,
-            signDescription,
-            contactPhone: contactPhonesString,
-            fuelStock: toIntOr0(fuelStock),
-            offer1Name: null,
-            offer1Cash: 0,
-            offer1Fuel: 0,
-            offer2Name: null,
-            offer2Cash: 0,
-            offer2Fuel: 0,
-            extraOffersJson,
-            hasFuel,
-            fuelLiters: 0,
-            hasSand: isKum,
-            sandFuelLiters: 0,
-            hasCash,
-            cashAmount: 0,
-            loadingStartTime: startTime,
-            loadingEndTime: endTime,
-            isActive,
-            isHaulVisibleToVehicleOwners: showHaulsToVehicleOwners,
-          };
+          console.log('[NewJobModal] UPDATE payload:', JSON.stringify(payload, null, 2));
           await updateJobSite(token, initialJob.id, payload);
           Alert.alert('Güncellendi', 'İş ilanı başarıyla güncellendi.', [
             { text: 'Tamam', onPress: () => onClose(true) },
           ]);
         } else {
-          // CREATE — PascalCase payload
-          const createPayload = {
-            CompanyId: companyId,
-            Name: siteName,
-            ProvinceCode: provinceCode ?? 0,
-            DistrictName: districtName,
-            LocationUrl: locationUrl,
-            ContactPhone: contactPhonesString,
-            Description: description,
-            SignDescription: signDescription,
-            JobType: isKum ? 1 : 0,
-            Offer1Name: null,
-            Offer1Cash: null,
-            Offer1Fuel: null,
-            Offer2Name: null,
-            Offer2Cash: null,
-            Offer2Fuel: null,
-            ExtraOffersJson: extraOffersJson,
-            HasCash: hasCash,
-            HasFuel: hasFuel,
-            HasSand: isKum,
-            FuelStock: toIntOr0(fuelStock),
-            FuelLiters: null,
-            SandFuelLiters: null,
-            LoadingStartTime: startTime,
-            LoadingEndTime: endTime,
-            CashAmount: null,
-            IsActive: isActive,
-            IsHaulVisibleToVehicleOwners: showHaulsToVehicleOwners,
-          };
-          console.log('[NewJobModal] CREATE payload:', JSON.stringify(createPayload, null, 2));
-          await createJobSite(token, createPayload);
+          console.log('[NewJobModal] CREATE payload:', JSON.stringify(payload, null, 2));
+          await createJobSite(token, payload);
           Alert.alert('Başarılı', 'İş ilanı başarıyla oluşturuldu.', [
             { text: 'Tamam', onPress: () => onClose(true) },
           ]);
@@ -725,65 +694,63 @@ export default function NewJobModal({ onClose, initialJob }: NewJobModalProps) {
                 multiline
                 height={110}
               />
-
-              {/* Çalışma Saatleri */}
-              <View style={styles.toggleDivider} />
-              <Text style={styles.subSectionTitle}>Çalışma Saatleri</Text>
-              <View style={styles.row}>
-                <TimePickerInput
-                  placeholder="Başlangıç(09:00)"
-                  value={startTime}
-                  onChange={setStartTime}
-                  flex
-                />
-                <TimePickerInput
-                  placeholder="Bitiş (18:00)"
-                  value={endTime}
-                  onChange={setEndTime}
-                  flex
-                />
-              </View>
-              <Text style={styles.hint}>Şantiyenin çalışma saat aralığı</Text>
-
-              {/* Ayarlar */}
-              <View style={styles.toggleDivider} />
-              <Text style={styles.subSectionTitle}>Ayarlar</Text>
-              <TouchableOpacity
-                style={styles.toggleRow}
-                onPress={() => setShowHaulsToVehicleOwners(v => !v)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.toggleInfo}>
-                  <Text style={styles.toggleLabel}>Seferleri Araç Sahiplerine Göster</Text>
-                  <Text style={styles.toggleHint}>Açık olduğunda araç sahipleri sadece kendi plakalarına yazılan seferi görürler.</Text>
-                </View>
-                <View style={[styles.togglePill, showHaulsToVehicleOwners && styles.togglePillOn]}>
-                  <View style={[styles.toggleThumb, showHaulsToVehicleOwners && styles.toggleThumbOn]} />
-                </View>
-              </TouchableOpacity>
-              {!showHaulsToVehicleOwners && (
-                <Text style={styles.toggleNote}>
-                  Kapatırsanız bundan sonra kesilen fişler araç sahiplerine görünmez
-                </Text>
-              )}
-
-              {/* Yakıt Stoku - Sadece Hafriyat/Döküm için */}
-              {jobCategory === 'HAFRIYAT' && (
-                <>
-                  <View style={styles.toggleDivider} />
-                  <Text style={styles.subSectionTitle}>Yakıt Stoku</Text>
-                  <AppInput
-                    placeholder="Şantiyedeki toplam yakıt (Litre)"
-                    keyboardType="numeric"
-                    value={fuelStock}
-                    onChangeText={setFuelStock}
-                  />
-                  <Text style={styles.hint}>Şantiyede bulunan toplam yakıt miktarı</Text>
-                </>
-              )}
             </>
           )}
         </View>
+
+        {/* Çalışma Saatleri — her zaman görünür */}
+        <Card title="Çalışma Saatleri">
+          <View style={styles.row}>
+            <TimePickerInput
+              placeholder="Başlangıç(09:00)"
+              value={startTime}
+              onChange={setStartTime}
+              flex
+            />
+            <TimePickerInput
+              placeholder="Bitiş (18:00)"
+              value={endTime}
+              onChange={setEndTime}
+              flex
+            />
+          </View>
+          <Text style={styles.hint}>Şantiyenin çalışma saat aralığı</Text>
+        </Card>
+
+        {/* Ayarlar — her zaman görünür */}
+        <Card title="Ayarlar">
+          <TouchableOpacity
+            style={styles.toggleRow}
+            onPress={() => setShowHaulsToVehicleOwners(v => !v)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.toggleInfo}>
+              <Text style={styles.toggleLabel}>Seferleri Araç Sahiplerine Göster</Text>
+              <Text style={styles.toggleHint}>Açık olduğunda araç sahipleri sadece kendi plakalarına yazılan seferi görürler.</Text>
+            </View>
+            <View style={[styles.togglePill, showHaulsToVehicleOwners && styles.togglePillOn]}>
+              <View style={[styles.toggleThumb, showHaulsToVehicleOwners && styles.toggleThumbOn]} />
+            </View>
+          </TouchableOpacity>
+          {!showHaulsToVehicleOwners && (
+            <Text style={styles.toggleNote}>
+              Kapatırsanız bundan sonra kesilen fişler araç sahiplerine görünmez
+            </Text>
+          )}
+        </Card>
+
+        {/* Yakıt Stoku — sadece Hafriyat/Döküm */}
+        {jobCategory === 'HAFRIYAT' && (
+          <Card title="Yakıt Stoku">
+            <AppInput
+              placeholder="Şantiyedeki toplam yakıt (Litre)"
+              keyboardType="numeric"
+              value={fuelStock}
+              onChangeText={setFuelStock}
+            />
+            <Text style={styles.hint}>Şantiyede bulunan toplam yakıt miktarı</Text>
+          </Card>
+        )}
 
         <View style={{ height: 20 }} />
       </ScrollView>

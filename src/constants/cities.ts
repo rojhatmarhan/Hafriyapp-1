@@ -1,6 +1,6 @@
 export const CITIES = [
   { label: 'İstanbul (Avrupa)', value: 340 },
-  { label: 'İstanbul (Anadolu)', value: 341 },
+  { label: 'İstanbul (Asya)', value: 341 },
   { label: 'Adana', value: 1 },
   { label: 'Adıyaman', value: 2 },
   { label: 'Afyonkarahisar', value: 3 },

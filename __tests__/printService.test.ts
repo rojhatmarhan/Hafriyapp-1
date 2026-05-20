@@ -43,11 +43,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PermissionsAndroid } from 'react-native';
 // @ts-ignore - native bridge module, no types
 import { BluetoothEscposPrinter, BluetoothManager } from 'react-native-bluetooth-escpos-printer';
-import { getPairedAndScannedDevices, printImage } from '../src/services/printService';
+import { ensurePrinterReady, getPairedAndScannedDevices, printImage } from '../src/services/printService';
 
 describe('printService.printImage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (BluetoothManager.isBluetoothEnabled as jest.Mock).mockResolvedValue(true);
     (PermissionsAndroid.requestMultiple as jest.Mock).mockResolvedValue({
       [PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN]: PermissionsAndroid.RESULTS.GRANTED,
       [PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT]: PermissionsAndroid.RESULTS.GRANTED,
@@ -120,6 +121,7 @@ describe('printService.printImage', () => {
 describe('printService.getPairedAndScannedDevices', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (BluetoothManager.isBluetoothEnabled as jest.Mock).mockResolvedValue(true);
     (PermissionsAndroid.requestMultiple as jest.Mock).mockResolvedValue({
       [PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN]: PermissionsAndroid.RESULTS.GRANTED,
       [PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT]: PermissionsAndroid.RESULTS.GRANTED,
@@ -134,5 +136,55 @@ describe('printService.getPairedAndScannedDevices', () => {
 
     await expect(getPairedAndScannedDevices()).rejects.toThrow('Bluetooth izni verilmedi. Ayarlardan yakin cihaz iznini acip tekrar deneyin.');
     expect(BluetoothManager.scanDevices).not.toHaveBeenCalled();
+  });
+});
+
+describe('printService.ensurePrinterReady', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (BluetoothManager.isBluetoothEnabled as jest.Mock).mockResolvedValue(true);
+    (PermissionsAndroid.requestMultiple as jest.Mock).mockResolvedValue({
+      [PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN]: PermissionsAndroid.RESULTS.GRANTED,
+      [PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT]: PermissionsAndroid.RESULTS.GRANTED,
+    });
+  });
+
+  it('returns connected when the saved printer is reachable', async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce('AA:BB:CC').mockResolvedValueOnce('Mini Printer');
+
+    const result = await ensurePrinterReady();
+
+    expect(result).toEqual({
+      status: 'connected',
+      device: { address: 'AA:BB:CC', name: 'Mini Printer' },
+    });
+    expect(BluetoothManager.connect).toHaveBeenCalledWith('AA:BB:CC');
+    expect(BluetoothManager.scanDevices).not.toHaveBeenCalled();
+  });
+
+  it('returns needs-selection when there is no saved printer', async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+    const result = await ensurePrinterReady();
+
+    expect(result).toEqual({ status: 'needs-selection' });
+    expect(BluetoothManager.connect).not.toHaveBeenCalled();
+    expect(BluetoothManager.scanDevices).not.toHaveBeenCalled();
+  });
+
+  it('returns needs-selection when the saved printer is stale and no fallback printer can be auto-connected', async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce('OLD:AA:BB').mockResolvedValueOnce('Mini Printer');
+    (BluetoothManager.connect as jest.Mock).mockRejectedValueOnce(new Error('Device not found'));
+    (BluetoothManager.scanDevices as jest.Mock).mockResolvedValue({
+      paired: [],
+      found: [{ name: 'Mini Printer', address: 'NEW:11:22' }],
+    });
+
+    const result = await ensurePrinterReady();
+
+    expect(result).toEqual({ status: 'needs-selection' });
+    expect(AsyncStorage.multiRemove).toHaveBeenCalledWith(['@hafriyapp/bt_printer_address', '@hafriyapp/bt_printer_name']);
+    expect(BluetoothManager.connect).toHaveBeenCalledTimes(1);
+    expect(BluetoothManager.connect).toHaveBeenCalledWith('OLD:AA:BB');
   });
 });

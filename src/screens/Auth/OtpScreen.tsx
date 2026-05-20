@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Alert, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, Alert, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ScrollView, BackHandler } from 'react-native';
 import { CodeField, Cursor, useBlurOnFulfill, useClearByFocusCell } from 'react-native-confirmation-code-field';
 import { useAppSelector, useAppDispatch } from '../../hooks';
 import { loginSuccess, setRole, setUser, setCompanyId } from '../../store/slices/authSlice';
@@ -33,11 +33,21 @@ const OtpScreen = () => {
 
     return () => clearInterval(interval);
   }, [timer]);
+
   useEffect(() => {
     setTimeout(() => {
       ref.current?.focus();
     }, 500);
   }, []);
+
+  // Android hardware back button — geri git
+  useEffect(() => {
+    const handler = BackHandler.addEventListener('hardwareBackPress', () => {
+      navigation.goBack();
+      return true;
+    });
+    return () => handler.remove();
+  }, [navigation]);
 
   const onVerify = async () => {
     try {
@@ -115,11 +125,11 @@ const OtpScreen = () => {
     <>
       {/* 🎨 Arka plan gradient */}
       <LinearGradient colors={['#FFE259', '#FFD500', '#F7B500']} style={styles.gradientBg} />
-      <TouchableOpacity style={{ position: 'absolute', left: '2%', top: '10%' }} onPress={() => navigation.goBack()}>
-        <Image style={{ width: 25, height: 25 }} source={require('../../../assets/login/left-arrow.png')} />
-      </TouchableOpacity>
       {/* 📌 İçerik sabit View içinde → artık reset yok */}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}>
+        <TouchableOpacity testID="otp-back-button" style={styles.backButton} hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }} onPress={() => navigation.goBack()}>
+          <Image style={{ width: 25, height: 25 }} source={require('../../../assets/login/left-arrow.png')} />
+        </TouchableOpacity>
         <ScrollView
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
@@ -169,6 +179,12 @@ export default OtpScreen;
 const styles = StyleSheet.create({
   gradientBg: {
     ...StyleSheet.absoluteFillObject, // 📌 tam ekran gradient
+  },
+  backButton: {
+    position: 'absolute',
+    left: '2%',
+    top: '10%',
+    zIndex: 2,
   },
   container: {
     flexGrow: 1,

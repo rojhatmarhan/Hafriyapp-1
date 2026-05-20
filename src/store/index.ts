@@ -5,17 +5,19 @@ import { persistReducer, persistStore } from 'redux-persist';
 import counterReducer from './slices/counterSlice';
 import authReducer from './slices/authSlice';
 import pendingHaulReducer from './slices/pendingHaulSlice';
+import uiReducer from './slices/uiSlice';
 
 const rootReducer = combineReducers({
   counter: counterReducer,
   auth: authReducer,
   pendingHaul: pendingHaulReducer,
+  ui: uiReducer,
 });
 
 const persistConfig = {
   key: 'root',
   storage: AsyncStorage,
-  whitelist: ['auth', 'counter', 'pendingHaul'], // offline seferleri de sakla
+  whitelist: ['auth', 'counter', 'pendingHaul', 'ui'], // offline seferleri de sakla
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

@@ -10,7 +10,8 @@ const buildLogoUrl = (path?: string | null): string => {
   return `${IMAGE_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
 };
 import { CITIES } from '../../constants/cities';
-import { useAppSelector } from '../../hooks';
+import { useAppSelector, useAppDispatch } from '../../hooks';
+import { setSelectedCity } from '../../store/slices/uiSlice';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { getChatGroups, createChatGroup, uploadGroupImage } from '../../services/chatService';
 
@@ -20,7 +21,8 @@ export default function DriverHome() {
   const [chatGroups, setChatGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
-  const [selectedCity, setSelectedCity] = useState<number | null>(null); // null = Tüm Türkiye
+  const selectedCity = useAppSelector(state => state.ui.selectedCity);
+  const dispatch = useAppDispatch();
   const token = useAppSelector(state => state.auth.token);
   const user = useAppSelector(state => state.auth.user);
 
@@ -140,8 +142,8 @@ export default function DriverHome() {
         { options, cancelButtonIndex: 0 },
         buttonIndex => {
           if (buttonIndex === 0) return;
-          if (buttonIndex === 1) { setSelectedCity(null); return; }
-          setSelectedCity(CITIES[buttonIndex - 2].value);
+          if (buttonIndex === 1) { dispatch(setSelectedCity(null)); return; }
+          dispatch(setSelectedCity(CITIES[buttonIndex - 2].value));
         },
       );
     } else {
@@ -149,10 +151,10 @@ export default function DriverHome() {
         'İl Seç',
         undefined,
         [
-          { text: allOption, onPress: () => setSelectedCity(null) },
+          { text: allOption, onPress: () => dispatch(setSelectedCity(null)) },
           ...CITIES.map(city => ({
             text: city.label,
-            onPress: () => setSelectedCity(city.value),
+            onPress: () => dispatch(setSelectedCity(city.value)),
           })),
         ],
         { cancelable: true },

@@ -8,12 +8,14 @@ import { getJobHauls, getJobSite, deleteJobSite, forceDeleteJobSite, updateJobSi
 import RNBlobUtil from 'react-native-blob-util';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NewJobModal from '../../components/NewJobModal';
+import BluetoothPrinterModal from '../../components/BluetoothPrinterModal';
+import DatePickerInput from '../../components/DatePickerInput';
 import { createHaul, updateHaulPayment, deleteHaul, HaulApi } from '../../services/haulService';
 import { getCompanyById } from '../../services/userService';
 import { addPendingHaul, removePendingHaul, PendingHaul } from '../../store/slices/pendingHaulSlice';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
-import { printImage } from '../../services/printService';
+import { ensurePrinterReady, printImage } from '../../services/printService';
 
 const YELLOW = '#FFD500';
 const DARK = '#222';
@@ -22,6 +24,19 @@ const DARK = '#222';
 const nowTR = (): string => {
   const trMs = Date.now() + 3 * 60 * 60000;
   return new Date(trMs).toISOString().replace('Z', '');
+};
+
+const todayDDMMYYYY = (): string => {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+};
+
+const ddmmyyyyToISOUTC = (str: string): string => {
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(str)) {
+    const [day, month, year] = str.split('.').map(Number);
+    return new Date(Date.UTC(year, month - 1, day)).toISOString();
+  }
+  return new Date().toISOString();
 };
 
 const checkOnline = async (): Promise<boolean> => {
@@ -155,6 +170,8 @@ export default function JobDetails() {
 
   // ── Yazdırma
   const [printTargetHaul, setPrintTargetHaul] = useState<HaulApi | null>(null);
+  const [printerModalVisible, setPrinterModalVisible] = useState(false);
+  const [pendingPrintBase64, setPendingPrintBase64] = useState<string | null>(null);
   const printReceiptRef = useRef<View>(null);
 
   // ── Sefer Gir modal
@@ -163,6 +180,7 @@ export default function JobDetails() {
   const [selectedOfferIdx, setSelectedOfferIdx] = useState<number | null>(null);
   const [formTonage, setFormTonage] = useState(''); // Kum/Mıcır: kg
   const [formNote, setFormNote] = useState('');
+  const [formDate, setFormDate] = useState<string>(todayDDMMYYYY());
   const [formSaving, setFormSaving] = useState(false);
 
   // ── Manuel Ekle modal (Hafriyat alanları)
@@ -178,6 +196,7 @@ export default function JobDetails() {
   const [manualUnloading, setManualUnloading] = useState('');
   const [manualPricePerTon, setManualPricePerTon] = useState('');
   const [manualMaterial, setManualMaterial] = useState('');
+  const [manualDate, setManualDate] = useState<string>(todayDDMMYYYY());
   const [manualSaving, setManualSaving] = useState(false);
 
   // ── Son plakalar
@@ -365,7 +384,7 @@ export default function JobDetails() {
       paymentType = 0;
     }
 
-    const timeNow = nowTR();
+    const timeNow = isKum ? ddmmyyyyToISOUTC(formDate) : nowTR();
     setFormSaving(true);
     const online = await checkOnline();
     console.log('timeNow', timeNow);
@@ -475,7 +494,7 @@ export default function JobDetails() {
       paymentType = cash > 0 && fuel > 0 ? 2 : fuel > 0 ? 1 : 0;
     }
 
-    const timeNow = nowTR();
+    const timeNow = isKum ? ddmmyyyyToISOUTC(manualDate) : nowTR();
     setManualSaving(true);
     const online = await checkOnline();
 
@@ -600,11 +619,38 @@ export default function JobDetails() {
       return;
     }
     try {
+      const printerState = await ensurePrinterReady();
+      if (printerState.status === 'needs-selection') {
+        setPendingPrintBase64(base64);
+        setPrinterModalVisible(true);
+        return;
+      }
       await printImage(base64);
-    } catch (e) {
-      Alert.alert('Yazdırma Hatası', String(e));
+    } catch (e: any) {
+      const message = e?.message || String(e);
+      if (/bluetooth|yazici|printer/i.test(message)) {
+        setPendingPrintBase64(base64);
+        setPrinterModalVisible(true);
+        return;
+      }
+      Alert.alert('Yazdırma Hatası', message);
     }
   };
+
+  const handlePrinterConnected = useCallback(async () => {
+    if (!pendingPrintBase64) {
+      setPrinterModalVisible(false);
+      return;
+    }
+
+    try {
+      await printImage(pendingPrintBase64);
+      setPrinterModalVisible(false);
+      setPendingPrintBase64(null);
+    } catch (e: any) {
+      Alert.alert('Yazdırma Hatası', e?.message || String(e));
+    }
+  }, [pendingPrintBase64]);
 
   const openPendingReceipt = (item: PendingHaul) => {
     // PendingHaul → HaulApi şekline dönüştür, mevcut fiş modal'ını yeniden kullan
@@ -636,6 +682,7 @@ export default function JobDetails() {
     setSelectedOfferIdx(null);
     setFormTonage('');
     setFormNote('');
+    setFormDate(todayDDMMYYYY());
   };
 
   const closeManualModal = () => {
@@ -650,6 +697,7 @@ export default function JobDetails() {
     setManualUnloading('');
     setManualPricePerTon('');
     setManualMaterial('');
+    setManualDate(todayDDMMYYYY());
   };
 
   const formatDate = (dateString: string) => {
@@ -1162,9 +1210,12 @@ export default function JobDetails() {
                       ))
                     )}
 
-                    {/* Kum/Mıcır: Miktar (kg) */}
+                    {/* Kum/Mıcır: Tarih + Miktar (kg) */}
                     {isKum && (
                       <>
+                        <View style={{ marginTop: 18 }}>
+                          <DatePickerInput label="Tarih" value={formDate} onChange={setFormDate} />
+                        </View>
                         <Text style={[styles.fieldLabel, { marginTop: 18 }]}>
                           Miktar (kg) <Text style={styles.req}>*</Text>
                         </Text>
@@ -1227,6 +1278,11 @@ export default function JobDetails() {
 
                     {isKum ? (
                       <>
+                        {/* Tarih */}
+                        <View style={{ marginTop: 14 }}>
+                          <DatePickerInput label="Tarih" value={manualDate} onChange={setManualDate} />
+                        </View>
+
                         {/* Yükleme Yeri */}
                         <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
                           Yükleme Yeri <Text style={styles.req}>*</Text>
@@ -1479,7 +1535,7 @@ export default function JobDetails() {
 
                       <View style={styles.receiptRow}>
                         <Text style={styles.receiptRowLabel}>Şoför :</Text>
-                        <Text style={styles.receiptRowValue}>{selectedHaul.driverName || selectedHaul.driverPhone || '-'}</Text>
+                        <Text style={styles.receiptRowValue}>{selectedHaul.driverName && selectedHaul.driverPhone && selectedHaul.driverName !== selectedHaul.driverPhone ? `${selectedHaul.driverName} - ${selectedHaul.driverPhone}` : selectedHaul.driverName || selectedHaul.driverPhone || '-'}</Text>
                       </View>
 
                       <View style={styles.receiptRow}>
@@ -1566,7 +1622,7 @@ export default function JobDetails() {
             { label: 'Tarih :', value: dateStr },
             { label: 'Seri No :', value: autoSerial(ph) },
             { label: 'Plaka :', value: ph.plateNumber },
-            { label: 'Şoför :', value: ph.driverName || ph.driverPhone || '-' },
+            { label: 'Şoför :', value: ph.driverName && ph.driverPhone && ph.driverName !== ph.driverPhone ? `${ph.driverName} - ${ph.driverPhone}` : ph.driverName || ph.driverPhone || '-' },
             { label: 'Döküm :', value: ph.dumpLocation || '-' },
             { label: 'Ücret :', value: ucretStr },
             { label: 'Yetkili :', value: getAuthorizedContact(ph) },
@@ -1764,6 +1820,15 @@ export default function JobDetails() {
           </View>
         </View>
       </Modal>
+
+      <BluetoothPrinterModal
+        visible={printerModalVisible}
+        onClose={() => {
+          setPrinterModalVisible(false);
+          setPendingPrintBase64(null);
+        }}
+        onConnected={handlePrinterConnected}
+      />
     </SafeAreaView>
   );
 }

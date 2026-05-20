@@ -5,7 +5,8 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CITIES } from '../../constants/cities';
 import { DISTRICTS } from '../../constants/districts';
-import { useAppSelector } from '../../hooks';
+import { useAppSelector, useAppDispatch } from '../../hooks';
+import { setSelectedCity } from '../../store/slices/uiSlice';
 import { getMarketJobs } from '../../services/jobSiteService';
 import { mapJobFromApi } from '../../utils/jobMapper';
 
@@ -228,7 +229,8 @@ const AllJobs = () => {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const bottomPadding = tabBarHeight + insets.bottom;
-  const [selectedCity, setSelectedCity] = useState<number | null>(null); // null = Tüm Türkiye
+  const selectedCity = useAppSelector(state => state.ui.selectedCity);
+  const dispatch = useAppDispatch();
   const [cityOpen, setCityOpen] = useState(false);
   const [selectedDistricts, setSelectedDistricts] = useState<string[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
@@ -282,8 +284,8 @@ const AllJobs = () => {
         { options, cancelButtonIndex: 0 },
         buttonIndex => {
           if (buttonIndex === 0) return;
-          if (buttonIndex === 1) { setSelectedCity(null); return; }
-          setSelectedCity(CITIES[buttonIndex - 2].value);
+          if (buttonIndex === 1) { dispatch(setSelectedCity(null)); return; }
+          dispatch(setSelectedCity(CITIES[buttonIndex - 2].value));
         },
       );
     } else {
@@ -291,10 +293,10 @@ const AllJobs = () => {
         'İl Seç',
         undefined,
         [
-          { text: allOption, onPress: () => setSelectedCity(null) },
+          { text: allOption, onPress: () => dispatch(setSelectedCity(null)) },
           ...CITIES.map(city => ({
             text: city.label,
-            onPress: () => setSelectedCity(city.value),
+            onPress: () => dispatch(setSelectedCity(city.value)),
           })),
         ],
         { cancelable: true },
@@ -363,7 +365,7 @@ const AllJobs = () => {
     setLoading(true);
     try {
       const response = await getMarketJobs(token, selectedCity ?? undefined);
-      const mapped = response.map(mapJobFromApi).filter((j: any) => j.isActive);
+      const mapped = response.map(mapJobFromApi).filter((j: any) => j.isActive === true);
       setJobs(mapped);
     } catch (e) {
       console.log('Market jobs error', e);
@@ -543,7 +545,7 @@ const AllJobs = () => {
                           <TouchableOpacity
                             style={styles.cityItem}
                             onPress={() => {
-                              setSelectedCity(item.value);
+                              dispatch(setSelectedCity(item.value));
                               setCityOpen(false);
                             }}
                           >

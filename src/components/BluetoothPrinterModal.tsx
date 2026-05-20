@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -119,6 +119,18 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
     ...pairedDevices,
     ...foundDevices.filter(f => !pairedDevices.some(p => p.address === f.address)),
   ];
+
+  useEffect(() => {
+    if (!visible) {
+      setScanState('idle');
+      setPairedDevices([]);
+      setFoundDevices([]);
+      setConnectingAddress(null);
+      return;
+    }
+
+    handleScan();
+  }, [visible, handleScan]);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>

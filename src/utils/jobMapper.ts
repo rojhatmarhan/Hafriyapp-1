@@ -117,8 +117,8 @@ export const mapJobFromApi = (item: any) => {
     dumps,
     routes,
 
-    status: item.isActive ? 'Yükleme Devam Ediyor' : 'Pasif',
-    statusColor: item.isActive ? '#C8E6C9' : '#FFE0E0',
+    status: (item.isActive ?? item.IsActive) ? 'Yükleme Devam Ediyor' : 'Pasif',
+    statusColor: (item.isActive ?? item.IsActive) ? '#C8E6C9' : '#FFE0E0',
 
     phone: item.contactPhone,
     locationUrl: item.locationUrl,
@@ -127,6 +127,6 @@ export const mapJobFromApi = (item: any) => {
     provinceCode: item.provinceCode,
     provinceName: item.provinceName ?? '',
     districtName: item.districtName ?? '',
-    isActive: item.isActive,
+    isActive: item.isActive ?? item.IsActive ?? false,
   };
 };

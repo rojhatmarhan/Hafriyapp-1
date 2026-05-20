@@ -28,6 +28,11 @@ export interface PrintReceiptParams {
   contactPhone?: string;
 }
 
+export interface PrinterReadyResult {
+  status: 'connected' | 'needs-selection';
+  device?: BluetoothDevice;
+}
+
 // ─── Permissions ────────────────────────────────────────────────────────────
 
 export async function requestBluetoothPermissions(): Promise<boolean> {
@@ -216,6 +221,31 @@ async function connectResolvedPrinter(): Promise<BluetoothDevice> {
   }
 
   throw new Error('Bluetooth yaziciya baglanilamadi. Android Bluetooth ayarlarinda yazicinin eslesmis oldugunu kontrol edip tekrar deneyin.');
+}
+
+export async function ensurePrinterReady(): Promise<PrinterReadyResult> {
+  await ensureBluetoothPermission();
+
+  const enabled = await isBluetoothEnabled();
+  if (!enabled) {
+    throw new Error('Bluetooth kapali. Yazdirmadan once Bluetooth\'u acip tekrar deneyin.');
+  }
+
+  const saved = await getSavedPrinter();
+  if (!saved) {
+    return { status: 'needs-selection' };
+  }
+
+  try {
+    await BluetoothManager.connect(saved.address);
+    return {
+      status: 'connected',
+      device: saved,
+    };
+  } catch {
+    await clearSavedPrinter();
+    return { status: 'needs-selection' };
+  }
 }
 
 // ─── Yazdırma ───────────────────────────────────────────────────────────────

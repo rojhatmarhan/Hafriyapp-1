@@ -6,6 +6,7 @@
             "Add-Type": true,
             "Test-Path": true,
             "&": true,
-            "Get-Item": true
+            "Get-Item": true,
+            ".\\android\\gradlew.bat": true
       }
 }

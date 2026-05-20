@@ -2,12 +2,13 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, SectionList, FlatList, TouchableOpacity, Modal, ScrollView, TextInput, Keyboard, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Pressable, Alert, Image, RefreshControl, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppSelector } from '../../hooks';
+import BluetoothPrinterModal from '../../components/BluetoothPrinterModal';
 import { deleteVehicle, getVehicles, updateVehicle, createVehicle, assignDriver, getVehicleDriver, removeDriver } from '../../services/vehicleService';
 import { getHauls, updateHaulPayment, HaulApi } from '../../services/haulService';
 import { getCompanyById } from '../../services/userService';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
-import { printImage } from '../../services/printService';
+import { ensurePrinterReady, printImage } from '../../services/printService';
 import RNBlobUtil from 'react-native-blob-util';
 import Clipboard from '@react-native-clipboard/clipboard';
 
@@ -72,6 +73,8 @@ export default function SupplierVehicles() {
 
   // ── Yazdırma
   const [printTargetHaul, setPrintTargetHaul] = useState<HaulApi | null>(null);
+  const [printerModalVisible, setPrinterModalVisible] = useState(false);
+  const [pendingPrintBase64, setPendingPrintBase64] = useState<string | null>(null);
   const printReceiptRef = useRef<View>(null);
 
   // Seferler (Hauls)
@@ -352,6 +355,7 @@ export default function SupplierVehicles() {
   };
 
   const openReceipt = (item: HaulApi) => {
+    console.log('[FİŞ] Ham API verisi:', JSON.stringify(item, null, 2));
     const normalizedPlate = (item.plateNumber || '').replace(/\s/g, '').toUpperCase();
     const matchedVehicle = vehicles.find(v => v.plate.replace(/\s/g, '').toUpperCase() === normalizedPlate);
     setSelectedTrip({
@@ -399,11 +403,38 @@ export default function SupplierVehicles() {
       return;
     }
     try {
+      const printerState = await ensurePrinterReady();
+      if (printerState.status === 'needs-selection') {
+        setPendingPrintBase64(base64);
+        setPrinterModalVisible(true);
+        return;
+      }
       await printImage(base64);
-    } catch (e) {
-      Alert.alert('Yazdırma Hatası', String(e));
+    } catch (e: any) {
+      const message = e?.message || String(e);
+      if (/bluetooth|yazici|printer/i.test(message)) {
+        setPendingPrintBase64(base64);
+        setPrinterModalVisible(true);
+        return;
+      }
+      Alert.alert('Yazdırma Hatası', message);
     }
   };
+
+  const handlePrinterConnected = useCallback(async () => {
+    if (!pendingPrintBase64) {
+      setPrinterModalVisible(false);
+      return;
+    }
+
+    try {
+      await printImage(pendingPrintBase64);
+      setPrinterModalVisible(false);
+      setPendingPrintBase64(null);
+    } catch (e: any) {
+      Alert.alert('Yazdırma Hatası', e?.message || String(e));
+    }
+  }, [pendingPrintBase64]);
 
   const formatHaulDate = (iso: string) => {
     if (!iso) return '-';
@@ -448,36 +479,12 @@ export default function SupplierVehicles() {
 
       setVehicles(mappedWithDrivers);
 
-      // Grouping logic
-      const grouped: { [key: string]: VehicleUI[] } = {};
-
-      mappedWithDrivers.forEach((vehicle: VehicleUI) => {
-        const key = vehicle.companyName || 'Kendi Araçlarım';
-        if (!grouped[key]) {
-          grouped[key] = [];
-        }
-        grouped[key].push(vehicle);
-      });
-
-      const sectionsData = Object.keys(grouped)
-        .map(key => {
-          const groupItems = grouped[key];
-          const chunkedData: VehicleUI[][] = [];
-          for (let i = 0; i < groupItems.length; i += 2) {
-            chunkedData.push(groupItems.slice(i, i + 2));
-          }
-          return {
-            title: key,
-            data: chunkedData,
-          };
-        })
-        .sort((a, b) => {
-          if (a.title === 'Kendi Araçlarım') return -1;
-          if (b.title === 'Kendi Araçlarım') return 1;
-          return a.title.localeCompare(b.title);
-        });
-
-      setSections(sectionsData);
+      // Tüm araçları tek düz listede göster (gruplama yok)
+      const chunkedData: VehicleUI[][] = [];
+      for (let i = 0; i < mappedWithDrivers.length; i += 2) {
+        chunkedData.push(mappedWithDrivers.slice(i, i + 2));
+      }
+      setSections([{ title: '', data: chunkedData }]);
     } catch (e) {
       setError('Araçlar yüklenemedi');
     } finally {
@@ -594,6 +601,9 @@ export default function SupplierVehicles() {
       {item.map(vehicle => (
         <TouchableOpacity key={vehicle.id} style={[styles.vehicleCard, { flex: 1 }]} activeOpacity={0.85} onPress={() => openVehicleDetail(vehicle)}>
           <View style={styles.plateBox}>
+            <View style={styles.plateTrStrip}>
+              <Text style={styles.plateTrText}>TR</Text>
+            </View>
             <Text style={styles.plateText}>{vehicle.plate}</Text>
           </View>
 
@@ -607,11 +617,7 @@ export default function SupplierVehicles() {
     </View>
   );
 
-  const renderSectionHeader = ({ section: { title } }: any) => (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionHeaderText}>{title}</Text>
-    </View>
-  );
+  const renderSectionHeader = () => null;
 
   const autoSerial = (haul: HaulApi) => {
     if (haul.serialNumber) return haul.serialNumber;
@@ -1038,7 +1044,7 @@ export default function SupplierVehicles() {
 
                       <View style={styles.receiptRow}>
                         <Text style={styles.receiptRowLabel}>Şoför :</Text>
-                        <Text style={styles.receiptRowValue}>{selectedTrip.driverName || selectedTrip.driverPhone || '-'}</Text>
+                        <Text style={styles.receiptRowValue}>{selectedTrip.driverName && selectedTrip.driverPhone && selectedTrip.driverName !== selectedTrip.driverPhone ? `${selectedTrip.driverName} - ${selectedTrip.driverPhone}` : selectedTrip.driverName || selectedTrip.driverPhone || '-'}</Text>
                       </View>
 
                       <View style={styles.receiptRow}>
@@ -1121,7 +1127,7 @@ export default function SupplierVehicles() {
             { label: 'Tarih :', value: dateStr },
             { label: 'Seri No :', value: autoSerial(ph) },
             { label: 'Plaka :', value: ph.plateNumber },
-            { label: 'Şoför :', value: ph.driverName || ph.driverPhone || '-' },
+            { label: 'Şoför :', value: ph.driverName && ph.driverPhone && ph.driverName !== ph.driverPhone ? `${ph.driverName} - ${ph.driverPhone}` : ph.driverName || ph.driverPhone || '-' },
             { label: 'Döküm :', value: ph.dumpLocation || '-' },
             { label: 'Ücret :', value: ucretStr },
             { label: 'Yetkili :', value: getAuthorizedContact(ph) },
@@ -1343,6 +1349,15 @@ export default function SupplierVehicles() {
         </TouchableWithoutFeedback>
       </Modal>
 
+      <BluetoothPrinterModal
+        visible={printerModalVisible}
+        onClose={() => {
+          setPrinterModalVisible(false);
+          setPendingPrintBase64(null);
+        }}
+        onConnected={handlePrinterConnected}
+      />
+
       {/* ================= YIL SEÇİCİ ================= */}
       <Modal visible={yearPickerVisible} transparent animationType="slide">
         <TouchableWithoutFeedback onPress={() => setYearPickerVisible(false)}>
@@ -1470,14 +1485,47 @@ const styles = StyleSheet.create({
   },
 
   plateBox: {
-    borderWidth: 2,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderWidth: 2.5,
+    borderColor: '#111',
     borderRadius: 8,
-    paddingVertical: 6,
-    alignItems: 'center',
+    overflow: 'hidden',
     marginBottom: 8,
+    backgroundColor: '#fff',
+    maxHeight: 42,
+    shadowColor: '#000',
+    shadowOffset: { width: 1, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 4,
   },
-
-  plateText: { fontSize: 16, fontWeight: '800' },
+  plateTrStrip: {
+    backgroundColor: '#003DA5',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 5,
+    paddingBottom: 5,
+    paddingTop: 3,
+    minWidth: 24,
+  },
+  plateTrText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  plateText: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#111',
+    textAlign: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    letterSpacing: 1.5,
+    backgroundColor: '#fff',
+  },
   vehicleInfo: { fontSize: 12, color: '#444' },
   vehicleDate: { fontSize: 11, color: '#999', marginTop: 4 },
   vehicleDriverName: { fontSize: 12, color: '#444', marginTop: 4 },
