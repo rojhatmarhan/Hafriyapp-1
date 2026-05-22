@@ -8,7 +8,7 @@ import { getHauls, updateHaulPayment, HaulApi } from '../../services/haulService
 import { getCompanyById } from '../../services/userService';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
-import { ensurePrinterReady, printImage } from '../../services/printService';
+import { ensurePrinterReady, printImage, clearSavedPrinter, getReceiptCaptureLayout } from '../../services/printService';
 import RNBlobUtil from 'react-native-blob-util';
 import Clipboard from '@react-native-clipboard/clipboard';
 
@@ -354,24 +354,43 @@ export default function SupplierVehicles() {
     ]);
   };
 
-  const openReceipt = (item: HaulApi) => {
-    console.log('[FİŞ] Ham API verisi:', JSON.stringify(item, null, 2));
+  const normalizeReceiptHaul = (item: HaulApi): HaulApi => {
     const normalizedPlate = (item.plateNumber || '').replace(/\s/g, '').toUpperCase();
     const matchedVehicle = vehicles.find(v => v.plate.replace(/\s/g, '').toUpperCase() === normalizedPlate);
-    setSelectedTrip({
+    return {
       ...item,
       contactPhone: item.contactPhone || (item as any).ContactPhone || user?.phoneNumber || undefined,
       driverName: item.driverName || (item as any).DriverName || matchedVehicle?.driverName || undefined,
       driverPhone: item.driverPhone || (item as any).DriverPhone || undefined,
       companyLogoPath: item.companyLogoPath || (item as any).CompanyLogoPath || cachedCompanyLogoPath || undefined,
       companyName: item.companyName || (item as any).CompanyName || user?.companyName || undefined,
-    });
+    };
+  };
+
+  const openReceipt = (item: HaulApi) => {
+    console.log('[FİŞ] Ham API verisi:', JSON.stringify(item, null, 2));
+    setSelectedTrip(normalizeReceiptHaul(item));
     setReceiptVisible(true);
   };
 
   const getAuthorizedContact = (haul?: HaulApi | null) => {
     return haul?.contactPhone || user?.phoneNumber || '-';
   };
+
+  const reopenPrinterSelection = useCallback(async (base64: string) => {
+    await clearSavedPrinter();
+    setPendingPrintBase64(base64);
+    setReceiptVisible(false);
+    await new Promise<void>(resolve => setTimeout(resolve, 400));
+    setPrinterModalVisible(true);
+  }, []);
+
+  const finishPrintFlow = useCallback(() => {
+    setPrinterModalVisible(false);
+    setReceiptVisible(false);
+    setPrintTargetHaul(null);
+    setPendingPrintBase64(null);
+  }, []);
 
   const openPaymentConfirm = (item: HaulApi) => {
     setPaymentHaul(item);
@@ -385,8 +404,8 @@ export default function SupplierVehicles() {
 
   // ── Yazdır (Bluetooth görsel fiş)
   const triggerPrint = async (haul: HaulApi) => {
-    setPrintTargetHaul(haul);
-    await new Promise(r => setTimeout(r, 300));
+    setPrintTargetHaul(normalizeReceiptHaul(haul));
+    await new Promise<void>(resolve => setTimeout(resolve, 300));
     if (!printReceiptRef.current) {
       Alert.alert('Hata', 'Fiş görünümü hazırlanamadı, tekrar deneyin.');
       return;
@@ -405,16 +424,22 @@ export default function SupplierVehicles() {
     try {
       const printerState = await ensurePrinterReady();
       if (printerState.status === 'needs-selection') {
-        setPendingPrintBase64(base64);
-        setPrinterModalVisible(true);
+        await reopenPrinterSelection(base64);
         return;
       }
-      await printImage(base64);
+      if (printerState.status === 'connect-failed') {
+        await reopenPrinterSelection(base64);
+        return;
+      }
+      try {
+        await printImage(base64);
+      } finally {
+        finishPrintFlow();
+      }
     } catch (e: any) {
       const message = e?.message || String(e);
       if (/bluetooth|yazici|printer/i.test(message)) {
-        setPendingPrintBase64(base64);
-        setPrinterModalVisible(true);
+        await reopenPrinterSelection(base64);
         return;
       }
       Alert.alert('Yazdırma Hatası', message);
@@ -422,19 +447,26 @@ export default function SupplierVehicles() {
   };
 
   const handlePrinterConnected = useCallback(async () => {
-    if (!pendingPrintBase64) {
-      setPrinterModalVisible(false);
-      return;
-    }
-
+    // Modal'ı hemen kapat — printImage'ı beklemeden
+    setPrinterModalVisible(false);
+    const base64 = pendingPrintBase64;
+    setPendingPrintBase64(null);
+    if (!base64) return;
     try {
-      await printImage(pendingPrintBase64);
-      setPrinterModalVisible(false);
-      setPendingPrintBase64(null);
+      try {
+        await printImage(base64);
+      } finally {
+        finishPrintFlow();
+      }
     } catch (e: any) {
-      Alert.alert('Yazdırma Hatası', e?.message || String(e));
+      const message = e?.message || String(e);
+      if (/bluetooth|yazici|printer/i.test(message)) {
+        await reopenPrinterSelection(base64);
+        return;
+      }
+      Alert.alert('Yazdırma Hatası', message);
     }
-  }, [pendingPrintBase64]);
+  }, [finishPrintFlow, pendingPrintBase64, reopenPrinterSelection]);
 
   const formatHaulDate = (iso: string) => {
     if (!iso) return '-';
@@ -1119,6 +1151,7 @@ export default function SupplierVehicles() {
       {printTargetHaul &&
         (() => {
           const ph = printTargetHaul;
+          const layout = getReceiptCaptureLayout();
           const logoUri = ph.companyLogoPath ? `https://api.hafriyapp.com${ph.companyLogoPath.startsWith('/') ? '' : '/'}${ph.companyLogoPath}` : null;
           const timeStr = new Date(ph.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
           const dateStr = new Date(ph.timeOfHaul).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -1132,19 +1165,18 @@ export default function SupplierVehicles() {
             { label: 'Ücret :', value: ucretStr },
             { label: 'Yetkili :', value: getAuthorizedContact(ph) },
           ];
-          const OW = 384;
-          const OH = 620; // biraz daha uzun fiş
-          const BLEED_X = 16; // sağ/sol tam dolu baskı için taşırma
-          const BLEED_Y = 12; // üst/alt taşırma
-          const FRAME_INSET = 8; // görünür kenarlık içeride kalsın
-          const PRINT_RIGHT_GAP = 20;
-          const FRAME_BOTTOM = Math.max(0, FRAME_INSET - PRINT_RIGHT_GAP);
-          const CW = OH + BLEED_Y;
-          const CH = OW + BLEED_X;
-          const tx = (OW - CW) / 2;
-          const ty = (OH - CH) / 2;
+          const OW = layout.outerWidth;
+          const OH = layout.outerHeight;
+          const FRAME_INSET = layout.frameInset;
+          const PRINT_RIGHT_GAP = layout.printRightGap;
+          const FRAME_BOTTOM = layout.frameBottom;
+          const CW = layout.contentWidth;
+          const CH = layout.contentHeight;
+          const tx = layout.translateX;
+          const ty = layout.translateY;
+          const BOTTOM_SAFE_AREA = layout.bottomSafeArea;
           return (
-            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, opacity: 0.001 }}>
+            <View pointerEvents="none" style={{ position: 'absolute', top: -10000, left: 0 }}>
               <View ref={printReceiptRef} collapsable={false} style={{ width: OW, height: OH, overflow: 'hidden', backgroundColor: '#fff' }}>
                 <View
                   style={{
@@ -1152,9 +1184,9 @@ export default function SupplierVehicles() {
                     height: CH,
                     transform: [{ translateX: tx }, { translateY: ty }, { rotate: '90deg' }],
                     backgroundColor: '#ffffff',
-                    paddingTop: 34,
+                    paddingTop: 40,
                     paddingRight: 22,
-                    paddingBottom: 20,
+                    paddingBottom: 26,
                     paddingLeft: 22,
                   }}>
                   <View
@@ -1169,13 +1201,13 @@ export default function SupplierVehicles() {
                       borderRadius: 16,
                     }}
                   />
-                  <Text style={{ position: 'absolute', top: 32, right: 12, fontSize: 30, fontWeight: '700', color: '#000' }}>{timeStr}</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5, marginBottom: 8, paddingRight: 60 }}>
+                  <Text style={{ position: 'absolute', top: 34, right: 12, fontSize: 22, fontWeight: '700', color: '#000' }}>{timeStr}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, marginBottom: 4, paddingRight: 60 }}>
                     <View
                       style={{
-                        width: 82,
-                        height: 82,
-                        borderRadius: 41,
+                        width: 54,
+                        height: 54,
+                        borderRadius: 27,
                         borderWidth: 2,
                         borderColor: '#000',
                         justifyContent: 'center',
@@ -1183,11 +1215,11 @@ export default function SupplierVehicles() {
                         marginRight: 12,
                         overflow: 'hidden',
                       }}>
-                      {logoUri ? <Image source={{ uri: logoUri }} style={{ width: 74, height: 74, borderRadius: 37 }} /> : <Image source={require('../../../assets/icons/truck.png')} style={{ width: 58, height: 58 }} resizeMode="contain" />}
+                      {logoUri ? <Image source={{ uri: logoUri }} style={{ width: 46, height: 46, borderRadius: 23 }} /> : <Image source={require('../../../assets/icons/truck.png')} style={{ width: 40, height: 40 }} resizeMode="contain" />}
                     </View>
                     <View style={{ flex: 1, alignItems: 'center' }}>
-                      <Text style={{ fontSize: 31, fontWeight: '800', letterSpacing: 0.5, color: '#000', textAlign: 'center' }}>{(ph.companyName || user?.companyName || 'HAFRİYAT').toUpperCase()}</Text>
-                      <Text style={{ fontSize: 25, fontWeight: '700', letterSpacing: 0.3, color: '#000', textAlign: 'center', marginTop: 4 }}>{(ph.jobSiteName || '-').toUpperCase()}</Text>
+                      <Text style={{ fontSize: 24, fontWeight: '800', letterSpacing: 0.5, color: '#000', textAlign: 'center' }}>{(ph.companyName || user?.companyName || 'HAFRİYAT').toUpperCase()}</Text>
+                      <Text style={{ fontSize: 18, fontWeight: '700', letterSpacing: 0.3, color: '#000', textAlign: 'center', marginTop: 2 }}>{(ph.jobSiteName || '-').toUpperCase()}</Text>
                     </View>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'stretch', flex: 1 }}>
@@ -1210,7 +1242,7 @@ export default function SupplierVehicles() {
                         <View
                           key={label}
                           style={{
-                            minHeight: 40,
+                            minHeight: 36,
                             flexDirection: 'row',
                             alignItems: 'flex-end',
                             borderBottomWidth: 1.5,
@@ -1218,12 +1250,12 @@ export default function SupplierVehicles() {
                             borderColor: '#000',
                             paddingBottom: 2,
                           }}>
-                          <Text style={{ color: '#888', fontWeight: '700', width: 108, fontSize: 22 }}>{label}</Text>
-                          <Text style={{ fontWeight: '700', color: '#000', fontSize: 22, flex: 1 }}>{value}</Text>
+                          <Text style={{ color: '#888', fontWeight: '700', width: 108, fontSize: 18 }}>{label}</Text>
+                          <Text style={{ fontWeight: '700', color: '#000', fontSize: 18, flex: 1 }}>{value}</Text>
                         </View>
                       ))}
                     </View>
-                    <View style={{ width: 128, justifyContent: 'flex-end', marginLeft: 14 }}>
+                    <View style={{ width: 128, justifyContent: 'flex-end', alignItems: 'flex-end', marginLeft: 14 }}>
                       <View style={{ width: 120, height: 120, borderWidth: 2, borderColor: '#000', borderRadius: 8, padding: 5, backgroundColor: '#fff' }}>
                         <QRCode value={autoSerial(ph) || 'HAFRIYAPP'} size={106} color="#000" backgroundColor="#fff" />
                       </View>
@@ -1259,10 +1291,10 @@ export default function SupplierVehicles() {
                 {/* Ödeme Türü Seçimi */}
                 <Text style={styles.label}>Ödeme Türü</Text>
                 <View style={styles.payTypeRow}>
-                  <TouchableOpacity style={[styles.payTypeBtn, paymentType === 0 && styles.payTypeActive, !(paymentHaul?.cashAmount > 0) && { opacity: 0.35 }]} onPress={() => setPaymentType(0)} disabled={!(paymentHaul?.cashAmount > 0)}>
+                  <TouchableOpacity style={[styles.payTypeBtn, paymentType === 0 && styles.payTypeActive, !((paymentHaul?.cashAmount ?? 0) > 0) && { opacity: 0.35 }]} onPress={() => setPaymentType(0)} disabled={!((paymentHaul?.cashAmount ?? 0) > 0)}>
                     <Text style={[styles.payTypeText, paymentType === 0 && styles.payTypeTextActive]}>💵 Nakit (₺)</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.payTypeBtn, paymentType === 1 && styles.payTypeActive, !(paymentHaul?.fuelAmount > 0) && { opacity: 0.35 }]} onPress={() => setPaymentType(1)} disabled={!(paymentHaul?.fuelAmount > 0)}>
+                  <TouchableOpacity style={[styles.payTypeBtn, paymentType === 1 && styles.payTypeActive, !((paymentHaul?.fuelAmount ?? 0) > 0) && { opacity: 0.35 }]} onPress={() => setPaymentType(1)} disabled={!((paymentHaul?.fuelAmount ?? 0) > 0)}>
                     <Text style={[styles.payTypeText, paymentType === 1 && styles.payTypeTextActive]}>⛽ Yakıt (Lt)</Text>
                   </TouchableOpacity>
                 </View>

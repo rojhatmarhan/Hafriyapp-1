@@ -15,7 +15,7 @@ import { getCompanyById } from '../../services/userService';
 import { addPendingHaul, removePendingHaul, PendingHaul } from '../../store/slices/pendingHaulSlice';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
-import { ensurePrinterReady, printImage } from '../../services/printService';
+import { ensurePrinterReady, printImage, clearSavedPrinter, getReceiptCaptureLayout } from '../../services/printService';
 
 const YELLOW = '#FFD500';
 const DARK = '#222';
@@ -156,6 +156,21 @@ export default function JobDetails() {
   const getAuthorizedContact = (haul?: HaulApi | null) => {
     return haul?.contactPhone || job?.contactPhone || user?.phoneNumber || '-';
   };
+
+  const reopenPrinterSelection = useCallback(async (base64: string) => {
+    await clearSavedPrinter();
+    setPendingPrintBase64(base64);
+    setReceiptVisible(false);
+    await new Promise<void>(resolve => setTimeout(resolve, 400));
+    setPrinterModalVisible(true);
+  }, []);
+
+  const finishPrintFlow = useCallback(() => {
+    setPrinterModalVisible(false);
+    setReceiptVisible(false);
+    setPrintTargetHaul(null);
+    setPendingPrintBase64(null);
+  }, []);
 
   // ── Ana liste
   const [selectedHaul, setSelectedHaul] = useState<HaulApi | null>(null);
@@ -601,8 +616,8 @@ export default function JobDetails() {
 
   // ── Yazdır (Bluetooth görsel fiş)
   const triggerPrint = async (haul: HaulApi) => {
-    setPrintTargetHaul(haul);
-    await new Promise(r => setTimeout(r, 300));
+    setPrintTargetHaul(normalizeHaul(haul));
+    await new Promise<void>(resolve => setTimeout(resolve, 300));
     if (!printReceiptRef.current) {
       Alert.alert('Hata', 'Fiş görünümü hazırlanamadı, tekrar deneyin.');
       return;
@@ -621,16 +636,22 @@ export default function JobDetails() {
     try {
       const printerState = await ensurePrinterReady();
       if (printerState.status === 'needs-selection') {
-        setPendingPrintBase64(base64);
-        setPrinterModalVisible(true);
+        await reopenPrinterSelection(base64);
         return;
       }
-      await printImage(base64);
+      if (printerState.status === 'connect-failed') {
+        await reopenPrinterSelection(base64);
+        return;
+      }
+      try {
+        await printImage(base64);
+      } finally {
+        finishPrintFlow();
+      }
     } catch (e: any) {
       const message = e?.message || String(e);
       if (/bluetooth|yazici|printer/i.test(message)) {
-        setPendingPrintBase64(base64);
-        setPrinterModalVisible(true);
+        await reopenPrinterSelection(base64);
         return;
       }
       Alert.alert('Yazdırma Hatası', message);
@@ -638,19 +659,26 @@ export default function JobDetails() {
   };
 
   const handlePrinterConnected = useCallback(async () => {
-    if (!pendingPrintBase64) {
-      setPrinterModalVisible(false);
-      return;
-    }
-
+    // Modal'ı hemen kapat — printImage'ı beklemeden
+    setPrinterModalVisible(false);
+    const base64 = pendingPrintBase64;
+    setPendingPrintBase64(null);
+    if (!base64) return;
     try {
-      await printImage(pendingPrintBase64);
-      setPrinterModalVisible(false);
-      setPendingPrintBase64(null);
+      try {
+        await printImage(base64);
+      } finally {
+        finishPrintFlow();
+      }
     } catch (e: any) {
-      Alert.alert('Yazdırma Hatası', e?.message || String(e));
+      const message = e?.message || String(e);
+      if (/bluetooth|yazici|printer/i.test(message)) {
+        await reopenPrinterSelection(base64);
+        return;
+      }
+      Alert.alert('Yazdırma Hatası', message);
     }
-  }, [pendingPrintBase64]);
+  }, [finishPrintFlow, pendingPrintBase64, reopenPrinterSelection]);
 
   const openPendingReceipt = (item: PendingHaul) => {
     // PendingHaul → HaulApi şekline dönüştür, mevcut fiş modal'ını yeniden kullan
@@ -1453,10 +1481,10 @@ export default function JobDetails() {
                 {/* Ödeme Türü */}
                 <Text style={[styles.fieldLabel, { marginHorizontal: 16 }]}>Ödeme Türü</Text>
                 <View style={styles.payTypeRow}>
-                  <TouchableOpacity style={[styles.payTypeBtn, paymentType === 0 && styles.payTypeActive, !(paymentHaul?.cashAmount > 0) && { opacity: 0.35 }]} onPress={() => setPaymentType(0)} disabled={!(paymentHaul?.cashAmount > 0)}>
+                  <TouchableOpacity style={[styles.payTypeBtn, paymentType === 0 && styles.payTypeActive, !((paymentHaul?.cashAmount ?? 0) > 0) && { opacity: 0.35 }]} onPress={() => setPaymentType(0)} disabled={!((paymentHaul?.cashAmount ?? 0) > 0)}>
                     <Text style={[styles.payTypeText, paymentType === 0 && styles.payTypeTextActive]}>💵 Nakit (₺)</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.payTypeBtn, paymentType === 1 && styles.payTypeActive, !(paymentHaul?.fuelAmount > 0) && { opacity: 0.35 }]} onPress={() => setPaymentType(1)} disabled={!(paymentHaul?.fuelAmount > 0)}>
+                  <TouchableOpacity style={[styles.payTypeBtn, paymentType === 1 && styles.payTypeActive, !((paymentHaul?.fuelAmount ?? 0) > 0) && { opacity: 0.35 }]} onPress={() => setPaymentType(1)} disabled={!((paymentHaul?.fuelAmount ?? 0) > 0)}>
                     <Text style={[styles.payTypeText, paymentType === 1 && styles.payTypeTextActive]}>⛽ Yakıt (Lt)</Text>
                   </TouchableOpacity>
                 </View>
@@ -1614,6 +1642,7 @@ export default function JobDetails() {
       {printTargetHaul &&
         (() => {
           const ph = printTargetHaul;
+          const layout = getReceiptCaptureLayout();
           const logoUri = ph.companyLogoPath ? `https://api.hafriyapp.com${ph.companyLogoPath.startsWith('/') ? '' : '/'}${ph.companyLogoPath}` : null;
           const timeStr = new Date(ph.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
           const dateStr = new Date(ph.timeOfHaul).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -1627,18 +1656,19 @@ export default function JobDetails() {
             { label: 'Ücret :', value: ucretStr },
             { label: 'Yetkili :', value: getAuthorizedContact(ph) },
           ];
-          const OW = 384;
-          const OH = 640;
-          const CW = OH;
-          const CH = OW;
-          const tx = (OW - CW) / 2;
-          const ty = (OH - CH) / 2;
-          const FRAME = 10;
-          const PRINT_RIGHT_GAP = 20;
-          const FRAME_BOTTOM = Math.max(0, FRAME - PRINT_RIGHT_GAP);
+          const OW = layout.outerWidth;
+          const OH = layout.outerHeight;
+          const CW = layout.contentWidth;
+          const CH = layout.contentHeight;
+          const tx = layout.translateX;
+          const ty = layout.translateY;
+          const FRAME = layout.frameInset;
+          const PRINT_RIGHT_GAP = layout.printRightGap;
+          const FRAME_BOTTOM = layout.frameBottom;
+          const BOTTOM_SAFE_AREA = layout.bottomSafeArea;
           return (
             // opacity:0.001 → render edilir ama görünmez; pointerEvents→ dokunuşları engeller
-            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, opacity: 0.01 }}>
+            <View pointerEvents="none" style={{ position: 'absolute', top: -10000, left: 0 }}>
               <View ref={printReceiptRef} collapsable={false} style={{ width: OW, height: OH, overflow: 'hidden', backgroundColor: '#fff' }}>
                 {/* Landscape card, rotated 90° CW */}
                 <View
@@ -1647,9 +1677,9 @@ export default function JobDetails() {
                     height: CH,
                     transform: [{ translateX: tx }, { translateY: ty }, { rotate: '90deg' }],
                     backgroundColor: '#ffffff',
-                    paddingTop: 27,
+                    paddingTop: 40,
                     paddingRight: 18,
-                    paddingBottom: 18,
+                    paddingBottom: 26,
                     paddingLeft: 18,
                   }}>
                   <View
@@ -1665,15 +1695,15 @@ export default function JobDetails() {
                     }}
                   />
                   {/* Sağ üst saat */}
-                  <Text style={{ position: 'absolute', top: 42, right: 24, fontSize: 28, fontWeight: '700', color: '#000' }}>{timeStr}</Text>
+                  <Text style={{ position: 'absolute', top: 34, right: 24, fontSize: 22, fontWeight: '700', color: '#000' }}>{timeStr}</Text>
 
                   {/* Header: Logo + Firma + Şantiye */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 13, marginBottom: 14, paddingLeft: 12, paddingRight: 72 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 6, paddingLeft: 12, paddingRight: 72 }}>
                     <View
                       style={{
-                        width: 78,
-                        height: 78,
-                        borderRadius: 39,
+                        width: 54,
+                        height: 54,
+                        borderRadius: 27,
                         borderWidth: 2,
                         borderColor: '#000',
                         justifyContent: 'center',
@@ -1681,20 +1711,20 @@ export default function JobDetails() {
                         marginRight: 14,
                         overflow: 'hidden',
                       }}>
-                      {logoUri ? <Image source={{ uri: logoUri }} style={{ width: 70, height: 70, borderRadius: 35 }} /> : <Image source={require('../../../assets/icons/truck.png')} style={{ width: 54, height: 54 }} resizeMode="contain" />}
+                      {logoUri ? <Image source={{ uri: logoUri }} style={{ width: 46, height: 46, borderRadius: 23 }} /> : <Image source={require('../../../assets/icons/truck.png')} style={{ width: 40, height: 40 }} resizeMode="contain" />}
                     </View>
                     <View style={{ flex: 1, alignItems: 'center' }}>
-                      <Text numberOfLines={1} style={{ fontSize: 29, fontWeight: '800', letterSpacing: 0.3, color: '#000', textAlign: 'center' }}>
+                      <Text numberOfLines={1} style={{ fontSize: 24, fontWeight: '800', letterSpacing: 0.3, color: '#000', textAlign: 'center' }}>
                         {(ph.companyName || user?.companyName || 'HAFRİYAT').toUpperCase()}
                       </Text>
-                      <Text numberOfLines={1} style={{ fontSize: 22, fontWeight: '700', letterSpacing: 0.2, color: '#000', textAlign: 'center', marginTop: 4 }}>
+                      <Text numberOfLines={1} style={{ fontSize: 18, fontWeight: '700', letterSpacing: 0.2, color: '#000', textAlign: 'center', marginTop: 2 }}>
                         {(ph.jobSiteName || job?.name || '-').toUpperCase()}
                       </Text>
                     </View>
                   </View>
 
                   {/* İçerik: Dikey metin + Satırlar + QR */}
-                  <View style={{ flexDirection: 'row', alignItems: 'stretch', flex: 1, paddingLeft: 12, paddingRight: 12, paddingBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'stretch', flex: 1, paddingLeft: 12, paddingRight: 12 }}>
                     {/* Dikey HAFRİYAPP */}
                     <View style={{ width: 34, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
                       <Text
@@ -1717,16 +1747,16 @@ export default function JobDetails() {
                         <View
                           key={label}
                           style={{
-                            minHeight: 42,
+                            minHeight: 36,
                             flexDirection: 'row',
                             alignItems: 'flex-end',
                             borderBottomWidth: 1.2,
                             borderStyle: 'dotted',
                             borderColor: '#000',
-                            paddingBottom: 3,
+                            paddingBottom: 2,
                           }}>
-                          <Text style={{ color: '#222', fontWeight: '700', width: 108, fontSize: 20 }}>{label}</Text>
-                          <Text numberOfLines={1} style={{ fontWeight: '700', color: '#000', fontSize: 20, flex: 1 }}>
+                          <Text style={{ color: '#222', fontWeight: '700', width: 108, fontSize: 18 }}>{label}</Text>
+                          <Text numberOfLines={1} style={{ fontWeight: '700', color: '#000', fontSize: 18, flex: 1 }}>
                             {value}
                           </Text>
                         </View>

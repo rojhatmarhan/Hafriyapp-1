@@ -1,9 +1,9 @@
 diff --git a/node_modules/react-native-bluetooth-escpos-printer/RNBluetoothEscposPrinter.podspec b/node_modules/react-native-bluetooth-escpos-printer/RNBluetoothEscposPrinter.podspec
 new file mode 100644
-index 0000000..1c45514
+index 0000000..a3d1cfd
 --- /dev/null
 +++ b/node_modules/react-native-bluetooth-escpos-printer/RNBluetoothEscposPrinter.podspec
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,34 @@
 +require "json"
 +
 +package = JSON.parse(File.read(File.join(__dir__, "package.json")))
@@ -30,6 +30,8 @@ index 0000000..1c45514
 +    zx.public_header_files = "ios/ZXingObjC-3.2.2/ZXingObjC/**/*.h"
 +    zx.xcconfig = { "OTHER_LDFLAGS" => "-ObjC" }
 +  end
++
++  s.xcconfig = { "HEADER_SEARCH_PATHS" => "$(PODS_TARGET_SRCROOT)/ios/ZXingObjC-3.2.2" }
 +
 +  s.frameworks   = "CoreBluetooth"
 +  s.requires_arc = true
@@ -338,3 +340,92 @@ index dd5d33e..bcdf209 100644
  import android.util.Log;
  import android.widget.Toast;
  import com.facebook.react.bridge.*;
+diff --git a/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m b/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
+index d8e5cd6..a8715f5 100644
+--- a/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
++++ b/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
+@@ -43,19 +43,16 @@ -(void) print
+ {
+     @synchronized (self) {
+      NSInteger sizePerLine = (int)(_width/8);
+-   // do{
+-//        if(sizePerLine+_now>=[_toPrint length]){
+-//            sizePerLine = [_toPrint length] - _now;
+-//        }
+-       // if(sizePerLine>0){
++        if(sizePerLine+_now>=[_toPrint length]){
++            sizePerLine = [_toPrint length] - _now;
++        }
++        if(sizePerLine>0){
+             NSData *subData = [_toPrint subdataWithRange:NSMakeRange(_now, sizePerLine)];
+             NSLog(@"Write data:%@",subData);
+             [RNBluetoothManager writeValue:subData withDelegate:self];
+-        //}
++        }
+         _now = _now+sizePerLine;
+-        [NSThread sleepForTimeInterval:0.01f];
+         
+     }
+-    //}while(_now<[_toPrint length]);
+ }
+ @end
+diff --git a/node_modules/react-native-bluetooth-escpos-printer/ios/RNBluetoothManager.m b/node_modules/react-native-bluetooth-escpos-printer/ios/RNBluetoothManager.m
+index c96d205..68e0562 100644
+--- a/node_modules/react-native-bluetooth-escpos-printer/ios/RNBluetoothManager.m
++++ b/node_modules/react-native-bluetooth-escpos-printer/ios/RNBluetoothManager.m
+@@ -24,8 +24,17 @@ @implementation RNBluetoothManager
+ static RNBluetoothManager *instance;
+ static NSObject<WriteDataToBleDelegate> *writeDataDelegate;// delegate of write data resule;
+ static NSData *toWrite;
++static CBCharacteristic *cachedWriteChar = nil;
+ static NSTimer *timer;
+ 
++static void notifyBleWriteDelegate(NSObject<WriteDataToBleDelegate> *delegate, BOOL success)
++{
++    NSObject<WriteDataToBleDelegate> *delCopy = delegate;
++    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.01 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
++        if (delCopy) [delCopy didWriteDataToBle:success];
++    });
++}
++
+ +(Boolean)isConnected{
+     return !(connected==nil);
+ }
+@@ -36,8 +45,19 @@ +(void)writeValue:(NSData *) data withDelegate:(NSObject<WriteDataToBleDelegate>
+         writeDataDelegate = delegate;
+         toWrite = data;
+         connected.delegate = instance;
+-        [connected discoverServices:supportServices];
+-//    [connected writeValue:data forCharacteristic:[writeableCharactiscs objectForKey:supportServices[0]] type:CBCharacteristicWriteWithoutResponse];
++        if (cachedWriteChar != nil) {
++            // Characteristic onceden kesfedildi — direkt yaz (discoverServices atlandi)
++            // WriteWithoutResponse ACK donmez; callback'i gecikmeli cagirarak BLE buffer'i bogmayiz
++            @try {
++                [connected writeValue:data forCharacteristic:cachedWriteChar type:CBCharacteristicWriteWithoutResponse];
++                notifyBleWriteDelegate(delegate, true);
++            } @catch(NSException *e) {
++                NSLog(@"error in direct write: %@", e);
++                notifyBleWriteDelegate(delegate, false);
++            }
++        } else {
++            [connected discoverServices:supportServices];
++        }
+     }
+     @catch(NSException *e){
+         NSLog(@"error in writing data to %@,issue:%@",connected,e);
+@@ -337,6 +357,7 @@ - (void)centralManager:(CBCentralManager *)central didDisconnectPeripheral:(CBPe
+             [self sendEventWithName:EVENT_UNABLE_CONNECT body:@{@"name":peripheral.name?peripheral.name:@"",@"address":peripheral.identifier.UUIDString}];
+         }
+     }else{
++        cachedWriteChar = nil;
+         connected = nil;
+         if(hasListeners){
+             [self sendEventWithName:EVENT_CONNECTION_LOST body:nil];
+@@ -425,6 +446,7 @@ - (void)peripheral:(CBPeripheral *)peripheral didDiscoverCharacteristicsForServi
+         for(CBCharacteristic *cc in service.characteristics){
+             NSLog(@"Characterstic found: %@ in service: %@" ,cc,service.UUID.UUIDString);
+             if([cc.UUID.UUIDString isEqualToString:[writeableCharactiscs objectForKey: supportServices[0]]]){
++                cachedWriteChar = cc; // Karakteristigi cache'le
+                 @try{
+                     [connected writeValue:toWrite forCharacteristic:cc type:CBCharacteristicWriteWithoutResponse];
+                    if(writeDataDelegate) [writeDataDelegate didWriteDataToBle:true];

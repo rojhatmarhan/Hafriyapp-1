@@ -104,7 +104,12 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
         </View>
         <View style={styles.deviceInfo}>
           <Text style={styles.deviceName}>{item.name}</Text>
-          <Text style={styles.deviceAddress}>{item.address}</Text>
+          <Text style={styles.deviceAddress}>
+            {/* iOS UUID'leri çok uzun — son 12 karakteri göster */}
+            {item.address.length > 17
+              ? '…' + item.address.slice(-12)
+              : item.address}
+          </Text>
         </View>
         {isConnecting ? (
           <ActivityIndicator size="small" color="#FFD500" />
@@ -159,7 +164,12 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
             disabled={scanState !== 'idle'}
           >
             {scanState === 'scanning' ? (
-              <ActivityIndicator size="small" color="#000" />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ActivityIndicator size="small" color="#000" />
+                <Text style={styles.scanBtnText}>
+                  {Platform.OS === 'ios' ? 'Taranıyor... (~30 sn)' : 'Taranıyor...'}
+                </Text>
+              </View>
             ) : (
               <Text style={styles.scanBtnText}>🔍  Cihazları Tara</Text>
             )}
@@ -179,7 +189,9 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
             </>
           ) : scanState === 'idle' && (
             <Text style={styles.emptyText}>
-              Henüz cihaz bulunamadı. Taramak için butona basın.
+              {Platform.OS === 'ios'
+                ? 'Cihaz bulunamadı.\n\nÖnemli: Yazıcı önce iPhone Ayarlar > Bluetooth menüsünden eşleştirilmeli ve yazıcının BLE (Bluetooth 4.0+) desteklemesi gerekir.'
+                : 'Henüz cihaz bulunamadı. Taramak için butona basın.'}
             </Text>
           )}
 

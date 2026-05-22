@@ -43,68 +43,56 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PermissionsAndroid } from 'react-native';
 // @ts-ignore - native bridge module, no types
 import { BluetoothEscposPrinter, BluetoothManager } from 'react-native-bluetooth-escpos-printer';
-import { ensurePrinterReady, getPairedAndScannedDevices, printImage } from '../src/services/printService';
+import { ensurePrinterReady, getPairedAndScannedDevices, printImage, RECEIPT_IMAGE_PRINT_OPTIONS, RECEIPT_PRINT_FEED, getReceiptCaptureLayout } from '../src/services/printService';
 
 describe('printService.printImage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (BluetoothManager.isBluetoothEnabled as jest.Mock).mockResolvedValue(true);
+    (BluetoothManager.connect as jest.Mock).mockResolvedValue(undefined);
     (PermissionsAndroid.requestMultiple as jest.Mock).mockResolvedValue({
       [PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN]: PermissionsAndroid.RESULTS.GRANTED,
       [PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT]: PermissionsAndroid.RESULTS.GRANTED,
     });
   });
 
-  it('falls back to the first paired printer when no saved printer exists', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(null).mockResolvedValueOnce(null);
-    (BluetoothManager.scanDevices as jest.Mock).mockResolvedValue({
-      paired: [{ name: 'Mini Printer', address: 'AA:BB:CC' }],
-      found: [],
-    });
+  it('prints through the saved printer with global receipt sizing', async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce('AA:BB:CC').mockResolvedValueOnce('Mini Printer');
 
     await printImage('base64-image');
 
     expect(BluetoothManager.connect).toHaveBeenCalledWith('AA:BB:CC');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith('@hafriyapp/bt_printer_address', 'AA:BB:CC');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith('@hafriyapp/bt_printer_name', 'Mini Printer');
     expect(BluetoothEscposPrinter.printerInit).toHaveBeenCalled();
-    expect(BluetoothEscposPrinter.printPic).toHaveBeenCalledWith('base64-image', { width: 0 });
+    expect(BluetoothEscposPrinter.printPic).toHaveBeenCalledWith('base64-image', RECEIPT_IMAGE_PRINT_OPTIONS);
   });
 
-  it('tries the printer device when the first paired bluetooth device is not connectable', async () => {
+  it('uses global receipt print sizing and leaves feed space after the image', async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce('AA:BB:CC').mockResolvedValueOnce('Mini Printer');
+
+    await printImage('base64-image');
+
+    expect(BluetoothEscposPrinter.printPic).toHaveBeenCalledWith('base64-image', RECEIPT_IMAGE_PRINT_OPTIONS);
+    expect(BluetoothEscposPrinter.printText).toHaveBeenCalledWith(RECEIPT_PRINT_FEED, {});
+  });
+
+  it('throws a clear error when no printer has been saved before printing', async () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(null).mockResolvedValueOnce(null);
-    (BluetoothManager.scanDevices as jest.Mock).mockResolvedValue({
-      paired: [
-        { name: 'Galaxy Buds', address: '11:22:33' },
-        { name: 't58_570C', address: 'AA:BB:CC' },
-      ],
-      found: [],
-    });
-    (BluetoothManager.connect as jest.Mock).mockResolvedValueOnce(undefined);
 
-    await printImage('base64-image');
+    await expect(printImage('base64-image')).rejects.toThrow('Kayitli yazici bulunamadi. Yazici secim ekranindan bir yazici secin.');
 
-    expect(BluetoothManager.connect).toHaveBeenNthCalledWith(1, 'AA:BB:CC');
-    expect(BluetoothManager.connect).toHaveBeenCalledTimes(1);
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith('@hafriyapp/bt_printer_address', 'AA:BB:CC');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith('@hafriyapp/bt_printer_name', 't58_570C');
+    expect(BluetoothManager.connect).not.toHaveBeenCalled();
+    expect(BluetoothManager.scanDevices).not.toHaveBeenCalled();
   });
 
-  it('retries with the currently paired printer when the saved printer address is stale', async () => {
+  it('throws a clear error when the saved printer cannot be connected', async () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce('OLD:AA:BB').mockResolvedValueOnce('t58_570C');
-    (BluetoothManager.connect as jest.Mock).mockRejectedValueOnce(new Error('Device not found')).mockResolvedValueOnce(undefined);
-    (BluetoothManager.scanDevices as jest.Mock).mockResolvedValue({
-      paired: [{ name: 't58_570C', address: 'NEW:11:22' }],
-      found: [],
-    });
+    (BluetoothManager.connect as jest.Mock).mockRejectedValueOnce(new Error('Device not found'));
 
-    await printImage('base64-image');
+    await expect(printImage('base64-image')).rejects.toThrow('"t58_570C" yazicisina baglanamadi. Yazicinin acik ve yakin oldugundan emin olun.');
 
-    expect(BluetoothManager.connect).toHaveBeenNthCalledWith(1, 'OLD:AA:BB');
-    expect(BluetoothManager.connect).toHaveBeenNthCalledWith(2, 'NEW:11:22');
-    expect(AsyncStorage.multiRemove).toHaveBeenCalledWith(['@hafriyapp/bt_printer_address', '@hafriyapp/bt_printer_name']);
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith('@hafriyapp/bt_printer_address', 'NEW:11:22');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith('@hafriyapp/bt_printer_name', 't58_570C');
+    expect(BluetoothManager.connect).toHaveBeenCalledTimes(1);
+    expect(BluetoothManager.connect).toHaveBeenCalledWith('OLD:AA:BB');
+    expect(BluetoothManager.scanDevices).not.toHaveBeenCalled();
   });
 
   it('throws a clear error when bluetooth permission is denied before printing', async () => {
@@ -122,6 +110,7 @@ describe('printService.getPairedAndScannedDevices', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (BluetoothManager.isBluetoothEnabled as jest.Mock).mockResolvedValue(true);
+    (BluetoothManager.connect as jest.Mock).mockResolvedValue(undefined);
     (PermissionsAndroid.requestMultiple as jest.Mock).mockResolvedValue({
       [PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN]: PermissionsAndroid.RESULTS.GRANTED,
       [PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT]: PermissionsAndroid.RESULTS.GRANTED,
@@ -172,19 +161,36 @@ describe('printService.ensurePrinterReady', () => {
     expect(BluetoothManager.scanDevices).not.toHaveBeenCalled();
   });
 
-  it('returns needs-selection when the saved printer is stale and no fallback printer can be auto-connected', async () => {
+  it('returns connect-failed when the saved printer cannot be reached', async () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce('OLD:AA:BB').mockResolvedValueOnce('Mini Printer');
     (BluetoothManager.connect as jest.Mock).mockRejectedValueOnce(new Error('Device not found'));
-    (BluetoothManager.scanDevices as jest.Mock).mockResolvedValue({
-      paired: [],
-      found: [{ name: 'Mini Printer', address: 'NEW:11:22' }],
-    });
 
     const result = await ensurePrinterReady();
 
-    expect(result).toEqual({ status: 'needs-selection' });
-    expect(AsyncStorage.multiRemove).toHaveBeenCalledWith(['@hafriyapp/bt_printer_address', '@hafriyapp/bt_printer_name']);
+    expect(result).toEqual({
+      status: 'connect-failed',
+      device: { address: 'OLD:AA:BB', name: 'Mini Printer' },
+    });
     expect(BluetoothManager.connect).toHaveBeenCalledTimes(1);
     expect(BluetoothManager.connect).toHaveBeenCalledWith('OLD:AA:BB');
+  });
+});
+
+describe('printService.getReceiptCaptureLayout', () => {
+  it('calculates the global hidden receipt capture dimensions', () => {
+    expect(getReceiptCaptureLayout()).toEqual({
+      outerWidth: 384,
+      outerHeight: 760,
+      bleedX: 16,
+      bleedY: 12,
+      frameInset: 8,
+      printRightGap: 20,
+      bottomSafeArea: 56,
+      contentWidth: 772,
+      contentHeight: 400,
+      translateX: -194,
+      translateY: 180,
+      frameBottom: 0,
+    });
   });
 });

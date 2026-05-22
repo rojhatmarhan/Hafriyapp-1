@@ -6,6 +6,34 @@ import { BluetoothManager, BluetoothEscposPrinter } from 'react-native-bluetooth
 const PRINTER_KEY = '@hafriyapp/bt_printer_address';
 const PRINTER_NAME_KEY = '@hafriyapp/bt_printer_name';
 
+export const RECEIPT_IMAGE_PRINT_OPTIONS = { width: 384 } as const;
+export const RECEIPT_PRINT_FEED = '\n\n\n\n';
+export const RECEIPT_CAPTURE_LAYOUT = {
+  outerWidth: 384,
+  outerHeight: 760,
+  bleedX: 16,
+  bleedY: 12,
+  frameInset: 8,
+  printRightGap: 20,
+  bottomSafeArea: 56,
+} as const;
+
+export const getReceiptCaptureLayout = () => {
+  const outerWidth = RECEIPT_CAPTURE_LAYOUT.outerWidth;
+  const outerHeight = RECEIPT_CAPTURE_LAYOUT.outerHeight;
+  const contentWidth = outerHeight + RECEIPT_CAPTURE_LAYOUT.bleedY;
+  const contentHeight = outerWidth + RECEIPT_CAPTURE_LAYOUT.bleedX;
+
+  return {
+    ...RECEIPT_CAPTURE_LAYOUT,
+    contentWidth,
+    contentHeight,
+    translateX: (outerWidth - contentWidth) / 2,
+    translateY: (outerHeight - contentHeight) / 2,
+    frameBottom: RECEIPT_CAPTURE_LAYOUT.frameInset + 14,
+  };
+};
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export interface BluetoothDevice {
@@ -29,7 +57,7 @@ export interface PrintReceiptParams {
 }
 
 export interface PrinterReadyResult {
-  status: 'connected' | 'needs-selection';
+  status: 'connected' | 'needs-selection' | 'connect-failed';
   device?: BluetoothDevice;
 }
 
@@ -72,6 +100,8 @@ async function ensureBluetoothPermission(): Promise<void> {
 export async function isBluetoothEnabled(): Promise<boolean> {
   try {
     const enabled = await BluetoothManager.isBluetoothEnabled();
+    // iOS "true"/"false" string döndürür, Android boolean döndürür
+    if (typeof enabled === 'string') return enabled === 'true';
     return !!enabled;
   } catch {
     return false;
@@ -118,19 +148,34 @@ export async function clearSavedPrinter(): Promise<void> {
 export async function getPairedAndScannedDevices(): Promise<{ paired: BluetoothDevice[]; found: BluetoothDevice[] }> {
   await ensureBluetoothPermission();
 
+  // iOS'ta CBCentralManager init sonrası hazır olması için kısa bekleme
+  if (Platform.OS === 'ios') {
+    await new Promise<void>(resolve => setTimeout(resolve, 800));
+  }
+
   const result = await BluetoothManager.scanDevices();
-  const data: { paired?: any[]; found?: any[] } = typeof result === 'string' ? JSON.parse(result) : result;
+  const data: { paired?: any; found?: any } = typeof result === 'string' ? JSON.parse(result) : result;
+
+  // iOS'ta paired/found bazen JSON string olarak gelir, bazen array — her ikisini de destekle
+  const parseList = (val: any): any[] => {
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') {
+      try { const p = JSON.parse(val); return Array.isArray(p) ? p : []; } catch { return []; }
+    }
+    return [];
+  };
 
   const toDevice = (d: any): BluetoothDevice => ({
-    name: d.name?.trim() || d.address,
+    // iOS'ta d.name yoksa UUID'ye düşmesin — anlaşılır bir fallback kullan
+    name: d.name?.trim() || 'Bilinmeyen Cihaz',
     // iOS: adres, MAC değil CBPeripheral UUID'dir (örn. "12345678-ABCD-...")
     address: d.address || d.id || '',
   });
 
   return {
     // iOS'ta 'paired' kavramı yoktur; tüm BLE cihazlar 'found'da gelir
-    paired: (data.paired || []).map(toDevice),
-    found: (data.found || []).map(toDevice),
+    paired: parseList(data.paired).map(toDevice),
+    found: parseList(data.found).map(toDevice),
   };
 }
 
@@ -191,36 +236,29 @@ function getAvailablePrinters(saved: BluetoothDevice | null, paired: BluetoothDe
   return ranked;
 }
 
+const CONNECT_TIMEOUT_MS = 8_000;
+
+function withConnectTimeout(address: string): Promise<void> {
+  return Promise.race([
+    BluetoothManager.connect(address) as Promise<void>,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('connect-timeout')), CONNECT_TIMEOUT_MS),
+    ),
+  ]);
+}
+
 async function connectResolvedPrinter(): Promise<BluetoothDevice> {
-  let saved = await getSavedPrinter();
-  if (saved) {
-    try {
-      await BluetoothManager.connect(saved.address);
-      return saved;
-    } catch {
-      await clearSavedPrinter();
-      saved = null;
-    }
+  const saved = await getSavedPrinter();
+  if (!saved) {
+    throw new Error('Kayitli yazici bulunamadi. Yazici secim ekranindan bir yazici secin.');
   }
 
-  const { paired, found } = await getPairedAndScannedDevices();
-  const candidates = getAvailablePrinters(saved, paired, found);
-
-  if (candidates.length === 0) {
-    throw new Error('Bluetooth yazici bulunamadi. Once yaziciyi eslestirip tekrar deneyin.');
+  try {
+    await withConnectTimeout(saved.address);
+    return saved;
+  } catch {
+    throw new Error(`"${saved.name}" yazicisina baglanamadi. Yazicinin acik ve yakin oldugundan emin olun.`);
   }
-
-  for (const candidate of candidates) {
-    try {
-      await BluetoothManager.connect(candidate.address);
-      await savePrinter(candidate);
-      return candidate;
-    } catch {
-      // Bir sonraki uygun cihazi dene.
-    }
-  }
-
-  throw new Error('Bluetooth yaziciya baglanilamadi. Android Bluetooth ayarlarinda yazicinin eslesmis oldugunu kontrol edip tekrar deneyin.');
 }
 
 export async function ensurePrinterReady(): Promise<PrinterReadyResult> {
@@ -237,32 +275,44 @@ export async function ensurePrinterReady(): Promise<PrinterReadyResult> {
   }
 
   try {
-    await BluetoothManager.connect(saved.address);
+    await withConnectTimeout(saved.address);
     return {
       status: 'connected',
       device: saved,
     };
   } catch {
-    await clearSavedPrinter();
-    return { status: 'needs-selection' };
+    // Kayıtlı yazıcıyı silme — kullanıcı tekrar denemek isteyebilir
+    return { status: 'connect-failed', device: saved };
   }
 }
 
 // ─── Yazdırma ───────────────────────────────────────────────────────────────
 
+export const PRINT_IMAGE_TIMEOUT_MS = 30_000;
+
+function withPrintTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Yazici cevap vermedi. Yazicinin acik ve baglantida oldugundan emin olup tekrar deneyin.')), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  }) as Promise<T>;
+}
+
 /**
  * View'dan yakalanan base64 PNG'yi yazıcıya gönderir.
  * Kayıtlı yazıcı varsa önce bağlanır, sonra görsel gönderir.
+ * Native BLE callback'i kaybolursa UI sonsuz kilitlenmesin diye timeout uygulanır.
  */
 export async function printImage(base64: string): Promise<void> {
   await ensureBluetoothPermission();
 
   await connectResolvedPrinter();
 
-  await BluetoothEscposPrinter.printerInit();
-  // width: 0 → yazıcının kendi genişliğini kullanır
-  await BluetoothEscposPrinter.printPic(base64, { width: 0 });
-  await BluetoothEscposPrinter.printText('\n\n', {});
+  await withPrintTimeout(BluetoothEscposPrinter.printerInit(), PRINT_IMAGE_TIMEOUT_MS);
+  await withPrintTimeout(BluetoothEscposPrinter.printPic(base64, RECEIPT_IMAGE_PRINT_OPTIONS), PRINT_IMAGE_TIMEOUT_MS);
+  await withPrintTimeout(BluetoothEscposPrinter.printText(RECEIPT_PRINT_FEED, {}), PRINT_IMAGE_TIMEOUT_MS);
 }
 
 const SEP = '--------------------------------';
