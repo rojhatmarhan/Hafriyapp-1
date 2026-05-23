@@ -231,7 +231,7 @@ export default function SupplierVehicles() {
 
   const mapVehicleFromApi = (item: VehicleApi): VehicleUI => ({
     id: item.id,
-    plate: item.plateNumber.replace(/^(\d{2})([A-Z]+)(\d+)$/, '$1 $2 $3'), // 11ASD1234 → 11 ASD 1234
+    plate: item.plateNumber.toUpperCase().replace(/^(\d{2})([A-Z]+)(\d+)$/, '$1 $2 $3'), // 11ASD1234 → 11 ASD 1234
     canEdit: item.canEdit,
     canDelete: item.canDelete,
     createdDate: item.createdDate,
@@ -511,7 +511,7 @@ export default function SupplierVehicles() {
 
       setVehicles(mappedWithDrivers);
 
-      // Tüm araçları tek düz listede göster (gruplama yok)
+      // İkişerli grupla (2 kolon grid)
       const chunkedData: VehicleUI[][] = [];
       for (let i = 0; i < mappedWithDrivers.length; i += 2) {
         chunkedData.push(mappedWithDrivers.slice(i, i + 2));
@@ -636,15 +636,12 @@ export default function SupplierVehicles() {
             <View style={styles.plateTrStrip}>
               <Text style={styles.plateTrText}>TR</Text>
             </View>
-            <Text style={styles.plateText}>{vehicle.plate}</Text>
+            <Text style={styles.plateText} numberOfLines={1}>{vehicle.plate}</Text>
           </View>
-
           {vehicle.driverName ? <Text style={styles.vehicleDriverName}>{vehicle.driverName}</Text> : <Text style={styles.vehicleNoDriver}>Şoför Atanmamış</Text>}
-
           <Text style={styles.vehicleDate}>Kayıt: {formatDateDMY(vehicle.createdDate)}</Text>
         </TouchableOpacity>
       ))}
-      {/* If there's only 1 item, add an empty view to fill the space so it aligns left */}
       {item.length === 1 && <View style={{ flex: 1 }} />}
     </View>
   );
@@ -1502,9 +1499,8 @@ const styles = StyleSheet.create({
   vehicleCard: {
     backgroundColor: '#fff',
     borderRadius: 18,
-    padding: 14,
-    width: '48%',
-    marginBottom: 12,
+    padding: 12,
+    marginBottom: 8,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1525,7 +1521,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 8,
     backgroundColor: '#fff',
-    maxHeight: 42,
+    height: 44,
     shadowColor: '#000',
     shadowOffset: { width: 1, height: 2 },
     shadowOpacity: 0.3,
@@ -1549,14 +1545,15 @@ const styles = StyleSheet.create({
   },
   plateText: {
     flex: 1,
-    fontSize: 17,
+    fontSize: 14,
     fontWeight: '900',
     color: '#111',
     textAlign: 'center',
-    paddingVertical: 7,
-    paddingHorizontal: 8,
-    letterSpacing: 1.5,
+    paddingHorizontal: 4,
+    letterSpacing: 0.5,
     backgroundColor: '#fff',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   vehicleInfo: { fontSize: 12, color: '#444' },
   vehicleDate: { fontSize: 11, color: '#999', marginTop: 4 },

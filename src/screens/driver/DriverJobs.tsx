@@ -363,7 +363,7 @@ export default function DriverJobs() {
         <View style={styles.haulCardRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.haulDateText}>{formatHaulDate(item.timeOfHaul)}</Text>
-            <Text style={styles.haulPlateText}>{item.plateNumber}</Text>
+            <Text style={styles.haulPlateText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{item.plateNumber}</Text>
           </View>
           <View style={{ alignItems: 'flex-end', gap: 4 }}>
             {item.tonage > 0 && (
