@@ -107,8 +107,10 @@ const OtpScreen = () => {
         return;
       }
 
-      // 🔴 TEST AMAÇLI – OTP ALERT
-      Alert.alert('Yeni OTP Kodu (TEST)', `Gelen Kod: ${res.data.verificationCode}`);
+      // 🔴 Sadece debug build — release'de gösterilmez
+      if (__DEV__) {
+        Alert.alert('Yeni OTP Kodu (TEST)', `Gelen Kod: ${res.data.verificationCode}`);
+      }
     } catch (e) {
       console.log('RESEND OTP ERROR', e);
       Alert.alert('Hata', 'Bir hata oluştu');

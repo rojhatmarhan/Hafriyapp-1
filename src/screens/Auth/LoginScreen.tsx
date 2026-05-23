@@ -78,8 +78,10 @@ const LoginScreen = () => {
         return;
       }
 
-      // 🔴 TEST AMAÇLI OTP GÖSTER
-      Alert.alert('OTP Kodu (TEST)', `Gelen Kod: ${res.data.verificationCode}`);
+      // 🔴 Sadece debug build — release'de gösterilmez
+      if (__DEV__) {
+        Alert.alert('OTP Kodu (TEST)', `Gelen Kod: ${res.data.verificationCode}`);
+      }
 
       navigation.navigate('Otp');
     } catch (e) {
