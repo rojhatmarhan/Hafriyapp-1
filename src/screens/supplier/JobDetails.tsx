@@ -235,6 +235,7 @@ export default function JobDetails() {
   };
 
   // ── Ayarlar: Düzenle / Yakıt Ekle / İşi Sil / İndir
+  const [settingsSheetVisible, setSettingsSheetVisible] = useState(false);
   const [editModal, setEditModal] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [deleteStep1Visible, setDeleteStep1Visible] = useState(false);
@@ -779,19 +780,7 @@ export default function JobDetails() {
         if (idx === 4) handleFinishJob();
       });
     } else {
-      Alert.alert('Ayarlar', '', [
-        { text: 'Düzenle', onPress: () => setEditModal(true) },
-        {
-          text: 'Yakıt Ekle',
-          onPress: () => {
-            setFuelInput('');
-            setFuelModal(true);
-          },
-        },
-        { text: 'İndir', onPress: downloadExcel },
-        { text: 'İşi Sil', style: 'destructive', onPress: handleFinishJob },
-        { text: 'İptal', style: 'cancel' },
-      ]);
+      setSettingsSheetVisible(true);
     }
   };
 
@@ -1851,6 +1840,32 @@ export default function JobDetails() {
         </View>
       </Modal>
 
+      {/* Android Ayarlar Sayfası */}
+      <Modal transparent animationType="slide" visible={settingsSheetVisible} onRequestClose={() => setSettingsSheetVisible(false)}>
+        <TouchableWithoutFeedback onPress={() => setSettingsSheetVisible(false)}>
+          <View style={styles.sheetOverlay} />
+        </TouchableWithoutFeedback>
+        <View style={styles.sheetContainer}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>Ayarlar</Text>
+          <TouchableOpacity style={styles.sheetItem} onPress={() => { setSettingsSheetVisible(false); setEditModal(true); }}>
+            <Text style={styles.sheetItemText}>✏️  Düzenle</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.sheetItem} onPress={() => { setSettingsSheetVisible(false); setFuelInput(''); setFuelModal(true); }}>
+            <Text style={styles.sheetItemText}>⛽  Yakıt Ekle</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.sheetItem} onPress={() => { setSettingsSheetVisible(false); downloadExcel(); }}>
+            <Text style={styles.sheetItemText}>📥  İndir</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.sheetItem, styles.sheetItemDestructive]} onPress={() => { setSettingsSheetVisible(false); handleFinishJob(); }}>
+            <Text style={[styles.sheetItemText, styles.sheetItemDestructiveText]}>🗑  İşi Sil</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.sheetItem, styles.sheetCancelItem]} onPress={() => setSettingsSheetVisible(false)}>
+            <Text style={[styles.sheetItemText, styles.sheetCancelText]}>İptal</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
       <BluetoothPrinterModal
         visible={printerModalVisible}
         onClose={() => {
@@ -2008,6 +2023,51 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center' },
 
   // ── Silme modalları
+  // ── Android Ayarlar Bottom Sheet
+  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  sheetContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 28,
+    paddingHorizontal: 16,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#DDD',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  sheetTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#999',
+    textAlign: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+    marginBottom: 4,
+  },
+  sheetItem: {
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F5F5F5',
+  },
+  sheetItemText: { fontSize: 16, color: '#222', fontWeight: '500' },
+  sheetItemDestructive: { borderBottomWidth: 0 },
+  sheetItemDestructiveText: { color: '#E53935', fontWeight: '600' },
+  sheetCancelItem: {
+    marginTop: 8,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    borderBottomWidth: 0,
+    alignItems: 'center',
+  },
+  sheetCancelText: { color: '#555', fontWeight: '600', textAlign: 'center' },
+
   deleteModal: { width: '88%', backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden' },
   deleteModalHeader: { backgroundColor: '#F57F17', paddingVertical: 16, paddingHorizontal: 20 },
   deleteModalHeaderText: { color: '#fff', fontWeight: '700', fontSize: 16 },

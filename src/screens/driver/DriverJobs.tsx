@@ -771,9 +771,12 @@ const styles = StyleSheet.create({
 
   vehicleSection: { paddingHorizontal: 16, marginBottom: 8 },
 
-  filterBar: { maxHeight: 48, marginBottom: 4 },
+  filterBar: { height: 52, marginBottom: 4 },
   filterTab: {
-    paddingHorizontal: 16, paddingVertical: 8,
+    paddingHorizontal: 16,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderRadius: 20, backgroundColor: '#fff',
     borderWidth: 1, borderColor: '#ddd',
   },
