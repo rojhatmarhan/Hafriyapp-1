@@ -1,10 +1,57 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Modal, ScrollView, Image, Linking } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Modal, ScrollView, Image, Linking, Pressable } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 
 // URL ve Türkçe telefon numaralarını tespit eder ([\s] yerine [ ] — newline yutmasın)
 const LINKIFY_PATTERN = /(https?:\/\/[^\s]+|(?:\+90|0)[5]\d{2}[ \-]?\d{3}[ \-]?\d{2}[ \-]?\d{2})/g;
 const IS_LINK_PATTERN = /^(https?:\/\/[^\s]+|(?:\+90|0)[5]\d{2}[ \-]?\d{3}[ \-]?\d{2}[ \-]?\d{2})$/;
+
+const EXACT_BAD_WORDS = [
+  'aq', 'amk', 'amq', 'oc', 'oç', 'piç', 'pic', 'göt', 'got', 'sik', 'am'
+];
+
+const SUBSTRING_BAD_WORDS = [
+  'siktir', 'sikeyim', 'sikerim', 'sikis', 'sikiş', 'orospu', 'pezevenk', 'amcık', 'amcik', 
+  'yarrak', 'yarak', 'yavşak', 'yavsak', 'kaltak', 'götveren', 'gotveren', 'pezo', 'gavat', 
+  'kavat', 'taşşak', 'tasak', 'taşak', 'godoş', 'godos', 'kancık', 'kancik', 'kahpe', 
+  'şerefsiz', 'serefsiz', 'kaşar', 'kasar'
+];
+
+function hasProfanity(inputText: string): boolean {
+  if (!inputText) return false;
+  
+  const normalizeText = (str: string) => {
+    return str
+      .toLowerCase()
+      .replace(/ç/g, 'c')
+      .replace(/ğ/g, 'g')
+      .replace(/ı/g, 'i')
+      .replace(/ö/g, 'o')
+      .replace(/ş/g, 's')
+      .replace(/ü/g, 'u')
+      .replace(/[^a-z0-9\s]/g, ' '); // Noktalama işaretlerini boşluk yap
+  };
+
+  const normalizedWithSpaces = normalizeText(inputText);
+  const words = normalizedWithSpaces.split(/\s+/).filter(Boolean);
+
+  // 1. Kelime bazlı tam eşleşme kontrolü
+  for (const word of words) {
+    if (EXACT_BAD_WORDS.includes(word) || SUBSTRING_BAD_WORDS.includes(word)) {
+      return true;
+    }
+  }
+
+  // 2. Alt kelime kontrolü (boşluklar atılmış tüm mesaj içinde)
+  const normalizedNoSpaces = normalizedWithSpaces.replace(/\s+/g, '');
+  for (const badWord of SUBSTRING_BAD_WORDS) {
+    if (normalizedNoSpaces.includes(badWord)) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 function LinkifiedText({ text, style }: { text: string; style?: any }) {
   // \r\n ve \r → \n normalize et (Windows/eski sistemlerden gelen mesajlar için)
@@ -36,6 +83,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { HubConnectionBuilder, HubConnection, LogLevel, HttpTransportType } from '@microsoft/signalr';
 import { useAppSelector } from '../../hooks';
+import { getUserById } from '../../services/userService';
 import {
   getGroupMessages, sendMessage as sendMsgComp,
   getGroupDetail, updateGroupSettings, uploadGroupImage,
@@ -88,6 +136,14 @@ export default function CompanyChat() {
   const [blockingPhone, setBlockingPhone] = useState(false);
   const [groupDeleting, setGroupDeleting] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  /* ─── REPORT & OPTION MODALS ─── */
+  const [selectedMessage, setSelectedMessage] = useState<any>(null);
+  const [messageOptionsVisible, setMessageOptionsVisible] = useState(false);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [reportedUserPhone, setReportedUserPhone] = useState('');
+  const [loadingPhone, setLoadingPhone] = useState(false);
+  const [reportReason, setReportReason] = useState('');
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
@@ -323,6 +379,12 @@ export default function CompanyChat() {
     if (!text.trim()) return;
 
     const content = text.trim();
+
+    if (hasProfanity(content)) {
+      Alert.alert('Uyarı', 'Mesajınız küfür ve hakaret içerdiği için gönderilemiyor.');
+      return;
+    }
+
     setText('');
 
     // Optimistik update: Hemen listeye ekle (Listenin sonuna ekliyoruz çünkü inverted değil ama sıralama eski->yeni)
@@ -367,6 +429,96 @@ export default function CompanyChat() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const handleOpenMessageOptions = (messageItem: any) => {
+    if (messageItem.deleted || messageItem.isTemp || !messageItem.content) return;
+    setSelectedMessage(messageItem);
+    setMessageOptionsVisible(true);
+  };
+
+  const handleCopyFromOptions = () => {
+    if (!selectedMessage) return;
+    handleCopyMessage(selectedMessage);
+    setMessageOptionsVisible(false);
+  };
+
+  const handleOpenReportModal = async () => {
+    if (!selectedMessage) return;
+    setMessageOptionsVisible(false);
+    setReportReason('');
+    setReportedUserPhone('');
+    
+    const directPhone = selectedMessage.senderPhone || selectedMessage.senderPhoneNumber || selectedMessage.phone;
+    if (directPhone) {
+      setReportedUserPhone(directPhone);
+      setReportModalVisible(true);
+      return;
+    }
+
+    if (selectedMessage.senderId && token) {
+      setLoadingPhone(true);
+      setReportModalVisible(true);
+      try {
+        const userData = await getUserById(selectedMessage.senderId, token);
+        if (userData && userData.phoneNumber) {
+          setReportedUserPhone(userData.phoneNumber);
+        } else if (userData && userData.data && userData.data.phoneNumber) {
+          setReportedUserPhone(userData.data.phoneNumber);
+        } else {
+          setReportedUserPhone('Belirtilmemiş');
+        }
+      } catch (err) {
+        console.log('[CompanyChat] User phone fetch error:', err);
+        setReportedUserPhone('Belirtilmemiş');
+      } finally {
+        setLoadingPhone(false);
+      }
+    } else {
+      setReportedUserPhone('Belirtilmemiş');
+      setReportModalVisible(true);
+    }
+  };
+
+  const handleSendReport = async () => {
+    if (!selectedMessage) return;
+    const reason = reportReason.trim();
+    if (!reason) {
+      Alert.alert('Uyarı', 'Lütfen şikayet nedeninizi belirtin.');
+      return;
+    }
+
+    const adminPhone = '+905322959413';
+    const groupName = groupData?.name || 'Grup Bilgisi Yok';
+    const msgContent = selectedMessage.content || '';
+    const senderName = selectedMessage.senderName || 'Belirtilmemiş';
+    const senderPhoneStr = reportedUserPhone || 'Bilinmiyor';
+
+    const messageTemplate = `Merhaba, Hafriyapp uygulamasında bir mesajı şikayet etmek istiyorum:\n\n` +
+      `Grup/Firma: ${groupName}\n` +
+      `Mesaj ID: ${selectedMessage.id}\n` +
+      `Gönderen Adı: ${senderName}\n` +
+      `Gönderen Telefon: ${senderPhoneStr}\n` +
+      `Mesaj İçeriği: ${msgContent}\n\n` +
+      `Şikayet Nedeni:\n${reason}`;
+
+    const appUrl = `whatsapp://send?phone=${adminPhone}&text=${encodeURIComponent(messageTemplate)}`;
+    const webUrl = `https://wa.me/${adminPhone.replace(/[+\s]/g, '')}?text=${encodeURIComponent(messageTemplate)}`;
+
+    setReportModalVisible(false);
+    setSelectedMessage(null);
+    setReportReason('');
+
+    try {
+      const supported = await Linking.canOpenURL(appUrl);
+      if (supported) {
+        await Linking.openURL(appUrl);
+      } else {
+        await Linking.openURL(webUrl);
+      }
+    } catch {
+      await Linking.openURL(webUrl);
+    }
+  };
+
   const renderItem = ({ item }: any) => {
     const isMyMessage = item.isOwnMessage;
     const isDeleted = !!item.deleted;
@@ -378,7 +530,7 @@ export default function CompanyChat() {
           <Text style={styles.senderName}>{item.senderName}</Text>
         )}
         <TouchableOpacity
-          onLongPress={() => handleCopyMessage(item)}
+          onLongPress={() => handleOpenMessageOptions(item)}
           activeOpacity={0.8}
           delayLongPress={300}
         >
@@ -660,6 +812,113 @@ export default function CompanyChat() {
           ) : null}
         </View>
       </Modal>
+
+      {/* MESAJ SEÇENEKLERİ MODAL */}
+      <Modal
+        visible={messageOptionsVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setMessageOptionsVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable 
+            style={StyleSheet.absoluteFillObject} 
+            onPress={() => setMessageOptionsVisible(false)} 
+          />
+          <View style={styles.optionsContent}>
+            <Text style={styles.optionsTitle}>Mesaj İşlemleri</Text>
+            
+            <TouchableOpacity style={styles.optionBtn} onPress={handleCopyFromOptions}>
+              <Text style={styles.optionText}>📋 Kopyala</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.optionBtn, { borderBottomWidth: 0 }]} onPress={handleOpenReportModal}>
+              <Text style={[styles.optionText, { color: '#C62828' }]}>⚠️ Şikayet Et</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.optionCancelBtn} onPress={() => setMessageOptionsVisible(false)}>
+              <Text style={styles.optionCancelText}>İptal</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ŞİKAYET MODALI */}
+      <Modal
+        visible={reportModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!loadingPhone) setReportModalVisible(false);
+        }}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <View style={styles.modalOverlay}>
+            <Pressable 
+              style={StyleSheet.absoluteFillObject} 
+              onPress={() => {
+                if (!loadingPhone) setReportModalVisible(false);
+              }} 
+            />
+            <View style={styles.reportContent}>
+              <Text style={styles.reportTitle}>Mesajı Şikayet Et</Text>
+              
+              {selectedMessage && (
+                <View style={styles.reportMessagePreview}>
+                  <Text style={styles.reportPreviewLabel}>Şikayet Edilen Mesaj:</Text>
+                  <Text style={styles.reportPreviewText} numberOfLines={3}>
+                    "{selectedMessage.content}"
+                  </Text>
+                  <Text style={styles.reportSenderText}>
+                    Gönderen: {selectedMessage.senderName || 'Belirtilmemiş'}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                    <Text style={styles.reportPhoneLabel}>Telefon: </Text>
+                    {loadingPhone ? (
+                      <ActivityIndicator size="small" color="#FFD500" />
+                    ) : (
+                      <Text style={styles.reportPhoneValue}>{reportedUserPhone}</Text>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              <Text style={styles.reportInputLabel}>Şikayet Nedeni</Text>
+              <TextInput
+                style={styles.reportTextInput}
+                placeholder="Bu mesajı neden şikayet etmek istiyorsunuz? Lütfen belirtiniz..."
+                placeholderTextColor="#999"
+                value={reportReason}
+                onChangeText={setReportReason}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
+
+              <View style={styles.reportButtonRow}>
+                <TouchableOpacity 
+                  style={[styles.reportBtn, styles.reportCancelBtn]} 
+                  onPress={() => setReportModalVisible(false)}
+                  disabled={loadingPhone}
+                >
+                  <Text style={styles.reportCancelBtnText}>Vazgeç</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.reportBtn, styles.reportSubmitBtn]} 
+                  onPress={handleSendReport}
+                  disabled={loadingPhone}
+                >
+                  <Text style={styles.reportSubmitBtnText}>WhatsApp ile Bildir</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -889,6 +1148,154 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#333',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  optionsContent: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  optionsTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  optionBtn: {
+    width: '100%',
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  optionText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+  },
+  optionCancelBtn: {
+    width: '100%',
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 8,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+  },
+  optionCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#666',
+  },
+  reportContent: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  reportTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  reportMessagePreview: {
+    backgroundColor: '#f9f9f9',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  reportPreviewLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#999',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  reportPreviewText: {
+    fontSize: 14,
+    color: '#333',
+    fontStyle: 'italic',
+    marginBottom: 6,
+  },
+  reportSenderText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#555',
+  },
+  reportPhoneLabel: {
+    fontSize: 13,
+    color: '#666',
+  },
+  reportPhoneValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#000',
+  },
+  reportInputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  reportTextInput: {
+    backgroundColor: '#fdfdfd',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 10,
+    padding: 12,
+    height: 100,
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 20,
+  },
+  reportButtonRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  reportBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportCancelBtn: {
+    backgroundColor: '#eee',
+  },
+  reportCancelBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  reportSubmitBtn: {
+    backgroundColor: '#FFD500',
+  },
+  reportSubmitBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#000',
   },
 });
 

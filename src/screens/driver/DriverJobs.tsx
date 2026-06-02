@@ -16,10 +16,11 @@ const YELLOW = '#FFD500';
 const DARK = '#222';
 const IMAGE_BASE = 'https://api.hafriyapp.com';
 
-const buildUrl = (path?: string | null): string => {
-  if (!path) return '';
-  if (path.startsWith('http')) return path;
-  return `${IMAGE_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
+const resolveReceiptLogo = (path?: string | null): any => {
+  if (!path) return require('../../../assets/icons/truck.png');
+  if (path.startsWith('data:image') || path.startsWith('http')) return { uri: path };
+  if (path.startsWith('/uploads') || path.startsWith('/')) return { uri: `https://api.hafriyapp.com${path}` };
+  return { uri: `data:image/png;base64,${path}` };
 };
 
 type FilterKey = 'all' | 'today' | 'week' | 'month';
@@ -421,8 +422,6 @@ export default function DriverJobs() {
   const renderReceipt = () => {
     if (!selectedTrip) return null;
     const item = selectedTrip;
-    const logoUrl = buildUrl(item.companyLogoPath);
-
     return (
       <Modal visible={receiptVisible} transparent animationType="fade" onRequestClose={() => setReceiptVisible(false)}>
         <View style={styles.modalOverlay}>
@@ -440,11 +439,11 @@ export default function DriverJobs() {
                 {/* Başlık */}
                 <View style={styles.receiptHead}>
                   <View style={styles.receiptLogoBox}>
-                    {logoUrl ? (
-                      <Image source={{ uri: logoUrl }} style={styles.receiptLogoImg} resizeMode="cover" />
-                    ) : (
-                      <Image source={require('../../../assets/icons/truck.png')} style={styles.receiptLogoImg} resizeMode="contain" />
-                    )}
+                    <Image
+                      source={resolveReceiptLogo(item.companyLogoPath)}
+                      style={styles.receiptLogoImg}
+                      resizeMode={item.companyLogoPath ? "cover" : "contain"}
+                    />
                   </View>
                   <View style={styles.receiptCompanyBlock}>
                     <Text style={styles.receiptCompany} numberOfLines={1}>

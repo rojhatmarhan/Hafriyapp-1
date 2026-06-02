@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Alert, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ScrollView, BackHandler } from 'react-native';
+import { View, Text, Alert, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ScrollView, BackHandler, StatusBar } from 'react-native';
 import { CodeField, Cursor, useBlurOnFulfill, useClearByFocusCell } from 'react-native-confirmation-code-field';
 import { useAppSelector, useAppDispatch } from '../../hooks';
 import { loginSuccess, setRole, setUser, setCompanyId } from '../../store/slices/authSlice';
@@ -107,10 +107,7 @@ const OtpScreen = () => {
         return;
       }
 
-      // 🔴 Sadece debug build — release'de gösterilmez
-      if (__DEV__) {
-        Alert.alert('Yeni OTP Kodu (TEST)', `Gelen Kod: ${res.data.verificationCode}`);
-      }
+
     } catch (e) {
       console.log('RESEND OTP ERROR', e);
       Alert.alert('Hata', 'Bir hata oluştu');
@@ -184,9 +181,10 @@ const styles = StyleSheet.create({
   },
   backButton: {
     position: 'absolute',
-    left: '2%',
-    top: '10%',
-    zIndex: 2,
+    left: 8,
+    top: Platform.OS === 'ios' ? 52 : (StatusBar.currentHeight ? StatusBar.currentHeight + 16 : 42),
+    zIndex: 10,
+    padding: 8,
   },
   container: {
     flexGrow: 1,

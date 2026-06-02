@@ -55,6 +55,13 @@ const checkOnline = async (): Promise<boolean> => {
   }
 };
 
+const resolveReceiptLogo = (path?: string | null): any => {
+  if (!path) return require('../../../assets/icons/truck.png');
+  if (path.startsWith('data:image') || path.startsWith('http')) return { uri: path };
+  if (path.startsWith('/uploads') || path.startsWith('/')) return { uri: `https://api.hafriyapp.com${path}` };
+  return { uri: `data:image/png;base64,${path}` };
+};
+
 // ── Teklif tipi (Hafriyat: cash=sabit/trip, fuel=sabit/trip | Kum/Mıcır: cash=cashPerTon, fuel=0)
 type Offer = {
   name: string;
@@ -346,7 +353,16 @@ export default function JobDetails() {
     useCallback(() => {
       fetchHauls();
       syncPending();
-    }, [token, job?.id]),
+      if (token && job?.companyId) {
+        getCompanyById(job.companyId, token)
+          .then(res => {
+            const companyData = res?.isSuccess ? res.data : res?.data || res;
+            const path = companyData?.logoPath || companyData?.LogoPath || null;
+            if (path) setCachedCompanyLogoPath(path);
+          })
+          .catch(() => {});
+      }
+    }, [token, job?.id, job?.companyId]),
   );
 
   useEffect(() => {
@@ -355,17 +371,6 @@ export default function JobDetails() {
     });
     return () => sub.remove();
   }, [syncPending]);
-
-  useEffect(() => {
-    if (!token || !job?.companyId) return;
-    getCompanyById(job.companyId, token)
-      .then(res => {
-        const companyData = res?.isSuccess ? res.data : res?.data || res;
-        const path = companyData?.logoPath || companyData?.LogoPath || null;
-        if (path) setCachedCompanyLogoPath(path);
-      })
-      .catch(() => {});
-  }, [token, job?.companyId]);
 
   // ── Sefer Gir submit (teklif seçimli)
   const handleAddHaul = async (isPrinted: boolean) => {
@@ -701,7 +706,7 @@ export default function JobDetails() {
       isVisibleToVehicleOwner: false,
       note: item.note,
     };
-    setSelectedHaul(fakeHaul);
+    setSelectedHaul(normalizeHaul(fakeHaul));
     setReceiptVisible(true);
   };
 
@@ -1524,7 +1529,13 @@ export default function JobDetails() {
                 <View style={styles.receiptMain}>
                   {/* Başlık: Logo + Firma/Şantiye + Saat */}
                   <View style={styles.receiptHead}>
-                    <View style={styles.receiptLogoBox}>{selectedHaul.companyLogoPath ? <Image source={{ uri: `https://api.hafriyapp.com${selectedHaul.companyLogoPath.startsWith('/') ? '' : '/'}${selectedHaul.companyLogoPath}` }} style={styles.receiptLogoImg} resizeMode="cover" /> : <Image source={require('../../../assets/icons/truck.png')} style={styles.receiptLogoImg} resizeMode="contain" />}</View>
+                    <View style={styles.receiptLogoBox}>
+                      <Image
+                        source={resolveReceiptLogo(selectedHaul.companyLogoPath || cachedCompanyLogoPath)}
+                        style={styles.receiptLogoImg}
+                        resizeMode={selectedHaul.companyLogoPath || cachedCompanyLogoPath ? "cover" : "contain"}
+                      />
+                    </View>
                     <View style={styles.receiptCompanyBlock}>
                       <Text style={styles.receiptCompanyName}>{(selectedHaul.companyName || user?.companyName || '').toUpperCase()}</Text>
                       <Text style={styles.receiptJobSiteName}>{(selectedHaul.jobSiteName || job?.name || '').toUpperCase()}</Text>
@@ -1607,19 +1618,21 @@ export default function JobDetails() {
                 <TouchableOpacity style={styles.receiptCloseBtnNew} onPress={() => setReceiptVisible(false)}>
                   <Text style={styles.receiptCloseBtnNewText}>Kapat</Text>
                 </TouchableOpacity>
-                {!selectedHaul.isPaid && !selectedHaul.isPrintedReceipt ? (
-                  <TouchableOpacity
-                    style={styles.receiptApproveBtnNew}
-                    onPress={() => {
-                      setReceiptVisible(false);
-                      openPaymentConfirm(selectedHaul);
-                    }}>
-                    <Text style={styles.receiptApproveBtnNewText}>Onayla</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity style={styles.receiptPrintBtnNew} onPress={() => triggerPrint(selectedHaul)}>
-                    <Text style={styles.receiptPrintBtnNewText}>Yazdır</Text>
-                  </TouchableOpacity>
+                {selectedHaul.isPrintedReceipt && (
+                  !selectedHaul.isPaid ? (
+                    <TouchableOpacity
+                      style={styles.receiptApproveBtnNew}
+                      onPress={() => {
+                        setReceiptVisible(false);
+                        openPaymentConfirm(selectedHaul);
+                      }}>
+                      <Text style={styles.receiptApproveBtnNewText}>Onayla</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity style={styles.receiptPrintBtnNew} onPress={() => triggerPrint(selectedHaul)}>
+                      <Text style={styles.receiptPrintBtnNewText}>Yazdır</Text>
+                    </TouchableOpacity>
+                  )
                 )}
               </View>
             </View>
@@ -1632,7 +1645,7 @@ export default function JobDetails() {
         (() => {
           const ph = printTargetHaul;
           const layout = getReceiptCaptureLayout();
-          const logoUri = ph.companyLogoPath ? `https://api.hafriyapp.com${ph.companyLogoPath.startsWith('/') ? '' : '/'}${ph.companyLogoPath}` : null;
+          // Logo resolved inline via resolveReceiptLogo
           const timeStr = new Date(ph.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
           const dateStr = new Date(ph.timeOfHaul).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
           const ucretStr = [ph.cashAmount > 0 ? `${ph.cashAmount.toLocaleString('tr-TR')}₺` : '', ph.fuelAmount > 0 ? `${ph.fuelAmount.toLocaleString('tr-TR')}lt` : ''].filter(Boolean).join(' / ') || '-';
@@ -1700,7 +1713,11 @@ export default function JobDetails() {
                         marginRight: 14,
                         overflow: 'hidden',
                       }}>
-                      {logoUri ? <Image source={{ uri: logoUri }} style={{ width: 46, height: 46, borderRadius: 23 }} /> : <Image source={require('../../../assets/icons/truck.png')} style={{ width: 40, height: 40 }} resizeMode="contain" />}
+                      <Image
+                        source={resolveReceiptLogo(ph.companyLogoPath || cachedCompanyLogoPath)}
+                        style={ph.companyLogoPath || cachedCompanyLogoPath ? { width: 46, height: 46, borderRadius: 23 } : { width: 40, height: 40 }}
+                        resizeMode={ph.companyLogoPath || cachedCompanyLogoPath ? "cover" : "contain"}
+                      />
                     </View>
                     <View style={{ flex: 1, alignItems: 'center' }}>
                       <Text numberOfLines={1} style={{ fontSize: 24, fontWeight: '800', letterSpacing: 0.3, color: '#000', textAlign: 'center' }}>

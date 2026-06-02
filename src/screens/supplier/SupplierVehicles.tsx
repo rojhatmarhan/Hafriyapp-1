@@ -11,6 +11,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { ensurePrinterReady, printImage, clearSavedPrinter, getReceiptCaptureLayout } from '../../services/printService';
 import RNBlobUtil from 'react-native-blob-util';
 import Clipboard from '@react-native-clipboard/clipboard';
+import { useFocusEffect } from '@react-navigation/native';
 
 const YELLOW = '#FFD500';
 const GRAY = '#F4F4F4';
@@ -36,6 +37,13 @@ type VehicleUI = {
 };
 
 // Sabit trips kaldırıldı — gerçek API verisi kullanılıyor
+
+const resolveReceiptLogo = (path?: string | null): any => {
+  if (!path) return require('../../../assets/icons/truck.png');
+  if (path.startsWith('data:image') || path.startsWith('http')) return { uri: path };
+  if (path.startsWith('/uploads') || path.startsWith('/')) return { uri: `https://api.hafriyapp.com${path}` };
+  return { uri: `data:image/png;base64,${path}` };
+};
 
 /* ================= SCREEN ================= */
 
@@ -610,21 +618,21 @@ export default function SupplierVehicles() {
     }
   };
 
-  useEffect(() => {
-    fetchVehicles();
-    fetchHauls();
-  }, [token]);
-
-  useEffect(() => {
-    if (!token || !companyId) return;
-    getCompanyById(companyId, token)
-      .then(res => {
-        const companyData = res?.isSuccess ? res.data : res?.data || res;
-        const path = companyData?.logoPath || companyData?.LogoPath || null;
-        if (path) setCachedCompanyLogoPath(path);
-      })
-      .catch(() => {});
-  }, [token, companyId]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchVehicles();
+      fetchHauls();
+      if (token && companyId) {
+        getCompanyById(companyId, token)
+          .then(res => {
+            const companyData = res?.isSuccess ? res.data : res?.data || res;
+            const path = companyData?.logoPath || companyData?.LogoPath || null;
+            if (path) setCachedCompanyLogoPath(path);
+          })
+          .catch(() => {});
+      }
+    }, [token, companyId])
+  );
 
   /* ================= RENDERS ================= */
 
@@ -636,7 +644,9 @@ export default function SupplierVehicles() {
             <View style={styles.plateTrStrip}>
               <Text style={styles.plateTrText}>TR</Text>
             </View>
-            <Text style={styles.plateText} numberOfLines={1}>{vehicle.plate}</Text>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={styles.plateText} numberOfLines={1}>{vehicle.plate}</Text>
+            </View>
           </View>
           {vehicle.driverName ? <Text style={styles.vehicleDriverName}>{vehicle.driverName}</Text> : <Text style={styles.vehicleNoDriver}>Şoför Atanmamış</Text>}
           <Text style={styles.vehicleDate}>Kayıt: {formatDateDMY(vehicle.createdDate)}</Text>
@@ -1045,7 +1055,13 @@ export default function SupplierVehicles() {
                 <View style={styles.receiptMain}>
                   {/* Başlık: Logo + Firma/Şantiye + Saat */}
                   <View style={styles.receiptHead}>
-                    <View style={styles.receiptLogoBox}>{selectedTrip.companyLogoPath ? <Image source={{ uri: `https://api.hafriyapp.com${selectedTrip.companyLogoPath.startsWith('/') ? '' : '/'}${selectedTrip.companyLogoPath}` }} style={styles.receiptLogoImg} resizeMode="cover" /> : <Image source={require('../../../assets/icons/truck.png')} style={styles.receiptLogoImg} resizeMode="contain" />}</View>
+                    <View style={styles.receiptLogoBox}>
+                      <Image
+                        source={resolveReceiptLogo(selectedTrip.companyLogoPath || cachedCompanyLogoPath)}
+                        style={styles.receiptLogoImg}
+                        resizeMode={selectedTrip.companyLogoPath || cachedCompanyLogoPath ? "cover" : "contain"}
+                      />
+                    </View>
                     <View style={styles.receiptCompanyBlock}>
                       <Text style={styles.receiptCompany}>{(selectedTrip.companyName || user?.companyName || '').toUpperCase()}</Text>
                       <Text style={styles.receiptJobsite}>{(selectedTrip.jobSiteName || '').toUpperCase()}</Text>
@@ -1149,7 +1165,7 @@ export default function SupplierVehicles() {
         (() => {
           const ph = printTargetHaul;
           const layout = getReceiptCaptureLayout();
-          const logoUri = ph.companyLogoPath ? `https://api.hafriyapp.com${ph.companyLogoPath.startsWith('/') ? '' : '/'}${ph.companyLogoPath}` : null;
+          // Logo resolved inline via resolveReceiptLogo
           const timeStr = new Date(ph.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
           const dateStr = new Date(ph.timeOfHaul).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
           const ucretStr = [ph.cashAmount > 0 ? `${ph.cashAmount.toLocaleString('tr-TR')}₺` : '', ph.fuelAmount > 0 ? `${ph.fuelAmount.toLocaleString('tr-TR')}lt` : ''].filter(Boolean).join(' / ') || '-';
@@ -1212,7 +1228,11 @@ export default function SupplierVehicles() {
                         marginRight: 12,
                         overflow: 'hidden',
                       }}>
-                      {logoUri ? <Image source={{ uri: logoUri }} style={{ width: 46, height: 46, borderRadius: 23 }} /> : <Image source={require('../../../assets/icons/truck.png')} style={{ width: 40, height: 40 }} resizeMode="contain" />}
+                      <Image
+                        source={resolveReceiptLogo(ph.companyLogoPath || cachedCompanyLogoPath)}
+                        style={ph.companyLogoPath || cachedCompanyLogoPath ? { width: 46, height: 46, borderRadius: 23 } : { width: 40, height: 40 }}
+                        resizeMode={ph.companyLogoPath || cachedCompanyLogoPath ? "cover" : "contain"}
+                      />
                     </View>
                     <View style={{ flex: 1, alignItems: 'center' }}>
                       <Text style={{ fontSize: 24, fontWeight: '800', letterSpacing: 0.5, color: '#000', textAlign: 'center' }}>{(ph.companyName || user?.companyName || 'HAFRİYAT').toUpperCase()}</Text>
@@ -1544,16 +1564,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   plateText: {
-    flex: 1,
     fontSize: 14,
     fontWeight: '900',
     color: '#111',
-    textAlign: 'center',
     paddingHorizontal: 4,
     letterSpacing: 0.5,
-    backgroundColor: '#fff',
-    includeFontPadding: false,
-    textAlignVertical: 'center',
   },
   vehicleInfo: { fontSize: 12, color: '#444' },
   vehicleDate: { fontSize: 11, color: '#999', marginTop: 4 },

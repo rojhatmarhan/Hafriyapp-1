@@ -7,6 +7,7 @@ import {
 import { launchImageLibrary } from 'react-native-image-picker';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSelector } from '../hooks';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getListings, getMyListings, getListingById, createListing, updateListing, deleteListing,
   PROVINCES, getProvinceName,
@@ -66,6 +67,26 @@ const buildImageUrl = (path?: string | null): string => {
   return `${IMAGE_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
 };
 
+const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const btoa = (input: string = ''): string => {
+  let str = input;
+  let output = '';
+  for (
+    let block = 0, charCode, i = 0, map = chars;
+    str.charAt(i | 0) || (map = '=', i % 1);
+    output += map.charAt(63 & (block >> (8 - (i % 1) * 8)))
+  ) {
+    charCode = str.charCodeAt((i += 3 / 4));
+    if (charCode > 0xff) {
+      throw new Error(
+        "'btoa' failed: The string to be encoded contains characters outside of the Latin1 range."
+      );
+    }
+    block = (block << 8) | charCode;
+  }
+  return output;
+};
+
 const urlToBase64 = async (url: string): Promise<string> => {
   try {
     const res = await fetch(url);
@@ -86,6 +107,87 @@ export default function MyAds() {
   const insets = useSafeAreaInsets();
   const token = useAppSelector(s => s.auth.token);
   const currentUserId = useAppSelector(s => s.auth.user?.id ?? '');
+
+  const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    AsyncStorage.getItem('blocked_user_ids')
+      .then(val => {
+        if (val) setBlockedUserIds(JSON.parse(val));
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleBlockUser = (userId: string, userName?: string | null) => {
+    Alert.alert(
+      'Kullanıcıyı Engelle',
+      'Bu kullanıcıyı engellemek istediğinize emin misiniz? Engellediğinizde, bu kullanıcının hiçbir ilanı listenizde gösterilmeyecektir. Ayrıca kullanıcı yetkililere WhatsApp üzerinden bildirilecektir.',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Evet, Engelle ve Bildir',
+          onPress: async () => {
+            try {
+              // 1. Block locally (filters feed immediately)
+              const updated = [...blockedUserIds, userId];
+              setBlockedUserIds(updated);
+              await AsyncStorage.setItem('blocked_user_ids', JSON.stringify(updated));
+              setDetailModal(false);
+              
+              // 2. Redirect to WhatsApp to report to admin
+              const phone = '+905322959413';
+              const message = `Merhaba, Hafriyapp uygulamasında şu kullanıcıyı engelledim ve bildirmek istiyorum:\nKullanıcı ID: ${userId}\nKullanıcı Adı: ${userName || 'Belirtilmemiş'}`;
+              const appUrl = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(message)}`;
+              const webUrl = `https://wa.me/${phone.replace(/[+\s]/g, '')}?text=${encodeURIComponent(message)}`;
+              
+              try {
+                const supported = await Linking.canOpenURL(appUrl);
+                if (supported) {
+                  await Linking.openURL(appUrl);
+                } else {
+                  await Linking.openURL(webUrl);
+                }
+              } catch {
+                await Linking.openURL(webUrl);
+              }
+            } catch {
+              Alert.alert('Hata', 'Kullanıcı engellenirken bir sorun oluştu.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleReportListing = (listing: Listing) => {
+    Alert.alert(
+      'İlanı Bildir',
+      'Bu ilanda uygunsuz, sakıncalı veya aldatıcı içerik olduğunu düşünüyor musunuz? Şikayetinizi yetkililere WhatsApp üzerinden bildirebilirsiniz.',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Evet, WhatsApp ile Bildir',
+          onPress: async () => {
+            const phone = '+905322959413';
+            const message = `Merhaba, Hafriyapp uygulamasında şu ilanı şikayet etmek istiyorum:\nİlan ID: ${listing.id}\nİlan Başlığı: ${listing.title}\nİlan Sahibi: ${listing.userName || 'Belirtilmemiş'}`;
+            const appUrl = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(message)}`;
+            const webUrl = `https://wa.me/${phone.replace(/[+\s]/g, '')}?text=${encodeURIComponent(message)}`;
+            
+            try {
+              const supported = await Linking.canOpenURL(appUrl);
+              if (supported) {
+                await Linking.openURL(appUrl);
+              } else {
+                await Linking.openURL(webUrl);
+              }
+            } catch {
+              await Linking.openURL(webUrl);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   // Navigation
   const [selectedType, setSelectedType] = useState<number | null>(null);
@@ -823,7 +925,9 @@ export default function MyAds() {
   }
 
   /* ─── LIST VIEW ─── */
-  const displayList = activeTab === 'all' ? listings : myListings;
+  const displayList = (activeTab === 'all' ? listings : myListings).filter(
+    l => !blockedUserIds.includes(l.userId)
+  );
 
   return (
     <SafeAreaView style={styles.listContainer} edges={['bottom']}>
@@ -993,7 +1097,7 @@ export default function MyAds() {
                 <ScrollView
                   style={{ flex: 1 }}
                   showsVerticalScrollIndicator={false}
-                  contentContainerStyle={{ paddingBottom: detailListing.userId === currentUserId ? 140 : 90 }}
+                  contentContainerStyle={{ paddingBottom: detailListing.userId === currentUserId ? 140 : 150 }}
                 >
                   {/* Fotoğraf karusel */}
                   {(() => {
@@ -1113,6 +1217,24 @@ export default function MyAds() {
                       <Text style={ds.btnPaylasText}>↗  Paylaş</Text>
                     </TouchableOpacity>
                   </View>
+
+                  {/* Diğer kullanıcı ilanları için Şikayet / Engelleme */}
+                  {detailListing.userId !== currentUserId && (
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                      <TouchableOpacity
+                        style={{ flex: 1, backgroundColor: '#FFF0F0', paddingVertical: 11, borderRadius: 10, alignItems: 'center' }}
+                        onPress={() => handleReportListing(detailListing)}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#D32F2F' }}>⚠️ Şikayet Et</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ flex: 1, backgroundColor: '#FFF0F0', paddingVertical: 11, borderRadius: 10, alignItems: 'center' }}
+                        onPress={() => handleBlockUser(detailListing.userId, detailListing.userName)}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#D32F2F' }}>🚫 Kullanıcıyı Engelle</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
 
                   {/* Sahip butonları */}
                   {detailListing.userId === currentUserId && (

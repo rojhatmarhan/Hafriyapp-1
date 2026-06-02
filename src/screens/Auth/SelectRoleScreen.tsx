@@ -4,6 +4,8 @@ import { useAppDispatch } from '../../hooks';
 import { setPhone, setRole } from '../../store/slices/authSlice';
 import { register } from '../../services/authService';
 import { useNavigation } from '@react-navigation/native';
+import CheckBox from '../../components/CheckBox';
+import AgreementModal from '../../components/AgreementModal';
 
 const SelectRoleScreen = () => {
   const dispatch = useAppDispatch();
@@ -16,6 +18,17 @@ const SelectRoleScreen = () => {
   const [lastName, setLastName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [phone, setPhoneState] = useState('');
+
+  const [agreementChecked, setAgreementChecked] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalUrl, setModalUrl] = useState('');
+  const [modalTitle, setModalTitle] = useState('');
+
+  const openAgreementModal = (url: string, title: string) => {
+    setModalUrl(url);
+    setModalTitle(title);
+    setModalVisible(true);
+  };
 
   const validateRegister = () => {
     if (registerRole === 'driver') {
@@ -37,6 +50,11 @@ const SelectRoleScreen = () => {
       return false;
     }
 
+    if (!agreementChecked) {
+      Alert.alert('Uyarı', 'Kayıt olmak için Kullanıcı Sözleşmesi, KVKK ve Gizlilik Politikası’nı onaylamalısınız.');
+      return false;
+    }
+
     return true;
   };
 
@@ -53,7 +71,7 @@ const SelectRoleScreen = () => {
           <Image source={require('../../../assets/login/Vector.png')} style={styles.vector} />
           <Text style={styles.middleText}>Hizmetlere erişmek için kayıt olun</Text>
 
-          <TouchableOpacity style={styles.buttonRegister} onPress={() => setShowRegisterModal(true)}>
+          <TouchableOpacity style={styles.buttonRegister} onPress={() => { setAgreementChecked(false); setShowRegisterModal(true); }}>
             <Text style={styles.buttonText}>Kayıt Ol</Text>
           </TouchableOpacity>
         </View>
@@ -100,6 +118,35 @@ const SelectRoleScreen = () => {
 
                   <Input label="Telefon Numarası" value={phone} keyboardType="number-pad" placeholder="05XXXXXXXXX" onChange={(text: string) => setPhoneState(text.replace(/\D/g, '').slice(0, 11))} />
 
+                  {/* Checkbox with agreement links */}
+                  <View style={{ marginVertical: 10 }}>
+                    <CheckBox checked={agreementChecked} onPress={() => setAgreementChecked(!agreementChecked)}>
+                      <Text style={{ fontSize: 11, color: '#444', lineHeight: 16 }}>
+                        <Text 
+                          style={{ color: '#0066CC', fontWeight: 'bold', textDecorationLine: 'underline' }} 
+                          onPress={() => openAgreementModal('https://hafriyapp.com/kullanici-sozlesmesi', 'Kullanıcı Sözleşmesi')}
+                        >
+                          Kullanıcı Sözleşmesi
+                        </Text>
+                        {', '}
+                        <Text 
+                          style={{ color: '#0066CC', fontWeight: 'bold', textDecorationLine: 'underline' }} 
+                          onPress={() => openAgreementModal('https://hafriyapp.com/kvkk-aydinlatma-metni', 'KVKK Aydınlatma Metni')}
+                        >
+                          KVKK Aydınlatma Metni
+                        </Text>
+                        {' ve '}
+                        <Text 
+                          style={{ color: '#0066CC', fontWeight: 'bold', textDecorationLine: 'underline' }} 
+                          onPress={() => openAgreementModal('https://hafriyapp.com/gizlilik-politikasi', 'Gizlilik Politikası')}
+                        >
+                          Gizlilik Politikası
+                        </Text>
+                        {'’nı okudum ve kabul ediyorum. Sakıncalı içerik ve kötüye kullanıma tolerans gösterilmeyeceğini onaylıyorum.'}
+                      </Text>
+                    </CheckBox>
+                  </View>
+
                   <TouchableOpacity
                     style={styles.submitBtn}
                     onPress={async () => {
@@ -126,8 +173,7 @@ const SelectRoleScreen = () => {
                         // 🔐 phone redux’a yaz
                         dispatch(setPhone(payload.phoneNumber));
 
-                        // 🔴 TEST AMAÇLI OTP
-                        Alert.alert('OTP Kodu (TEST)', `Gelen Kod: ${res.data.verificationCode}`);
+
 
                         setShowRegisterModal(false);
                         navigation.navigate('Otp');
@@ -146,6 +192,14 @@ const SelectRoleScreen = () => {
             </View>
           </TouchableWithoutFeedback>
         </Modal>
+
+        {/* Agreement Modal */}
+        <AgreementModal 
+          visible={modalVisible}
+          onClose={() => setModalVisible(false)}
+          url={modalUrl}
+          title={modalTitle}
+        />
       </View>
     </TouchableWithoutFeedback>
   );
@@ -269,8 +323,9 @@ const styles = StyleSheet.create({
   loginLink: {
     marginTop: 14,
     textAlign: 'center',
-    color: '#FFA500',
+    color: '#0066CC',
     fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   modalHeader: {
     flexDirection: 'row',
