@@ -22,13 +22,13 @@ export default function AppNavigator() {
         swipeEnabled: false,
         swipeEdgeWidth: 0,
         gestureHandlerProps: { enabled: false },
-      }}>
+      } as any}>
       {/* 🔑 Tabs burada olmalı */}
-      <Drawer.Screen name="HomeTabs" component={BottomTabs} options={{ title: 'Anasayfa' }} />
+      <Drawer.Screen name="HomeTabs" component={BottomTabs} options={{ title: 'ANASAYFA' }} />
 
-      <Drawer.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profilim' }} />
+      <Drawer.Screen name="Profile" component={ProfileScreen} options={{ title: 'PROFİLİM' }} />
 
-      <Drawer.Screen name="MyAds" component={MyAds} options={{ title: 'İlanlarım' }} />
+      <Drawer.Screen name="MyAds" component={MyAds} options={{ title: 'İLANLAR' }} />
 
       {/* 💬 CompanyChat is hoisted here to hide the global drawer header and bottom tabs */}
       <Drawer.Screen

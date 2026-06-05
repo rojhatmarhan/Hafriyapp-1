@@ -50,7 +50,7 @@ export default function AppNavigator() {
       <Drawer.Screen
         name="MyAds"
         component={MyAds}
-        options={{ title: 'İLANLARIM', ...NO_SWIPE }}
+        options={{ title: 'İLANLAR', ...NO_SWIPE }}
       />
     </Drawer.Navigator>
   );

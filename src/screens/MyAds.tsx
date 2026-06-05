@@ -135,7 +135,7 @@ export default function MyAds() {
               setDetailModal(false);
               
               // 2. Redirect to WhatsApp to report to admin
-              const phone = '+905322959413';
+              const phone = '+905383573913';
               const message = `Merhaba, Hafriyapp uygulamasında şu kullanıcıyı engelledim ve bildirmek istiyorum:\nKullanıcı ID: ${userId}\nKullanıcı Adı: ${userName || 'Belirtilmemiş'}`;
               const appUrl = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(message)}`;
               const webUrl = `https://wa.me/${phone.replace(/[+\s]/g, '')}?text=${encodeURIComponent(message)}`;
@@ -168,7 +168,7 @@ export default function MyAds() {
         {
           text: 'Evet, WhatsApp ile Bildir',
           onPress: async () => {
-            const phone = '+905322959413';
+            const phone = '+905383573913';
             const message = `Merhaba, Hafriyapp uygulamasında şu ilanı şikayet etmek istiyorum:\nİlan ID: ${listing.id}\nİlan Başlığı: ${listing.title}\nİlan Sahibi: ${listing.userName || 'Belirtilmemiş'}`;
             const appUrl = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(message)}`;
             const webUrl = `https://wa.me/${phone.replace(/[+\s]/g, '')}?text=${encodeURIComponent(message)}`;

@@ -486,7 +486,7 @@ export default function CompanyChat() {
       return;
     }
 
-    const adminPhone = '+905322959413';
+    const adminPhone = '+905383573913';
     const groupName = groupData?.name || 'Grup Bilgisi Yok';
     const msgContent = selectedMessage.content || '';
     const senderName = selectedMessage.senderName || 'Belirtilmemiş';
