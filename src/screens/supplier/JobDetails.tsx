@@ -152,6 +152,8 @@ export default function JobDetails() {
 
   const normalizeHaul = (h: HaulApi): HaulApi => ({
     ...h,
+    isPaid: h.isPaid !== undefined ? h.isPaid : ((h as any).IsPaid ?? false),
+    isPrintedReceipt: h.isPrintedReceipt !== undefined ? h.isPrintedReceipt : ((h as any).IsPrintedReceipt ?? false),
     contactPhone: h.contactPhone || (h as any).ContactPhone || job?.contactPhone || user?.phoneNumber || undefined,
     driverName: h.driverName || (h as any).DriverName || undefined,
     driverPhone: h.driverPhone || (h as any).DriverPhone || undefined,
@@ -1618,21 +1620,20 @@ export default function JobDetails() {
                 <TouchableOpacity style={styles.receiptCloseBtnNew} onPress={() => setReceiptVisible(false)}>
                   <Text style={styles.receiptCloseBtnNewText}>Kapat</Text>
                 </TouchableOpacity>
+                {!selectedHaul.isPaid && (
+                  <TouchableOpacity
+                    style={styles.receiptApproveBtnNew}
+                    onPress={() => {
+                      setReceiptVisible(false);
+                      openPaymentConfirm(selectedHaul);
+                    }}>
+                    <Text style={styles.receiptApproveBtnNewText}>Onayla</Text>
+                  </TouchableOpacity>
+                )}
                 {selectedHaul.isPrintedReceipt && (
-                  !selectedHaul.isPaid ? (
-                    <TouchableOpacity
-                      style={styles.receiptApproveBtnNew}
-                      onPress={() => {
-                        setReceiptVisible(false);
-                        openPaymentConfirm(selectedHaul);
-                      }}>
-                      <Text style={styles.receiptApproveBtnNewText}>Onayla</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity style={styles.receiptPrintBtnNew} onPress={() => triggerPrint(selectedHaul)}>
-                      <Text style={styles.receiptPrintBtnNewText}>Yazdır</Text>
-                    </TouchableOpacity>
-                  )
+                  <TouchableOpacity style={styles.receiptPrintBtnNew} onPress={() => triggerPrint(selectedHaul)}>
+                    <Text style={styles.receiptPrintBtnNewText}>Yazdır</Text>
+                  </TouchableOpacity>
                 )}
               </View>
             </View>
