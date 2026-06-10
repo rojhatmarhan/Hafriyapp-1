@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { useAppDispatch, useAppSelector } from '../hooks';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ScrollView } from 'react-native-gesture-handler';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { updateUserProfile, deactivateAccount, deleteAccount, getMyCompanies, getCompanyById } from '../services/userService';
@@ -50,6 +51,42 @@ const ProfileScreen = () => {
   const [actionLoading, setActionLoading] = useState(false);
 
   const [authChanged, setAuthChanged] = useState(false);
+
+  const [blockedUsers, setBlockedUsers] = useState<{ id: string; name: string }[]>([]);
+
+  const fetchBlockedUsers = async () => {
+    try {
+      const val = await AsyncStorage.getItem('blocked_users');
+      if (val) {
+        setBlockedUsers(JSON.parse(val));
+      } else {
+        setBlockedUsers([]);
+      }
+    } catch {}
+  };
+
+  const handleUnblockUser = (userId: string, name: string) => {
+    Alert.alert(
+      'Engeli Kaldır',
+      `"${name}" kullanıcısının engelini kaldırmak istediğinize emin misiniz?`,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Evet, Kaldır',
+          onPress: async () => {
+            try {
+              const updated = blockedUsers.filter(u => u.id !== userId);
+              setBlockedUsers(updated);
+              await AsyncStorage.setItem('blocked_users', JSON.stringify(updated));
+              Alert.alert('Başarılı', 'Kullanıcının engeli kaldırıldı.');
+            } catch {
+              Alert.alert('Hata', 'Engeli kaldırırken bir sorun oluştu.');
+            }
+          },
+        },
+      ],
+    );
+  };
 
   /* ---------------- FETCH DATA ---------------- */
   const fetchCompanyData = async () => {
@@ -107,6 +144,7 @@ const ProfileScreen = () => {
   useFocusEffect(
     useCallback(() => {
       fetchCompanyData();
+      fetchBlockedUsers();
     }, [token, isDriver])
   );
 
@@ -289,6 +327,35 @@ const ProfileScreen = () => {
           </View>
         </View>
       )}
+
+      {/* 🛡️ ENGELLENEN KULLANICILAR KARTI */}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle}>🛡️ Engellenen Kullanıcılar</Text>
+        </View>
+
+        <View>
+          {blockedUsers.length === 0 ? (
+            <Text style={{ fontSize: 14, color: '#888', textAlign: 'center', paddingVertical: 10 }}>
+              Engellenmiş kullanıcı bulunmuyor.
+            </Text>
+          ) : (
+            blockedUsers.map((item) => (
+              <View key={item.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' }}>
+                <Text style={{ fontSize: 14, color: '#333', fontWeight: '500', flex: 1, marginRight: 10 }} numberOfLines={1}>
+                  👤 {item.name}
+                </Text>
+                <TouchableOpacity
+                  style={{ backgroundColor: '#FFF0F0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15, borderWidth: 1, borderColor: '#FFCDCD' }}
+                  onPress={() => handleUnblockUser(item.id, item.name)}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#D32F2F' }}>Engeli Kaldır</Text>
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
+        </View>
+      </View>
 
       {/* 🛑 TEHLİKELİ BÖLGE — Yetkili (role=1) kullanıcılara gösterilmez */}
       {companyUserRole !== 1 && (

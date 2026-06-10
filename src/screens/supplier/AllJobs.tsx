@@ -9,6 +9,8 @@ import { useAppSelector, useAppDispatch } from '../../hooks';
 import { setSelectedCity } from '../../store/slices/uiSlice';
 import { getMarketJobs } from '../../services/jobSiteService';
 import { mapJobFromApi } from '../../utils/jobMapper';
+import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const YELLOW = '#FFD500';
 const LIGHT_YELLOW = '#FFF2B3';
@@ -42,10 +44,16 @@ const JobDetailModal = ({
   visible,
   job,
   onClose,
+  currentUserId,
+  onReport,
+  onBlock,
 }: {
   visible: boolean;
   job: any;
   onClose: () => void;
+  currentUserId?: string | null;
+  onReport?: (job: any) => void;
+  onBlock?: (userId: string, name: string) => void;
 }) => {
   if (!job) return null;
 
@@ -193,6 +201,23 @@ const JobDetailModal = ({
               </>
             )}
 
+            {job.ownerUserId && currentUserId && job.ownerUserId !== currentUserId && (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, paddingHorizontal: 16, marginBottom: 8 }}>
+                <TouchableOpacity
+                  style={{ flex: 1, backgroundColor: '#FFF0F0', paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#FFCDCD' }}
+                  onPress={() => onReport?.(job)}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#D32F2F' }}>⚠️ Şikayet Et</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ flex: 1, backgroundColor: '#FFF0F0', paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#FFCDCD' }}
+                  onPress={() => onBlock?.(job.ownerUserId, job.company || 'Belirtilmemiş')}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#D32F2F' }}>🚫 Kullanıcı Engelle</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
           </ScrollView>
 
           {/* FOOTER: Kapat | Konum | Şimdi Ara */}
@@ -238,6 +263,89 @@ const AllJobs = () => {
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedJob, setSelectedJob] = useState<any>(null);
   const token = useAppSelector(state => state.auth.token);
+  const currentUserId = useAppSelector(state => state.auth.user?.id);
+  const [blockedUsers, setBlockedUsers] = useState<{ id: string; name: string }[]>([]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      AsyncStorage.getItem('blocked_users')
+        .then(val => {
+          if (val) setBlockedUsers(JSON.parse(val));
+          else setBlockedUsers([]);
+        })
+        .catch(() => {});
+    }, [])
+  );
+
+  const handleReportJob = (job: any) => {
+    Alert.alert(
+      'İş İlanını Bildir',
+      'Bu ilanda uygunsuz, sakıncalı veya aldatıcı içerik olduğunu düşünüyor musunuz? Şikayetinizi yetkililere WhatsApp üzerinden bildirebilirsiniz.',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Evet, WhatsApp ile Bildir',
+          onPress: async () => {
+            const phone = '+905383573913';
+            const message = `Merhaba, Hafriyapp uygulamasında şu iş ilanını şikayet etmek istiyorum:\nİş ID: ${job.id}\nFirma/Şantiye: ${job.company || ''} - ${job.site || ''}\nİlan Sahibi: ${job.contactPhone || 'Belirtilmemiş'}`;
+            const appUrl = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(message)}`;
+            const webUrl = `https://wa.me/${phone.replace(/[+\s]/g, '')}?text=${encodeURIComponent(message)}`;
+            
+            try {
+              const supported = await Linking.canOpenURL(appUrl);
+              if (supported) {
+                await Linking.openURL(appUrl);
+              } else {
+                await Linking.openURL(webUrl);
+              }
+            } catch {
+              await Linking.openURL(webUrl);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleBlockUser = (userId: string, name?: string | null) => {
+    Alert.alert(
+      'Kullanıcıyı Engelle',
+      'Bu kullanıcıyı engellemek istediğinize emin misiniz? Engellediğinizde, bu kullanıcının hiçbir ilanı veya mesajı listenizde gösterilmeyecektir. Ayrıca kullanıcı yetkililere WhatsApp üzerinden bildirilecektir.',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Evet, Engelle ve Bildir',
+          onPress: async () => {
+            try {
+              const userName = name || 'Belirtilmemiş';
+              const updated = [...blockedUsers, { id: userId, name: userName }];
+              setBlockedUsers(updated);
+              await AsyncStorage.setItem('blocked_users', JSON.stringify(updated));
+              setDetailVisible(false);
+              
+              const phone = '+905383573913';
+              const message = `Merhaba, Hafriyapp uygulamasında şu kullanıcıyı engelledim ve bildirmek istiyorum:\nKullanıcı ID: ${userId}\nKullanıcı Adı: ${userName}`;
+              const appUrl = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(message)}`;
+              const webUrl = `https://wa.me/${phone.replace(/[+\s]/g, '')}?text=${encodeURIComponent(message)}`;
+              
+              try {
+                const supported = await Linking.canOpenURL(appUrl);
+                if (supported) {
+                  await Linking.openURL(appUrl);
+                } else {
+                  await Linking.openURL(webUrl);
+                }
+              } catch {
+                await Linking.openURL(webUrl);
+              }
+            } catch {
+              Alert.alert('Hata', 'Kullanıcı engellenirken bir sorun oluştu.');
+            }
+          },
+        },
+      ],
+    );
+  };
 
   // İl değişince ilçe seçimlerini sıfırla
   useEffect(() => {
@@ -256,7 +364,7 @@ const AllJobs = () => {
     );
   };
 
-  /** 🔍 Firma + Şantiye + İlçe Araması */
+  /** 🔍 Firma + Şantiye + İlçe Araması ve Engelleme Filtresi */
   const filteredJobs = useMemo(() => {
     const q = search.trim().toLowerCase();
     return jobs.filter(item => {
@@ -267,9 +375,10 @@ const AllJobs = () => {
       const matchesDistrict =
         selectedDistricts.length === 0 ||
         selectedDistricts.includes(item.districtName);
-      return matchesSearch && matchesDistrict;
+      const isNotBlocked = !blockedUsers.some(u => u.id === item.ownerUserId);
+      return matchesSearch && matchesDistrict && isNotBlocked;
     });
-  }, [search, jobs, selectedDistricts]);
+  }, [search, jobs, selectedDistricts, blockedUsers]);
 
   useEffect(() => {
     fetchJobs();
@@ -481,6 +590,9 @@ const AllJobs = () => {
         visible={detailVisible}
         job={selectedJob}
         onClose={() => setDetailVisible(false)}
+        currentUserId={currentUserId}
+        onReport={handleReportJob}
+        onBlock={handleBlockUser}
       />
       <FlatList
         style={{ flex: 1 }}

@@ -44,7 +44,7 @@ jest.mock('react-native-confirmation-code-field', () => {
     CodeField: (props: any) => React.createElement(View, props),
     Cursor: () => null,
     useBlurOnFulfill: () => ({ current: { focus: jest.fn() } }),
-    useClearByFocusCell: () => [({}, () => undefined)],
+    useClearByFocusCell: () => [{}, () => undefined],
   };
 });
 
@@ -65,7 +65,7 @@ describe('OtpScreen', () => {
       renderer = ReactTestRenderer.create(<OtpScreen />);
     });
 
-    const topLevelTouchables = renderer!.root.children.filter(child => child.type === TouchableOpacity);
+    const topLevelTouchables = renderer!.root.children.filter(child => typeof child !== 'string' && child.type === TouchableOpacity);
     const backButton = renderer!.root.findByProps({ testID: 'otp-back-button' });
 
     expect(topLevelTouchables).toHaveLength(0);

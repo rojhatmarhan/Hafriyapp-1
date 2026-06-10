@@ -153,7 +153,7 @@ export default function BottomTabs() {
                     style={{
                       width: 35,
                       height: 35,
-                      tintColor: focused ? '#4444' : 'black',
+                      tintColor: focused ? 'black' : '#444',
                     }}
                   />
                 </View>
@@ -182,7 +182,7 @@ export default function BottomTabs() {
                     style={{
                       width: 55,
                       height: 55,
-                      tintColor: focused ? '#444' : 'black',
+                      tintColor: focused ? 'black' : '#444',
                     }}
                   />
                 </View>
@@ -211,7 +211,7 @@ export default function BottomTabs() {
                     style={{
                       width: 45,
                       height: 45,
-                      tintColor: focused ? '#444' : 'black',
+                      tintColor: focused ? 'black' : '#444',
                     }}
                   />
                 </View>
@@ -240,7 +240,7 @@ export default function BottomTabs() {
                     style={{
                       width: 45,
                       height: 45,
-                      tintColor: focused ? '#444' : 'black',
+                      tintColor: focused ? 'black' : '#444',
                     }}
                   />
                 </View>

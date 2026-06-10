@@ -11,6 +11,10 @@ interface User {
   phoneNumberConfirmed: boolean;
   createdDate: string;
   userType: number;
+  accessMode?: number;
+  accessRestrictionNote?: string | null;
+  warningMessage?: string | null;
+  warningExpireDate?: string | null;
 }
 interface AuthState {
   role: 'driver' | 'supplier' | null;

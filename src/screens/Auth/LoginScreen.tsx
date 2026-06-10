@@ -90,9 +90,14 @@ const LoginScreen = () => {
 
 
       navigation.navigate('Otp');
-    } catch (e) {
+    } catch (e: any) {
       console.log('LOGIN ERROR', e);
-      Alert.alert('Hata', 'Bir hata oluştu');
+      const serverMsg = e.response?.data?.errors?.[0] || e.response?.data?.message;
+      const isBlocked = e.response?.status === 401 || e.response?.status === 403;
+      const defaultMsg = isBlocked 
+        ? 'Yetkili tarafından kısıtlandınız. Lütfen yetkili ile iletişime geçin.' 
+        : 'Bir hata oluştu';
+      Alert.alert('Hata', serverMsg || defaultMsg);
     }
   };
 

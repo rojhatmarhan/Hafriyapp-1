@@ -78,8 +78,9 @@ function LinkifiedText({ text, style }: { text: string; style?: any }) {
     </Text>
   );
 }
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { HubConnectionBuilder, HubConnection, LogLevel, HttpTransportType } from '@microsoft/signalr';
 import { useAppSelector } from '../../hooks';
@@ -144,6 +145,59 @@ export default function CompanyChat() {
   const [reportedUserPhone, setReportedUserPhone] = useState('');
   const [loadingPhone, setLoadingPhone] = useState(false);
   const [reportReason, setReportReason] = useState('');
+
+  const [blockedUsers, setBlockedUsers] = useState<{ id: string; name: string }[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      AsyncStorage.getItem('blocked_users')
+        .then(val => {
+          if (val) setBlockedUsers(JSON.parse(val));
+          else setBlockedUsers([]);
+        })
+        .catch(() => {});
+    }, [])
+  );
+
+  const handleBlockUserFromChat = (userId: string, name?: string | null) => {
+    Alert.alert(
+      'Kullanıcıyı Engelle',
+      'Bu kullanıcıyı engellemek istediğinize emin misiniz? Engellediğinizde, bu kullanıcının hiçbir ilanı veya mesajı listenizde gösterilmeyecektir. Ayrıca kullanıcı yetkililere WhatsApp üzerinden bildirilecektir.',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Evet, Engelle ve Bildir',
+          onPress: async () => {
+            try {
+              const userName = name || 'Belirtilmemiş';
+              const updated = [...blockedUsers, { id: userId, name: userName }];
+              setBlockedUsers(updated);
+              await AsyncStorage.setItem('blocked_users', JSON.stringify(updated));
+              setMessageOptionsVisible(false);
+              
+              const phone = '+905383573913';
+              const message = `Merhaba, Hafriyapp uygulamasında şu kullanıcıyı engelledim ve bildirmek istiyorum:\nKullanıcı ID: ${userId}\nKullanıcı Adı: ${userName}`;
+              const appUrl = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(message)}`;
+              const webUrl = `https://wa.me/${phone.replace(/[+\s]/g, '')}?text=${encodeURIComponent(message)}`;
+              
+              try {
+                const supported = await Linking.canOpenURL(appUrl);
+                if (supported) {
+                  await Linking.openURL(appUrl);
+                } else {
+                  await Linking.openURL(webUrl);
+                }
+              } catch {
+                await Linking.openURL(webUrl);
+              }
+            } catch (e) {
+              Alert.alert('Hata', 'Kullanıcı engellenirken bir sorun oluştu.');
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
@@ -587,7 +641,7 @@ export default function CompanyChat() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         <FlatList
-          data={messages}
+          data={messages.filter(m => !blockedUsers.some(bu => bu.id === m.senderId))}
           keyExtractor={item => item.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingVertical: 10 }}
@@ -828,13 +882,23 @@ export default function CompanyChat() {
           <View style={styles.optionsContent}>
             <Text style={styles.optionsTitle}>Mesaj İşlemleri</Text>
             
-            <TouchableOpacity style={styles.optionBtn} onPress={handleCopyFromOptions}>
+            <TouchableOpacity style={[styles.optionBtn, (!selectedMessage || selectedMessage.isOwnMessage) && { borderBottomWidth: 0 }]} onPress={handleCopyFromOptions}>
               <Text style={styles.optionText}>📋 Kopyala</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.optionBtn, { borderBottomWidth: 0 }]} onPress={handleOpenReportModal}>
-              <Text style={[styles.optionText, { color: '#C62828' }]}>⚠️ Şikayet Et</Text>
-            </TouchableOpacity>
+            {selectedMessage && !selectedMessage.isOwnMessage && (
+              <>
+                <TouchableOpacity style={styles.optionBtn} onPress={handleOpenReportModal}>
+                  <Text style={[styles.optionText, { color: '#C62828' }]}>⚠️ Şikayet Et</Text>
+                </TouchableOpacity>
+
+                {selectedMessage.senderId && (
+                  <TouchableOpacity style={[styles.optionBtn, { borderBottomWidth: 0 }]} onPress={() => handleBlockUserFromChat(selectedMessage.senderId, selectedMessage.senderName)}>
+                    <Text style={[styles.optionText, { color: '#C62828' }]}>🚫 Kullanıcıyı Engelle</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
 
             <TouchableOpacity style={styles.optionCancelBtn} onPress={() => setMessageOptionsVisible(false)}>
               <Text style={styles.optionCancelText}>İptal</Text>

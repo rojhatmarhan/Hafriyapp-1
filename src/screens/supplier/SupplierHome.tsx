@@ -14,6 +14,9 @@ import { useAppSelector, useAppDispatch } from '../../hooks';
 import { setSelectedCity } from '../../store/slices/uiSlice';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { getChatGroups, createChatGroup, uploadGroupImage } from '../../services/chatService';
+import { getProfile } from '../../services/userService';
+import { clearAuth } from '../../utils/secureStore';
+import { logout, setUser } from '../../store/slices/authSlice';
 
 export default function SupplierHome() {
   const navigation = useNavigation<any>();
@@ -54,7 +57,23 @@ export default function SupplierHome() {
     useCallback(() => {
       const showLoader = chatGroups.length === 0;
       fetchGroups(showLoader);
-    }, [selectedCity, chatGroups.length])
+
+      if (token) {
+        getProfile(token).then(profileRes => {
+          if (profileRes?.isSuccess) {
+            dispatch(setUser(profileRes.data));
+            if (profileRes.data?.accessMode === 1) {
+              console.log('👤 User is blocked (focus). Logging out...');
+              clearAuth().then(() => {
+                dispatch(logout());
+              });
+            }
+          }
+        }).catch(err => {
+          console.log('Error updating profile on focus:', err);
+        });
+      }
+    }, [selectedCity, chatGroups.length, token, dispatch])
   );
 
   const fetchGroups = async (showLoader: boolean = true) => {
@@ -270,6 +289,25 @@ export default function SupplierHome() {
           }
         </TouchableOpacity>
       </View>
+
+      {user?.warningMessage && (!user.warningExpireDate || new Date(user.warningExpireDate) > new Date()) ? (
+        <View style={{
+          backgroundColor: '#FFF9DB',
+          borderColor: '#FFD500',
+          borderWidth: 1,
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <Text style={{ fontSize: 18 }}>⚠️</Text>
+          <Text style={{ flex: 1, color: '#000', fontWeight: '700', fontSize: 13, lineHeight: 18 }}>
+            {user.warningMessage}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.searchRow}>
         {/* 🔍 ARAMA */}

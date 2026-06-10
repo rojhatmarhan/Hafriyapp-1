@@ -108,12 +108,12 @@ export default function MyAds() {
   const token = useAppSelector(s => s.auth.token);
   const currentUserId = useAppSelector(s => s.auth.user?.id ?? '');
 
-  const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
+  const [blockedUsers, setBlockedUsers] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
-    AsyncStorage.getItem('blocked_user_ids')
+    AsyncStorage.getItem('blocked_users')
       .then(val => {
-        if (val) setBlockedUserIds(JSON.parse(val));
+        if (val) setBlockedUsers(JSON.parse(val));
       })
       .catch(() => {});
   }, []);
@@ -129,9 +129,10 @@ export default function MyAds() {
           onPress: async () => {
             try {
               // 1. Block locally (filters feed immediately)
-              const updated = [...blockedUserIds, userId];
-              setBlockedUserIds(updated);
-              await AsyncStorage.setItem('blocked_user_ids', JSON.stringify(updated));
+              const name = userName || 'Belirtilmemiş';
+              const updated = [...blockedUsers, { id: userId, name }];
+              setBlockedUsers(updated);
+              await AsyncStorage.setItem('blocked_users', JSON.stringify(updated));
               setDetailModal(false);
               
               // 2. Redirect to WhatsApp to report to admin
@@ -926,7 +927,7 @@ export default function MyAds() {
 
   /* ─── LIST VIEW ─── */
   const displayList = (activeTab === 'all' ? listings : myListings).filter(
-    l => !blockedUserIds.includes(l.userId)
+    l => !blockedUsers.some(bu => bu.id === l.userId)
   );
 
   return (

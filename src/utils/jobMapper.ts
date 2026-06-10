@@ -107,6 +107,7 @@ export const mapJobFromApi = (item: any) => {
 
   return {
     id: item.id,
+    ownerUserId: item.ownerUserId,
     company: item.companyName,
     site: item.name,
     jobType: item.jobType,

@@ -136,10 +136,27 @@ index 3fa7409..ae1583a 100644
              sendDataByte(PrinterCommand.POS_Set_PrtInit());
          }
 diff --git a/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m b/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
-index d8e5cd6..a8715f5 100644
+index d8e5cd6..995cc36 100644
 --- a/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
 +++ b/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
-@@ -43,19 +43,16 @@
+@@ -20,15 +20,9 @@
+ //            ASCII ESC M 0 CR LF
+ //            Hex 1B 4D 0 0D 0A
+ //            Decimal 27 77 0 13 10
+-            unsigned char * initPrinter = malloc(5);
+-            initPrinter[0]=27;
+-            initPrinter[1]=77;
+-            initPrinter[2]=0;
+-            initPrinter[3]=13;
+-            initPrinter[4]=10;
++            unsigned char initPrinter[] = {27, 77, 0, 13, 10};
+             [RNBluetoothManager writeValue:[NSData dataWithBytes:initPrinter length:5] withDelegate:self];
+             _now = -1;
+-            [NSThread sleepForTimeInterval:0.01f];
+         }else {
+             [self print];
+         }
+@@ -43,19 +37,16 @@
  {
      @synchronized (self) {
       NSInteger sizePerLine = (int)(_width/8);
@@ -165,7 +182,7 @@ index d8e5cd6..a8715f5 100644
  }
  @end
 diff --git a/node_modules/react-native-bluetooth-escpos-printer/ios/RNBluetoothManager.m b/node_modules/react-native-bluetooth-escpos-printer/ios/RNBluetoothManager.m
-index c96d205..9534e95 100644
+index c96d205..608fb4d 100644
 --- a/node_modules/react-native-bluetooth-escpos-printer/ios/RNBluetoothManager.m
 +++ b/node_modules/react-native-bluetooth-escpos-printer/ios/RNBluetoothManager.m
 @@ -24,24 +24,42 @@ static CBPeripheral *connected;
@@ -178,7 +195,7 @@ index c96d205..9534e95 100644
 +static void notifyBleWriteDelegate(NSObject<WriteDataToBleDelegate> *delegate, BOOL success)
 +{
 +    NSObject<WriteDataToBleDelegate> *delCopy = delegate;
-+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.01 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
++    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.01 * NSEC_PER_SEC)), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
 +        if (delCopy) [delCopy didWriteDataToBle:success];
 +    });
 +}
@@ -224,11 +241,31 @@ index c96d205..9534e95 100644
          connected = nil;
          if(hasListeners){
              [self sendEventWithName:EVENT_CONNECTION_LOST body:nil];
-@@ -425,6 +444,7 @@ RCT_EXPORT_METHOD(connect:(NSString *)address
+@@ -418,23 +437,24 @@ RCT_EXPORT_METHOD(connect:(NSString *)address
+             NSLog(@"Discrover charactoreristics error:%@",error);
+            if(writeDataDelegate)
+            {
+-               [writeDataDelegate didWriteDataToBle:false];
++               notifyBleWriteDelegate(writeDataDelegate, false);
+                return;
+            }
+         }
          for(CBCharacteristic *cc in service.characteristics){
              NSLog(@"Characterstic found: %@ in service: %@" ,cc,service.UUID.UUIDString);
              if([cc.UUID.UUIDString isEqualToString:[writeableCharactiscs objectForKey: supportServices[0]]]){
 +                cachedWriteChar = cc; // Karakteristigi cache'le
                  @try{
                      [connected writeValue:toWrite forCharacteristic:cc type:CBCharacteristicWriteWithoutResponse];
-                    if(writeDataDelegate) [writeDataDelegate didWriteDataToBle:true];
+-                   if(writeDataDelegate) [writeDataDelegate didWriteDataToBle:true];
++                   if(writeDataDelegate) notifyBleWriteDelegate(writeDataDelegate, true);
+                     if(toWrite){
+                         NSLog(@"Value wrote: %lu",[toWrite length]);
+                     }
+                 }
+                 @catch(NSException *e){
+                     NSLog(@"ERRO IN WRITE VALUE: %@",e);
+-                      [writeDataDelegate didWriteDataToBle:false];
++                      notifyBleWriteDelegate(writeDataDelegate, false);
+                 }
+             }
+         }

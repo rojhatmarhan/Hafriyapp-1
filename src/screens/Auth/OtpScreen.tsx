@@ -2,12 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, Alert, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ScrollView, BackHandler, StatusBar } from 'react-native';
 import { CodeField, Cursor, useBlurOnFulfill, useClearByFocusCell } from 'react-native-confirmation-code-field';
 import { useAppSelector, useAppDispatch } from '../../hooks';
-import { loginSuccess, setRole, setUser, setCompanyId } from '../../store/slices/authSlice';
+import { loginSuccess, setRole, setUser, setCompanyId, logout } from '../../store/slices/authSlice';
 import { useNavigation } from '@react-navigation/native';
 import LinearGradient from 'react-native-linear-gradient';
 import { login, verifySms } from '../../services/authService';
 import { getUserById } from '../../services/userService';
-import { saveAuth } from '../../utils/secureStore';
+import { saveAuth, clearAuth } from '../../utils/secureStore';
 
 const CELL_COUNT = 6;
 
@@ -40,13 +40,18 @@ const OtpScreen = () => {
     }, 500);
   }, []);
 
-  // Android hardware back button — geri git
   useEffect(() => {
-    const handler = BackHandler.addEventListener('hardwareBackPress', () => {
+    const backAction = () => {
       navigation.goBack();
       return true;
-    });
-    return () => handler.remove();
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction,
+    );
+
+    return () => backHandler.remove();
   }, [navigation]);
 
   const onVerify = async () => {
@@ -80,6 +85,14 @@ const OtpScreen = () => {
       console.log('userId', userId);
       console.log('userRes', userRes);
       if (userRes?.isSuccess) {
+        if (userRes.data.accessMode === 1) {
+          console.log('👤 User is blocked. Blocking login...');
+          await clearAuth();
+          dispatch(logout());
+          const restrictionMsg = userRes.data.accessRestrictionNote || 'Yetkili tarafından kısıtlandınız. Lütfen yetkili ile iletişime geçin.';
+          Alert.alert('Erişim Kısıtlandı', restrictionMsg);
+          return;
+        }
         dispatch(setUser(userRes.data));
       }
 
@@ -88,9 +101,14 @@ const OtpScreen = () => {
       //   index: 0,
       //   routes: [{ name: role === 'driver' ? 'DriverStack' : 'SupplierStack' }],
       // });
-    } catch (e) {
+    } catch (e: any) {
       console.log('VERIFY ERROR', e);
-      Alert.alert('Hata', 'Doğrulama sırasında hata oluştu');
+      const serverMsg = e.response?.data?.errors?.[0] || e.response?.data?.message;
+      const isBlocked = e.response?.status === 401 || e.response?.status === 403;
+      const defaultMsg = isBlocked 
+        ? 'Yetkili tarafından kısıtlandınız. Lütfen yetkili ile iletişime geçin.' 
+        : 'Doğrulama sırasında hata oluştu';
+      Alert.alert('Hata', serverMsg || defaultMsg);
     }
   };
 

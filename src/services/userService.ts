@@ -1,5 +1,20 @@
 import { api } from './api';
 
+export const getProfile = async (token: string) => {
+  try {
+    const res = await api.get('/User/profile', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    console.log('✅ GET PROFILE RESPONSE', res.data);
+    return res.data;
+  } catch (error) {
+    console.log('❌ GET PROFILE ERROR', error);
+    throw error;
+  }
+};
+
 export const getUserById = async (
   userId: string,
   token: string,
