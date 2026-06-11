@@ -1620,7 +1620,7 @@ export default function JobDetails() {
                 <TouchableOpacity style={styles.receiptCloseBtnNew} onPress={() => setReceiptVisible(false)}>
                   <Text style={styles.receiptCloseBtnNewText}>Kapat</Text>
                 </TouchableOpacity>
-                {!selectedHaul.isPaid && (
+                {!selectedHaul.isPaid && selectedHaul.isPrintedReceipt && (
                   <TouchableOpacity
                     style={styles.receiptApproveBtnNew}
                     onPress={() => {
