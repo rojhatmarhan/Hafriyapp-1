@@ -57,8 +57,19 @@ const checkOnline = async (): Promise<boolean> => {
 
 const resolveReceiptLogo = (path?: string | null): any => {
   if (!path) return require('../../../assets/icons/truck.png');
-  if (path.startsWith('data:image') || path.startsWith('http')) return { uri: path };
-  if (path.startsWith('/uploads') || path.startsWith('/')) return { uri: `https://api.hafriyapp.com${path}` };
+  if (path.startsWith('data:image')) return { uri: path };
+
+  const fullUrl = path.startsWith('http')
+    ? path
+    : (path.startsWith('/uploads') || path.startsWith('/'))
+    ? `https://api.hafriyapp.com${path}`
+    : null;
+
+  if (fullUrl) {
+    const separator = fullUrl.includes('?') ? '&' : '?';
+    return { uri: `${fullUrl}${separator}v=${Date.now()}` };
+  }
+
   return { uri: `data:image/png;base64,${path}` };
 };
 
@@ -658,6 +669,23 @@ export default function JobDetails() {
       }
     } catch (e: any) {
       const message = e?.message || String(e);
+      if (message.includes('YETKI_ENGEL:') || message.includes('yetkiniz bulunmamaktadır') || message.includes('tanımlı değil')) {
+        Alert.alert(
+          'Yetkisiz Yazıcı',
+          'Bu yazıcı için fiş kesme yetkiniz bulunmamaktadır. Lütfen şirketiniz tarafından tanımlanmış yetkili yazıcıyı kullanınız.',
+          [
+            { text: 'Tamam', style: 'cancel' },
+            {
+              text: 'Yeni Cihaz Tara',
+              onPress: async () => {
+                await clearSavedPrinter();
+                await reopenPrinterSelection(base64);
+              },
+            },
+          ],
+        );
+        return;
+      }
       if (/bluetooth|yazici|printer/i.test(message)) {
         await reopenPrinterSelection(base64);
         return;
@@ -680,11 +708,6 @@ export default function JobDetails() {
       }
     } catch (e: any) {
       const message = e?.message || String(e);
-      if (/bluetooth|yazici|printer/i.test(message)) {
-        await reopenPrinterSelection(base64);
-        return;
-      }
-      Alert.alert('Yazdırma Hatası', message);
     }
   }, [finishPrintFlow, pendingPrintBase64, reopenPrinterSelection]);
 

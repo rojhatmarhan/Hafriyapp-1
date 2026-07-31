@@ -2,8 +2,19 @@ const API_BASE = 'https://api.hafriyapp.com/api';
 
 function resolveLogoUrl(path?: string): any {
   if (!path) return require('../../assets/logokarakalem.png');
-  if (path.startsWith('data:image') || path.startsWith('http')) return { uri: path };
-  if (path.startsWith('/uploads')) return { uri: `https://api.hafriyapp.com${path}` };
+  if (path.startsWith('data:image')) return { uri: path };
+
+  const fullUrl = path.startsWith('http')
+    ? path
+    : path.startsWith('/uploads')
+    ? `https://api.hafriyapp.com${path}`
+    : null;
+
+  if (fullUrl) {
+    const separator = fullUrl.includes('?') ? '&' : '?';
+    return { uri: `${fullUrl}${separator}v=${Date.now()}` };
+  }
+
   return { uri: `data:image/png;base64,${path}` };
 }
 

@@ -300,14 +300,66 @@ function withPrintTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   }) as Promise<T>;
 }
 
+import { api } from './api';
+
+export async function verifyPrinterPermission(macAddress: string): Promise<{ isAllowed: boolean; message: string }> {
+  if (Platform.OS === 'ios') {
+    return { isAllowed: true, message: 'iOS cihaz için doğrulama atlandı.' };
+  }
+
+  if (!macAddress) {
+    return { isAllowed: false, message: 'Yazıcı adresi (MAC) bulunamadı.' };
+  }
+
+  try {
+    const res = await api.post('/Printer/validate', { macAddress });
+    const data = res.data;
+
+    // Sadece ve sadece sunucu açıkça true derse izin ver
+    const allowed = data?.isAllowed ?? data?.IsAllowed;
+    const msg = data?.message ?? data?.Message;
+
+    if (allowed === true) {
+      return {
+        isAllowed: true,
+        message: msg || 'Yazıcı yetkili.',
+      };
+    }
+
+    return {
+      isAllowed: false,
+      message: msg || 'Bu yazıcı için fiş kesme yetkiniz bulunmamaktadır. Lütfen şirketiniz tarafından tanımlanmış yetkili yazıcıyı kullanınız.',
+    };
+  } catch (err: any) {
+    console.warn('Yazıcı yetki kontrolü API hatası:', err?.response?.status, err?.message);
+    return {
+      isAllowed: false,
+      message: 'Yazıcı yetkisi doğrulanamadı. Bu yazıcı sistemde tanımlı değil veya sunucu doğrulamayı onaylamadı.',
+    };
+  }
+}
+
 /**
  * View'dan yakalanan base64 PNG'yi yazıcıya gönderir.
- * Kayıtlı yazıcı varsa önce bağlanır, sonra görsel gönderir.
- * Native BLE callback'i kaybolursa UI sonsuz kilitlenmesin diye timeout uygulanır.
+ * Kayıtlı yazıcı varsa önce yetki kontrol edilir, yetkiliyse bağlanıp görsel gönderilir.
  */
 export async function printImage(base64: string): Promise<void> {
   await ensureBluetoothPermission();
 
+  const saved = await getSavedPrinter();
+  if (!saved) {
+    throw new Error('Kayıtlı yazıcı bulunamadı. Lütfen yazıcı seçim ekranından bir yazıcı seçiniz.');
+  }
+
+  // Android cihazlar için yetkili yazıcı (MAC adresi) kontrolünü YAZICIYA BAĞLANMADAN ÖNCE YAP!
+  if (Platform.OS === 'android' && saved.address) {
+    const verification = await verifyPrinterPermission(saved.address);
+    if (!verification.isAllowed) {
+      throw new Error(`YETKI_ENGEL: ${verification.message || 'Bu yazıcı için fiş kesme yetkiniz bulunmamaktadır.'}`);
+    }
+  }
+
+  // Yetki onaylandıysa yazıcıya bağlan
   await connectResolvedPrinter();
 
   await withPrintTimeout(BluetoothEscposPrinter.printerInit(), PRINT_IMAGE_TIMEOUT_MS);

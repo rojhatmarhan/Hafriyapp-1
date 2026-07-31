@@ -17,6 +17,7 @@ import {
   BluetoothDevice,
   isBluetoothEnabled,
   enableBluetooth,
+  verifyPrinterPermission,
 } from '../services/printService';
 
 interface Props {
@@ -33,11 +34,10 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
   const [pairedDevices, setPairedDevices] = useState<BluetoothDevice[]>([]);
   const [foundDevices, setFoundDevices] = useState<BluetoothDevice[]>([]);
   const [connectingAddress, setConnectingAddress] = useState<string | null>(null);
+  const [hideUnnamed, setHideUnnamed] = useState<boolean>(true);
 
   const handleScan = useCallback(async () => {
     setScanState('scanning');
-    setPairedDevices([]);
-    setFoundDevices([]);
 
     try {
       // Bluetooth açık mı?
@@ -59,6 +59,7 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
         return;
       }
 
+      // Tarama işlemi arkada çalışırken mevcut eşleşmiş cihazlar hemen yüklenir
       const { paired, found } = await getPairedAndScannedDevices();
       setPairedDevices(paired);
       setFoundDevices(found);
@@ -72,6 +73,20 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
   const handleSelectDevice = useCallback(async (device: BluetoothDevice) => {
     setConnectingAddress(device.address);
     setScanState('connecting');
+
+    // Android için önce API yetki kontrolü yap
+    if (Platform.OS === 'android' && device.address) {
+      const verification = await verifyPrinterPermission(device.address);
+      if (!verification.isAllowed) {
+        setScanState('idle');
+        setConnectingAddress(null);
+        Alert.alert(
+          'Yetkisiz Yazıcı',
+          'Bu yazıcı için fiş kesme yetkiniz bulunmamaktadır. Lütfen şirketiniz tarafından tanımlanmış yetkili yazıcıyı kullanınız.',
+        );
+        return;
+      }
+    }
 
     const success = await connectPrinter(device.address);
 
@@ -125,6 +140,14 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
     ...foundDevices.filter(f => !pairedDevices.some(p => p.address === f.address)),
   ];
 
+  // Adsız / Bilinmeyen Cihaz kontrolü
+  const isUnnamedDevice = (d: BluetoothDevice): boolean => {
+    const name = (d.name || '').trim().toLowerCase();
+    return !name || name === 'bilinmeyen cihaz' || name === 'n/a' || name === d.address.toLowerCase();
+  };
+
+  const filteredDevices = allDevices.filter(d => !hideUnnamed || !isUnnamedDevice(d));
+
   useEffect(() => {
     if (!visible) {
       setScanState('idle');
@@ -166,21 +189,31 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
             {scanState === 'scanning' ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <ActivityIndicator size="small" color="#000" />
-                <Text style={styles.scanBtnText}>
-                  {Platform.OS === 'ios' ? 'Taranıyor... (~30 sn)' : 'Taranıyor...'}
-                </Text>
+                <Text style={styles.scanBtnText}>Taranıyor...</Text>
               </View>
             ) : (
               <Text style={styles.scanBtnText}>🔍  Cihazları Tara</Text>
             )}
           </TouchableOpacity>
 
+          {/* Adsız Cihazları Gizle Checkbox */}
+          <TouchableOpacity
+            style={styles.checkboxRow}
+            onPress={() => setHideUnnamed(prev => !prev)}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.checkbox, hideUnnamed && styles.checkboxChecked]}>
+              {hideUnnamed && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+            <Text style={styles.checkboxLabel}>Adsız Yazıcıları Gizle</Text>
+          </TouchableOpacity>
+
           {/* Cihaz listesi */}
-          {allDevices.length > 0 ? (
+          {filteredDevices.length > 0 ? (
             <>
-              <Text style={styles.sectionLabel}>Bulunan Yazıcılar</Text>
+              <Text style={styles.sectionLabel}>Bulunan Yazıcılar ({filteredDevices.length})</Text>
               <FlatList
-                data={allDevices}
+                data={filteredDevices}
                 keyExtractor={item => item.address}
                 renderItem={renderDevice}
                 style={styles.list}
@@ -189,7 +222,9 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
             </>
           ) : scanState === 'idle' && (
             <Text style={styles.emptyText}>
-              {Platform.OS === 'ios'
+              {allDevices.length > 0 && hideUnnamed
+                ? 'Bulunan tüm cihazlar adsız olduğu için gizlendi. Görmek için yukarıdaki "Adsız Yazıcıları Gizle" kutucuğunun işaretini kaldırın.'
+                : Platform.OS === 'ios'
                 ? 'Cihaz bulunamadı.\n\nÖnemli: Yazıcı önce iPhone Ayarlar > Bluetooth menüsünden eşleştirilmeli ve yazıcının BLE (Bluetooth 4.0+) desteklemesi gerekir.'
                 : 'Henüz cihaz bulunamadı. Taramak için butona basın.'}
             </Text>
@@ -214,7 +249,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 32,
     paddingTop: 16,
-    maxHeight: '70%',
+    maxHeight: '75%',
   },
   header: {
     flexDirection: 'row',
@@ -245,7 +280,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 13,
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   scanBtnDisabled: {
     opacity: 0.6,
@@ -254,6 +289,37 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#111',
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    paddingVertical: 4,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: '#888',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    backgroundColor: '#fff',
+  },
+  checkboxChecked: {
+    backgroundColor: '#FFD500',
+    borderColor: '#FFD500',
+  },
+  checkmark: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#111',
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
   },
   sectionLabel: {
     fontSize: 12,
@@ -307,7 +373,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#AAA',
     fontSize: 14,
-    marginTop: 20,
+    marginTop: 16,
     paddingHorizontal: 10,
+    lineHeight: 20,
   },
 });
