@@ -1269,6 +1269,10 @@ export default function JobDetails() {
           try {
             await deleteHaul(item.id, token!);
             setHauls(prev => prev.filter(h => h.id !== item.id));
+            setEditHaulModalVisible(false);
+            setEditingHaul(null);
+            fetchHauls();
+            Alert.alert('Başarılı', 'Sefer silindi.');
           } catch {
             Alert.alert('Hata', 'Sefer silinemedi.');
           }
@@ -1372,12 +1376,6 @@ export default function JobDetails() {
             {!item.isPaid && item.isPrintedReceipt && (
               <TouchableOpacity style={styles.approveBtn} onPress={() => openPaymentConfirm(item)}>
                 <Text style={styles.approveBtnText}>Ödeme</Text>
-              </TouchableOpacity>
-            )}
-            {console.log('[deleteBtn]', item.id.slice(0, 8), '| isPaid:', item.isPaid, '| canEdit:', job?.canEdit, '| createdDate:', item.createdDate, '| withinHour:', isWithinOneHour(item.createdDate)) as any}
-            {!item.isPaid && job?.canEdit && isWithinOneHour(item.createdDate) && (
-              <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteHaul(item)}>
-                <Text style={styles.deleteBtnText}>🗑 Sil</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -1875,10 +1873,17 @@ export default function JobDetails() {
                     />
                   </View>
 
-                  <View style={[styles.addCardFooter, { justifyContent: 'flex-end', gap: 8 }]}>
+                  <View style={[styles.addCardFooter, { justifyContent: 'flex-end', alignItems: 'center', gap: 8 }]}>
                     <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditHaulModalVisible(false)}>
                       <Text style={styles.cancelBtnText}>İptal</Text>
                     </TouchableOpacity>
+                    {editingHaul && !editingHaul.isPaid && job?.canEdit && isWithinOneHour(editingHaul.createdDate) && (
+                      <TouchableOpacity
+                        style={{ paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#FFEBEE', flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                        onPress={() => handleDeleteHaul(editingHaul)}>
+                        <Text style={{ color: '#D32F2F', fontWeight: '700', fontSize: 13 }}>🗑️ Seferi Sil</Text>
+                      </TouchableOpacity>
+                    )}
                     <TouchableOpacity
                       style={[styles.manualSaveBtn, { backgroundColor: '#F57C00' }, (!editPlate || editSaving) && { opacity: 0.4 }]}
                       onPress={handleSaveEditHaul}

@@ -269,3 +269,36 @@ index c96d205..608fb4d 100644
                  }
              }
          }
+diff --git a/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m b/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
+index 1111111..2222222 100644
+--- a/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
++++ b/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
+@@ -36,17 +36,18 @@ @implementation PrintImageBleWriteDelegate
+ -(void) print
+ {
+     @synchronized (self) {
+-     NSInteger sizePerLine = (int)(_width/8);
+-        if(sizePerLine+_now>=[_toPrint length]){
+-            sizePerLine = [_toPrint length] - _now;
+-        }
+-        if(sizePerLine>0){
+-            NSData *subData = [_toPrint subdataWithRange:NSMakeRange(_now, sizePerLine)];
+-            NSLog(@"Write data:%@",subData);
++        NSInteger bytesPerLine = (int)(_width/8);
++        if (bytesPerLine <= 0) bytesPerLine = 48;
++        // Batch 4 lines per BLE write (192 bytes) for ultra-fast and smooth printing on iOS
++        NSInteger chunkSize = bytesPerLine * 4;
++        if(chunkSize + _now >= [_toPrint length]){
++            chunkSize = [_toPrint length] - _now;
++        }
++        if(chunkSize > 0){
++            NSData *subData = [_toPrint subdataWithRange:NSMakeRange(_now, chunkSize)];
+             [RNBluetoothManager writeValue:subData withDelegate:self];
+         }
+-        _now = _now+sizePerLine;
+-        
++        _now = _now + chunkSize;
+     }
+ }
+ @end
+

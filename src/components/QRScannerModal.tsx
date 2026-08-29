@@ -120,20 +120,11 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#000" />
         
-        {/* Üst Bar */}
+        {/* Üst Başlık Barı (Sade & Temiz) */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <Text style={styles.closeBtnText}>✕ Kapat</Text>
-          </TouchableOpacity>
           <Text style={styles.title} numberOfLines={1}>
             {title}
           </Text>
-          <TouchableOpacity
-            style={[styles.torchBtn, torchOn && styles.torchBtnActive]}
-            onPress={() => setTorchOn(v => !v)}
-          >
-            <Text style={styles.torchBtnText}>{torchOn ? '🔦 Açık' : '💡 Flaş'}</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Kamera Vizörü */}
@@ -149,11 +140,27 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
           />
         </View>
 
-        {/* Alt Bilgi */}
+        {/* Alt Panel & Büyük Aksiyon Butonları */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
             Basılı fişin veya ekrandaki QR kodu çerçevenin içine hizalayın
           </Text>
+
+          <View style={styles.actionButtonsRow}>
+            <TouchableOpacity style={styles.bottomCloseBtn} onPress={onClose} activeOpacity={0.8}>
+              <Text style={styles.bottomCloseBtnText}>✕ Kapat</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.bottomTorchBtn, torchOn && styles.bottomTorchBtnActive]}
+              onPress={() => setTorchOn(v => !v)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.bottomTorchBtnText, torchOn && styles.bottomTorchBtnTextActive]}>
+                {torchOn ? '🔦 Flaş Açık' : '💡 Flaş'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
     </Modal>
@@ -166,46 +173,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   header: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 16,
     backgroundColor: 'rgba(0,0,0,0.85)',
     zIndex: 10,
   },
-  closeBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 8,
-  },
-  closeBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
   title: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '800',
-    flex: 1,
     textAlign: 'center',
-    marginHorizontal: 8,
-  },
-  torchBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 8,
-  },
-  torchBtnActive: {
-    backgroundColor: '#FFB300',
-  },
-  torchBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
   },
   cameraContainer: {
     flex: 1,
@@ -215,15 +194,60 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   footer: {
-    paddingVertical: 18,
-    paddingHorizontal: 24,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    backgroundColor: 'rgba(0,0,0,0.92)',
     alignItems: 'center',
+    gap: 12,
   },
   footerText: {
-    color: 'rgba(255,255,255,0.75)',
+    color: '#bbb',
     fontSize: 13,
+    fontWeight: '600',
     textAlign: 'center',
-    fontWeight: '500',
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    gap: 12,
+  },
+  bottomCloseBtn: {
+    flex: 1,
+    height: 52,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  bottomCloseBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  bottomTorchBtn: {
+    flex: 1,
+    height: 52,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  bottomTorchBtnActive: {
+    backgroundColor: '#FFB300',
+    borderColor: '#FFA000',
+  },
+  bottomTorchBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  bottomTorchBtnTextActive: {
+    color: '#000',
+    fontWeight: '900',
   },
 });

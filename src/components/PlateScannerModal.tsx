@@ -274,18 +274,9 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#000" />
 
-        {/* Üst Bar */}
+        {/* Üst Başlık Barı (Sade & Temiz) */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <Text style={styles.closeBtnText}>✕ Kapat</Text>
-          </TouchableOpacity>
           <Text style={styles.title}>Plaka Tara (Canlı)</Text>
-          <TouchableOpacity
-            style={[styles.torchBtn, torchOn && styles.torchBtnActive]}
-            onPress={() => setTorchOn(v => !v)}
-          >
-            <Text style={styles.torchBtnText}>{torchOn ? '🔦 Açık' : '💡 Flaş'}</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Kamera & Plaka Çerçevesi */}
@@ -320,25 +311,48 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
           </View>
         </View>
 
-        {/* Alt Aksiyon Butonu */}
+        {/* Alt Panel & Büyük Aksiyon Butonları */}
         <View style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.captureBtn, (processing || !!detectedPlate) && styles.captureBtnDisabled]}
-            onPress={handleManualCapture}
-            disabled={processing || !!detectedPlate}
-            activeOpacity={0.85}
-          >
-            {processing ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <>
-                <Text style={styles.captureIcon}>📸</Text>
-                <Text style={styles.captureText}>
-                  {detectedPlate ? `✓ ${detectedPlate}` : 'Plakayı Oku (Manuel)'}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
+          <View style={styles.actionButtonsRow}>
+            {/* Kapat Butonu */}
+            <TouchableOpacity style={styles.bottomCloseBtn} onPress={onClose} activeOpacity={0.8}>
+              <Text style={styles.bottomCloseBtnText}>✕ Kapat</Text>
+            </TouchableOpacity>
+
+            {/* Manuel Oku Ana Buton */}
+            <TouchableOpacity
+              style={[
+                styles.bottomCaptureBtn,
+                detectedPlate ? styles.bottomCaptureBtnSuccess : null,
+                (processing || !!detectedPlate) && styles.captureBtnDisabled,
+              ]}
+              onPress={handleManualCapture}
+              disabled={processing || !!detectedPlate}
+              activeOpacity={0.85}
+            >
+              {processing ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Text style={styles.captureIcon}>📸</Text>
+                  <Text style={styles.captureText} numberOfLines={1}>
+                    {detectedPlate ? `✓ ${detectedPlate}` : 'Plakayı Oku'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {/* Flaş Butonu */}
+            <TouchableOpacity
+              style={[styles.bottomTorchBtn, torchOn && styles.bottomTorchBtnActive]}
+              onPress={() => setTorchOn(v => !v)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.bottomTorchBtnText, torchOn && styles.bottomTorchBtnTextActive]}>
+                {torchOn ? '🔦 Açık' : '💡 Flaş'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
     </Modal>
@@ -351,46 +365,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   header: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 16,
     backgroundColor: 'rgba(0,0,0,0.85)',
     zIndex: 10,
   },
-  closeBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 8,
-  },
-  closeBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
   title: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '800',
-    flex: 1,
     textAlign: 'center',
-    marginHorizontal: 8,
-  },
-  torchBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 8,
-  },
-  torchBtnActive: {
-    backgroundColor: '#FFB300',
-  },
-  torchBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
   },
   cameraContainer: {
     flex: 1,
@@ -472,36 +458,83 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   footer: {
-    paddingVertical: 20,
-    paddingHorizontal: 24,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(0,0,0,0.92)',
     alignItems: 'center',
   },
-  captureBtn: {
+  actionButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    gap: 10,
+  },
+  bottomCloseBtn: {
+    flex: 1,
+    height: 52,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  bottomCloseBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  bottomCaptureBtn: {
+    flex: 2,
+    height: 52,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#2E7D32',
-    paddingVertical: 15,
-    paddingHorizontal: 36,
-    borderRadius: 14,
-    width: '100%',
+    borderRadius: 12,
+    paddingHorizontal: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 4,
   },
+  bottomCaptureBtnSuccess: {
+    backgroundColor: '#00C853',
+  },
   captureBtnDisabled: {
     opacity: 0.6,
   },
   captureIcon: {
-    fontSize: 22,
-    marginRight: 10,
+    fontSize: 20,
+    marginRight: 6,
   },
   captureText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
+  },
+  bottomTorchBtn: {
+    flex: 1,
+    height: 52,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  bottomTorchBtnActive: {
+    backgroundColor: '#FFB300',
+    borderColor: '#FFA000',
+  },
+  bottomTorchBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  bottomTorchBtnTextActive: {
+    color: '#000',
+    fontWeight: '900',
   },
 });

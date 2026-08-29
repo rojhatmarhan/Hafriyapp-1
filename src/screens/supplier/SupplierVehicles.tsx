@@ -944,11 +944,32 @@ export default function SupplierVehicles() {
           </View>
         </View>
 
-        {/* Tarih + Plaka */}
+        {/* Tarih + Plaka & Nakit / Mazot / Tonaj */}
         <View style={styles.haulCardRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.haulDateText}>{formatHaulDate(item.timeOfHaul)}</Text>
             <Text style={styles.haulPlateText}>{item.plateNumber}</Text>
+          </View>
+          <View style={{ alignItems: 'flex-end', gap: 4 }}>
+            {item.tonage > 0 && (
+              <Text style={styles.tonageText}>
+                {(item.tonage / 1000).toFixed(2)} t
+              </Text>
+            )}
+            {(item.cashAmount ?? 0) > 0 && (
+              <View style={styles.cashBadge}>
+                <Text style={styles.cashBadgeText}>
+                  {(item.cashAmount ?? 0).toLocaleString('tr-TR')} ₺
+                </Text>
+              </View>
+            )}
+            {(item.fuelAmount ?? 0) > 0 && (
+              <View style={styles.fuelBadge}>
+                <Text style={styles.fuelBadgeText}>
+                  {(item.fuelAmount ?? 0).toLocaleString('tr-TR')} Lt
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
