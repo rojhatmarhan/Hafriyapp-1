@@ -14,11 +14,15 @@ import {
   getPairedAndScannedDevices,
   connectPrinter,
   savePrinter,
+  stopScan,
   BluetoothDevice,
   isBluetoothEnabled,
   enableBluetooth,
   verifyPrinterPermission,
 } from '../services/printService';
+// @ts-ignore
+import { BluetoothManager } from 'react-native-bluetooth-escpos-printer';
+import { DeviceEventEmitter, NativeEventEmitter } from 'react-native';
 
 interface Props {
   visible: boolean;
@@ -34,7 +38,108 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
   const [pairedDevices, setPairedDevices] = useState<BluetoothDevice[]>([]);
   const [foundDevices, setFoundDevices] = useState<BluetoothDevice[]>([]);
   const [connectingAddress, setConnectingAddress] = useState<string | null>(null);
-  const [hideUnnamed, setHideUnnamed] = useState<boolean>(true);
+  const [hideUnnamed, setHideUnnamed] = useState<boolean>(false);
+
+  // 📡 Anlık / Canlı Cihaz Keşfi (Live Discovery)
+  useEffect(() => {
+    if (!visible) return;
+
+    const eventEmitter = Platform.OS === 'ios'
+      ? new NativeEventEmitter(BluetoothManager)
+      : DeviceEventEmitter;
+
+    const parseDeviceList = (raw: any): BluetoothDevice[] => {
+      try {
+        let data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (data?.devices) {
+          const inner = typeof data.devices === 'string' ? JSON.parse(data.devices) : data.devices;
+          if (Array.isArray(inner)) {
+            return inner.map(d => ({ name: d.name?.trim() || 'Bilinmeyen Cihaz', address: d.address || d.id || '' })).filter(d => !!d.address);
+          }
+        }
+        if (data?.device) {
+          const inner = typeof data.device === 'string' ? JSON.parse(data.device) : data.device;
+          if (Array.isArray(inner)) {
+            return inner.map(d => ({ name: d.name?.trim() || 'Bilinmeyen Cihaz', address: d.address || d.id || '' })).filter(d => !!d.address);
+          } else if (inner?.address || inner?.id) {
+            return [{ name: inner.name?.trim() || 'Bilinmeyen Cihaz', address: inner.address || inner.id || '' }];
+          }
+        }
+        if (Array.isArray(data)) {
+          return data.map(d => ({ name: d.name?.trim() || 'Bilinmeyen Cihaz', address: d.address || d.id || '' })).filter(d => !!d.address);
+        }
+        if (data?.address || data?.id) {
+          return [{ name: data.name?.trim() || 'Bilinmeyen Cihaz', address: data.address || data.id || '' }];
+        }
+        return [];
+      } catch {
+        return [];
+      }
+    };
+
+    const onDeviceFound = (raw: any) => {
+      const devices = parseDeviceList(raw);
+      if (devices.length > 0) {
+        setFoundDevices(prev => {
+          const map = new Map<string, BluetoothDevice>();
+          prev.forEach(d => map.set(d.address, d));
+          devices.forEach(d => map.set(d.address, d));
+          return Array.from(map.values());
+        });
+      }
+    };
+
+    const onDevicePaired = (raw: any) => {
+      const devices = parseDeviceList(raw);
+      if (devices.length > 0) {
+        setPairedDevices(prev => {
+          const map = new Map<string, BluetoothDevice>();
+          prev.forEach(d => map.set(d.address, d));
+          devices.forEach(d => map.set(d.address, d));
+          return Array.from(map.values());
+        });
+      }
+    };
+
+    const onDiscoverDone = (raw: any) => {
+      setScanState('idle');
+      try {
+        let data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (data?.paired) {
+          const paired = parseDeviceList(data.paired);
+          if (paired.length > 0) {
+            setPairedDevices(prev => {
+              const map = new Map<string, BluetoothDevice>();
+              prev.forEach(d => map.set(d.address, d));
+              paired.forEach(d => map.set(d.address, d));
+              return Array.from(map.values());
+            });
+          }
+        }
+        if (data?.found) {
+          const found = parseDeviceList(data.found);
+          if (found.length > 0) {
+            setFoundDevices(prev => {
+              const map = new Map<string, BluetoothDevice>();
+              prev.forEach(d => map.set(d.address, d));
+              found.forEach(d => map.set(d.address, d));
+              return Array.from(map.values());
+            });
+          }
+        }
+      } catch {}
+    };
+
+    const subFound = eventEmitter.addListener('EVENT_DEVICE_FOUND', onDeviceFound);
+    const subPaired = eventEmitter.addListener('EVENT_DEVICE_ALREADY_PAIRED', onDevicePaired);
+    const subDone = eventEmitter.addListener('EVENT_DEVICE_DISCOVER_DONE', onDiscoverDone);
+
+    return () => {
+      subFound?.remove?.();
+      subPaired?.remove?.();
+      subDone?.remove?.();
+    };
+  }, [visible]);
 
   const handleScan = useCallback(async () => {
     setScanState('scanning');
@@ -59,10 +164,20 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
         return;
       }
 
-      // Tarama işlemi arkada çalışırken mevcut eşleşmiş cihazlar hemen yüklenir
+      // Tarama işlemi
       const { paired, found } = await getPairedAndScannedDevices();
-      setPairedDevices(paired);
-      setFoundDevices(found);
+      setPairedDevices(prev => {
+        const map = new Map<string, BluetoothDevice>();
+        prev.forEach(d => map.set(d.address, d));
+        paired.forEach(d => map.set(d.address, d));
+        return Array.from(map.values());
+      });
+      setFoundDevices(prev => {
+        const map = new Map<string, BluetoothDevice>();
+        prev.forEach(d => map.set(d.address, d));
+        found.forEach(d => map.set(d.address, d));
+        return Array.from(map.values());
+      });
     } catch (err: any) {
       Alert.alert('Tarama Hatası', err?.message || 'Cihazlar taranırken hata oluştu.');
     } finally {
@@ -71,21 +186,23 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
   }, []);
 
   const handleSelectDevice = useCallback(async (device: BluetoothDevice) => {
+    try {
+      await stopScan();
+    } catch {}
+
     setConnectingAddress(device.address);
     setScanState('connecting');
 
-    // Android için önce API yetki kontrolü yap
-    if (Platform.OS === 'android' && device.address) {
-      const verification = await verifyPrinterPermission(device.address);
-      if (!verification.isAllowed) {
-        setScanState('idle');
-        setConnectingAddress(null);
-        Alert.alert(
-          'Yetkisiz Yazıcı',
-          'Bu yazıcı için fiş kesme yetkiniz bulunmamaktadır. Lütfen şirketiniz tarafından tanımlanmış yetkili yazıcıyı kullanınız.',
-        );
-        return;
-      }
+    // Yetkili yazıcı kontrolü (Android: MAC / iOS: Cihaz Adı veya UUID)
+    const verification = await verifyPrinterPermission(device.address, device.name);
+    if (!verification.isAllowed) {
+      setScanState('idle');
+      setConnectingAddress(null);
+      Alert.alert(
+        'Yetkisiz Yazıcı',
+        verification.message || 'Bu yazıcı için fiş kesme yetkiniz bulunmamaktadır. Lütfen şirketiniz tarafından tanımlanmış yetkili yazıcıyı kullanınız.',
+      );
+      return;
     }
 
     const success = await connectPrinter(device.address);
@@ -173,13 +290,6 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
             </TouchableOpacity>
           </View>
 
-          {/* Açıklama */}
-          <Text style={styles.description}>
-            {Platform.OS === 'ios'
-              ? 'Yazıcınızı iPhone Ayarlar > Bluetooth\'dan eşleştirdikten sonra "Tara" butonuna basın.\n⚠️ Yazıcınızın BLE (Bluetooth 4.0+) desteklemesi gerekir.'
-              : 'Yazıcınızın Bluetooth eşleştirmesini Android ayarlarından yaptıktan sonra aşağıdaki "Tara" butonuna basın.'}
-          </Text>
-
           {/* Tara butonu */}
           <TouchableOpacity
             style={[styles.scanBtn, scanState !== 'idle' && styles.scanBtnDisabled]}
@@ -225,7 +335,7 @@ export default function BluetoothPrinterModal({ visible, onClose, onConnected }:
               {allDevices.length > 0 && hideUnnamed
                 ? 'Bulunan tüm cihazlar adsız olduğu için gizlendi. Görmek için yukarıdaki "Adsız Yazıcıları Gizle" kutucuğunun işaretini kaldırın.'
                 : Platform.OS === 'ios'
-                ? 'Cihaz bulunamadı.\n\nÖnemli: Yazıcı önce iPhone Ayarlar > Bluetooth menüsünden eşleştirilmeli ve yazıcının BLE (Bluetooth 4.0+) desteklemesi gerekir.'
+                ? 'Cihaz bulunamadı. Lütfen yazıcınızın açık ve yakın olduğundan emin olun.'
                 : 'Henüz cihaz bulunamadı. Taramak için butona basın.'}
             </Text>
           )}

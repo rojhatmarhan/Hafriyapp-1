@@ -29,6 +29,7 @@ export type HaulApi = {
   offer2Cash?: number;
   offer2Fuel?: number;
   createdDate: string;
+  updatedDate?: string;
   isVisibleToVehicleOwner: boolean;
 };
 
@@ -86,6 +87,7 @@ export type CreateHaulParams = {
   timeOfHaul?: string; // ISO, yoksa şu an
   isPrintedReceipt?: boolean;
   isVisibleToVehicleOwner?: boolean;
+  clientUniqueId?: string;
 };
 
 // Yeni sefer oluştur
@@ -109,6 +111,7 @@ export const createHaul = async (params: CreateHaulParams, token: string): Promi
       isPaid: false,
       isPrintedReceipt: params.isPrintedReceipt ?? false,
       isVisibleToVehicleOwner: params.isVisibleToVehicleOwner ?? true,
+      clientUniqueId: params.clientUniqueId,
     },
     {
       headers: {
@@ -161,3 +164,42 @@ export const deleteHaul = async (haulId: string, token: string): Promise<void> =
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
   });
 };
+
+export type UpdateHaulParams = {
+  plateNumber?: string;
+  dumpLocation?: string;
+  tonage?: number;
+  cashAmount?: number;
+  fuelAmount?: number;
+  note?: string;
+  serialNumber?: string;
+};
+
+// Seferi düzenle (Sadece Owner)
+export const updateHaul = async (
+  haulId: string,
+  params: UpdateHaulParams,
+  token: string,
+): Promise<void> => {
+  await api.put(`/Haul/${haulId}`, params, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+  });
+};
+
+// Tekil sefer getir
+export const getHaulById = async (token: string, haulId: string): Promise<HaulApi | null> => {
+  try {
+    const res = await api.get(`/Haul/${haulId}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    return res.data;
+  } catch {
+    return null;
+  }
+};
+
+

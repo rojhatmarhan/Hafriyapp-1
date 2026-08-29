@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, Platform, ActionSheetIOS, Alert, Modal, ScrollView, ActivityIndicator, SectionList } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, Platform, ActionSheetIOS, Alert, Modal, ScrollView, ActivityIndicator, FlatList } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
 const IMAGE_BASE = 'https://api.hafriyapp.com';
@@ -12,6 +12,8 @@ const buildLogoUrl = (path?: string | null): string => {
 import { CITIES } from '../../constants/cities';
 import { useAppSelector, useAppDispatch } from '../../hooks';
 import { setSelectedCity } from '../../store/slices/uiSlice';
+import CityPickerModal from '../../components/CityPickerModal';
+import { useActiveUserCount } from '../../hooks/useActiveUserCount';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { getChatGroups, createChatGroup, uploadGroupImage } from '../../services/chatService';
 import { getProfile } from '../../services/userService';
@@ -20,10 +22,12 @@ import { logout, setUser } from '../../store/slices/authSlice';
 
 export default function SupplierHome() {
   const navigation = useNavigation<any>();
+  const activeUsers = useActiveUserCount();
   const [searchText, setSearchText] = useState('');
   const [chatGroups, setChatGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const [cityPickerModalVisible, setCityPickerModalVisible] = useState(false);
   const selectedCity = useAppSelector(state => state.ui.selectedCity);
   const dispatch = useAppDispatch();
   const token = useAppSelector(state => state.auth.token);
@@ -153,32 +157,7 @@ export default function SupplierHome() {
   };
 
   const openCityPicker = () => {
-    const allOption = 'Tüm Türkiye';
-    const options = ['İptal', allOption, ...CITIES.map(c => c.label)];
-
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options, cancelButtonIndex: 0 },
-        buttonIndex => {
-          if (buttonIndex === 0) return;
-          if (buttonIndex === 1) { dispatch(setSelectedCity(null)); return; }
-          dispatch(setSelectedCity(CITIES[buttonIndex - 2].value));
-        },
-      );
-    } else {
-      Alert.alert(
-        'İl Seç',
-        undefined,
-        [
-          { text: allOption, onPress: () => dispatch(setSelectedCity(null)) },
-          ...CITIES.map(city => ({
-            text: city.label,
-            onPress: () => dispatch(setSelectedCity(city.value)),
-          })),
-        ],
-        { cancelable: true },
-      );
-    }
+    setCityPickerModalVisible(true);
   };
 
   const toggleProvince = (code: number) => {
@@ -189,8 +168,8 @@ export default function SupplierHome() {
     }
   };
 
-  // 🔍 SECTIONS
-  const sections = useMemo(() => {
+  // 🔍 WHATSAPP STYLE SORTING & FILTERING
+  const sortedAndFilteredGroups = useMemo(() => {
     let filtered = chatGroups;
     const q = searchText.trim().toLowerCase();
 
@@ -201,24 +180,17 @@ export default function SupplierHome() {
       );
     }
 
-    const sortWithPins = (groups: any[]) => {
-      const pinned = groups.filter(g => pinnedIds.includes(g.id));
-      const unpinned = groups.filter(g => !pinnedIds.includes(g.id));
-      return [...pinned, ...unpinned];
-    };
+    return [...filtered].sort((a, b) => {
+      const aPinned = pinnedIds.includes(a.id);
+      const bPinned = pinnedIds.includes(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
 
-    const myGroups = sortWithPins(filtered.filter(g => g.isMember));
-    const discoverGroups = sortWithPins(filtered.filter(g => !g.isMember));
-
-    const result = [];
-    if (myGroups.length > 0) {
-      result.push({ title: `Gruplarım (${myGroups.length})`, data: myGroups });
-    }
-    if (discoverGroups.length > 0) {
-      result.push({ title: `Keşfet (${discoverGroups.length})`, data: discoverGroups });
-    }
-
-    return result;
+      // Hem sabitlenenler hem sabitlenmeyenler en son mesaja göre sıralanır
+      const aTime = new Date(a.lastMessageAt || a.createdDate || 0).getTime();
+      const bTime = new Date(b.lastMessageAt || b.createdDate || 0).getTime();
+      return bTime - aTime;
+    });
   }, [searchText, chatGroups, pinnedIds]);
 
   const filteredCitiesForSelect = useMemo(() => {
@@ -259,7 +231,6 @@ export default function SupplierHome() {
           <Text style={styles.time}>
             {item.lastMessageAt ? new Date(item.lastMessageAt).toLocaleDateString("tr-TR", { day: '2-digit', month: '2-digit' }) : ''}
           </Text>
-          <Text style={styles.memberCountText}>{item.memberCount || 0} üye</Text>
         </View>
 
         <TouchableOpacity
@@ -276,7 +247,13 @@ export default function SupplierHome() {
   return (
     <View style={styles.container}>
       <View style={styles.titleRow}>
-        <Text style={styles.title}>FİRMA SAYFALARI</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={styles.title}>FİRMA SAYFALARI</Text>
+          <View style={styles.activeBadge}>
+            <View style={styles.greenDot} />
+            <Text style={styles.activeBadgeText}>{activeUsers} kişi aktif</Text>
+          </View>
+        </View>
         <TouchableOpacity
           style={[styles.refreshBtn, loading && styles.refreshBtnLoading]}
           onPress={() => fetchGroups(true)}
@@ -338,15 +315,10 @@ export default function SupplierHome() {
         </TouchableOpacity>
       </View>
 
-      <SectionList
-        sections={sections}
+      <FlatList
+        data={sortedAndFilteredGroups}
         keyExtractor={item => item.id}
         renderItem={renderItem}
-        renderSectionHeader={({ section: { title } }) => (
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionHeaderText}>★ {title}</Text>
-          </View>
-        )}
         ItemSeparatorComponent={() => <View style={styles.divider} />}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
@@ -354,7 +326,10 @@ export default function SupplierHome() {
         }
         refreshing={loading}
         onRefresh={() => fetchGroups(true)}
-        stickySectionHeadersEnabled={false}
+        initialNumToRender={12}
+        maxToRenderPerBatch={8}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === 'android'}
       />
 
       {/* CREATE GROUP MODAL */}
@@ -491,6 +466,14 @@ export default function SupplierHome() {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* CITY PICKER MODAL */}
+      <CityPickerModal
+        visible={cityPickerModalVisible}
+        onClose={() => setCityPickerModalVisible(false)}
+        onSelectCity={(val) => dispatch(setSelectedCity(val))}
+        selectedCity={selectedCity}
+      />
     </View>
   );
 }
@@ -510,6 +493,29 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '800',
+    color: '#000',
+  },
+  activeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#222',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 3.5,
+    gap: 6,
+  },
+  greenDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#22C55E',
+  },
+  activeBadgeText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#111',
   },
   refreshBtn: {
     width: 36,

@@ -13,6 +13,8 @@ type Props = {
   value: string;        // "DD.MM.YYYY" formatında
   onChange: (date: string) => void;
   label?: string;
+  placeholder?: string;
+  flex?: boolean;
 };
 
 const ddmmyyyToDate = (str: string): Date => {
@@ -41,7 +43,7 @@ const formatDisplay = (ddmmyyyy: string): string => {
   return `${parseInt(d)} ${MONTHS_TR[parseInt(m) - 1]} ${y}`;
 };
 
-const DatePickerInput: React.FC<Props> = ({ value, onChange, label }) => {
+const DatePickerInput: React.FC<Props> = ({ value, onChange, label, placeholder, flex }) => {
   const [show, setShow] = useState(false);
   const [tempDate, setTempDate] = useState<Date>(ddmmyyyToDate(value));
 
@@ -65,10 +67,12 @@ const DatePickerInput: React.FC<Props> = ({ value, onChange, label }) => {
   };
 
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, flex ? { flex: 1 } : undefined]}>
       {label && <Text style={styles.label}>{label}</Text>}
       <TouchableOpacity style={styles.input} onPress={handleOpen} activeOpacity={0.7}>
-        <Text style={styles.valueText}>{formatDisplay(value)}</Text>
+        <Text style={[styles.valueText, !value && styles.placeholderText]}>
+          {value ? formatDisplay(value) : placeholder || 'Tarih Seçin'}
+        </Text>
         <Text style={styles.calIcon}>📅</Text>
       </TouchableOpacity>
 
@@ -144,6 +148,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#222',
     fontWeight: '600',
+  },
+  placeholderText: {
+    color: '#999',
+    fontWeight: '400',
   },
   calIcon: {
     fontSize: 16,

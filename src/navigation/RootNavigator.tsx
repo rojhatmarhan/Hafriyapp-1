@@ -11,11 +11,17 @@ import { RootState } from '../store';
 import { getProfile } from '../services/userService';
 import { setUser, logout } from '../store/slices/authSlice';
 import { clearAuth } from '../utils/secureStore';
+import { checkAndPromptAppUpdate } from '../services/appUpdateService';
 
 export default function RootNavigator() {
   const dispatch = useDispatch();
   // 🔐 Keychain → Redux
   useAuthBootstrap();
+
+  // 🚀 Uygulama açılışında mağaza güncelleme kontrolü (Google Play / App Store)
+  useEffect(() => {
+    checkAndPromptAppUpdate();
+  }, []);
 
   const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
   const token = useSelector((state: RootState) => state.auth.token);

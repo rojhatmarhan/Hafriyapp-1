@@ -10,12 +10,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NewJobModal from '../../components/NewJobModal';
 import BluetoothPrinterModal from '../../components/BluetoothPrinterModal';
 import DatePickerInput from '../../components/DatePickerInput';
-import { createHaul, updateHaulPayment, deleteHaul, HaulApi } from '../../services/haulService';
+import TimePickerInput from '../../components/TimePickerInput';
+import { createHaul, updateHaulPayment, updateHaul, deleteHaul, getHaulById, HaulApi } from '../../services/haulService';
+import { QRScannerModal, ScannedQRData } from '../../components/QRScannerModal';
+import { PlateScannerModal } from '../../components/PlateScannerModal';
 import { getCompanyById } from '../../services/userService';
 import { addPendingHaul, removePendingHaul, PendingHaul } from '../../store/slices/pendingHaulSlice';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
 import { ensurePrinterReady, printImage, clearSavedPrinter, getReceiptCaptureLayout } from '../../services/printService';
+import { API_BASE_URL, BASE_HOST } from '../../services/api';
 
 const YELLOW = '#FFD500';
 const DARK = '#222';
@@ -27,23 +31,40 @@ const nowTR = (): string => {
 };
 
 const todayDDMMYYYY = (): string => {
-  const d = new Date();
-  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+  const trMs = Date.now() + 3 * 60 * 60000;
+  const d = new Date(trMs);
+  return `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()}`;
 };
 
-const ddmmyyyyToISOUTC = (str: string): string => {
+const getNowTimeStr = (): string => {
+  const trMs = Date.now() + 3 * 60 * 60000;
+  const d = new Date(trMs);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+};
+
+const ddmmyyyyToISOUTC = (str: string, timeStr?: string): string => {
   if (/^\d{2}\.\d{2}\.\d{4}$/.test(str)) {
-    const [day, month, year] = str.split('.').map(Number);
-    return new Date(Date.UTC(year, month - 1, day)).toISOString();
+    const [day, month, year] = str.split('.');
+    let hour = '12', min = '00';
+    if (timeStr && /^\d{1,2}:\d{2}$/.test(timeStr)) {
+      const parts = timeStr.split(':');
+      hour = parts[0].padStart(2, '0');
+      min = parts[1].padStart(2, '0');
+    } else {
+      const now = new Date();
+      hour = String(now.getHours()).padStart(2, '0');
+      min = String(now.getMinutes()).padStart(2, '0');
+    }
+    return `${year}-${month}-${day}T${hour}:${min}:00.000`;
   }
-  return new Date().toISOString();
+  return str;
 };
 
 const checkOnline = async (): Promise<boolean> => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 3000);
   try {
-    await fetch('https://api.hafriyapp.com/api/user/profile', {
+    await fetch(`${API_BASE_URL}/user/profile`, {
       method: 'HEAD',
       signal: controller.signal,
     });
@@ -62,7 +83,7 @@ const resolveReceiptLogo = (path?: string | null): any => {
   const fullUrl = path.startsWith('http')
     ? path
     : (path.startsWith('/uploads') || path.startsWith('/'))
-    ? `https://api.hafriyapp.com${path}`
+    ? `${BASE_HOST}${path}`
     : null;
 
   if (fullUrl) {
@@ -165,6 +186,8 @@ export default function JobDetails() {
     ...h,
     isPaid: h.isPaid !== undefined ? h.isPaid : ((h as any).IsPaid ?? false),
     isPrintedReceipt: h.isPrintedReceipt !== undefined ? h.isPrintedReceipt : ((h as any).IsPrintedReceipt ?? false),
+    createdDate: h.createdDate || (h as any).CreatedDate,
+    updatedDate: h.updatedDate || (h as any).UpdatedDate,
     contactPhone: h.contactPhone || (h as any).ContactPhone || job?.contactPhone || user?.phoneNumber || undefined,
     driverName: h.driverName || (h as any).DriverName || undefined,
     driverPhone: h.driverPhone || (h as any).DriverPhone || undefined,
@@ -232,7 +255,19 @@ export default function JobDetails() {
   const [manualPricePerTon, setManualPricePerTon] = useState('');
   const [manualMaterial, setManualMaterial] = useState('');
   const [manualDate, setManualDate] = useState<string>(todayDDMMYYYY());
+  const [manualTime, setManualTime] = useState<string>(getNowTimeStr());
   const [manualSaving, setManualSaving] = useState(false);
+
+  // ── Sefer Düzenle modal
+  const [editHaulModalVisible, setEditHaulModalVisible] = useState(false);
+  const [editingHaul, setEditingHaul] = useState<HaulApi | null>(null);
+  const [editPlate, setEditPlate] = useState('');
+  const [editDump, setEditDump] = useState('');
+  const [editTonage, setEditTonage] = useState('');
+  const [editCash, setEditCash] = useState('');
+  const [editFuel, setEditFuel] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
 
   // ── Son plakalar
   const [recentPlates, setRecentPlates] = useState<string[]>([]);
@@ -248,7 +283,7 @@ export default function JobDetails() {
     try {
       const raw = await AsyncStorage.getItem('recent_plates');
       const existing: string[] = raw ? JSON.parse(raw) : [];
-      const updated = [plate, ...existing.filter(p => p !== plate)].slice(0, 10);
+      const updated = [plate, ...existing.filter(p => p !== plate)].slice(0, 1000);
       await AsyncStorage.setItem('recent_plates', JSON.stringify(updated));
       setRecentPlates(updated);
     } catch {}
@@ -281,6 +316,75 @@ export default function JobDetails() {
   const [paymentCash, setPaymentCash] = useState('');
   const [paymentFuel, setPaymentFuel] = useState('');
   const [paymentSaving, setPaymentSaving] = useState(false);
+
+  // ── QR Kod Tarayıcı Modal
+  const [qrModalVisible, setQrModalVisible] = useState(false);
+
+  // ── Kamera ile Plaka Okuma Modal
+  const [plateScannerVisible, setPlateScannerVisible] = useState(false);
+  const [plateTarget, setPlateTarget] = useState<'form' | 'manual' | 'edit'>('form');
+
+  const handlePlateDetected = (detectedPlate: string) => {
+    if (plateTarget === 'form') {
+      setFormPlate(detectedPlate);
+    } else if (plateTarget === 'manual') {
+      setManualPlate(detectedPlate);
+    } else if (plateTarget === 'edit') {
+      setEditPlate(detectedPlate);
+    }
+  };
+
+  const handleQRScan = async (scanned: ScannedQRData) => {
+    // 1. Şantiye Yetkisi Kontrolü
+    if (scanned.jobSiteId && job?.id && scanned.jobSiteId.toLowerCase() !== job.id.toLowerCase()) {
+      Alert.alert('Yetkisiz Sefer', 'Okutulan sefer fişi bu şantiyeye ait değildir.');
+      return;
+    }
+
+    // 2. Mevcut listede eşleşen seferi ara
+    const matched = hauls.find(h =>
+      (scanned.haulId && h.id.toLowerCase() === scanned.haulId.toLowerCase()) ||
+      (scanned.serialNumber && autoSerial(h) === scanned.serialNumber) ||
+      (scanned.raw && (h.id.toLowerCase() === scanned.raw.toLowerCase() || autoSerial(h) === scanned.raw))
+    );
+
+    if (matched) {
+      setSelectedHaul(normalizeHaul(matched));
+      setReceiptVisible(true);
+      return;
+    }
+
+    // 3. Listede yoksa API'den çek
+    if (scanned.haulId && token) {
+      try {
+        const res = await getHaulById(token, scanned.haulId);
+        if (res) {
+          if (res.jobSiteId?.toLowerCase() === job?.id?.toLowerCase()) {
+            setSelectedHaul(normalizeHaul(res));
+            setReceiptVisible(true);
+            return;
+          } else {
+            Alert.alert('Yetkisiz Sefer', 'Okutulan sefer fişi bu şantiyeye ait değildir.');
+            return;
+          }
+        }
+      } catch (err: any) {
+        if (err?.response?.status === 403 || err?.response?.status === 401) {
+          Alert.alert('Erişim Engellendi', 'Bu sefere ait bilgileri ve fişi görüntüleme yetkiniz bulunmamaktadır.');
+          return;
+        }
+      }
+    }
+
+    // 4. Plaka veya Seri Numarası ile arama kutusunu filtrele
+    if (scanned.plateNumber) {
+      setPlateFilter(scanned.plateNumber);
+    } else if (scanned.serialNumber) {
+      setPlateFilter(scanned.serialNumber);
+    } else {
+      Alert.alert('Bulunamadı', 'Okutulan QR koda ait sefer bu şantiyede bulunamadı.');
+    }
+  };
 
   const pendingForThisJob = pendingQueue.filter(h => h.jobSiteId === job?.id);
   const offers = getOffersFromJob(job);
@@ -324,41 +428,60 @@ export default function JobDetails() {
     }
   }, [token, job?.id]);
 
-  // ── Bekleyen seferleri sunucuya gönder
+  const syncLockRef = useRef(false);
+  const inFlightIdsRef = useRef<Set<string>>(new Set());
+
+  // ── Bekleyen seferleri sunucuya güvenli & tekil olarak gönder
   const syncPending = useCallback(async () => {
     if (!token || pendingQueue.length === 0) return;
+    if (syncLockRef.current) return; // Zaten senkronizasyon çalışıyor, çift tetiklemeyi engelle
+
     const online = await checkOnline();
     if (!online) return;
 
+    syncLockRef.current = true;
     setSyncing(true);
     let synced = 0;
-    for (const pending of pendingQueue) {
-      try {
-        await createHaul(
-          {
-            jobSiteId: pending.jobSiteId,
-            plateNumber: pending.plateNumber,
-            paymentType: pending.paymentType,
-            tonage: pending.tonage,
-            cashAmount: pending.cashAmount,
-            fuelAmount: pending.fuelAmount,
-            dumpLocation: pending.dumpLocation,
-            note: pending.note,
-            timeOfHaul: pending.timeOfHaul,
-            isPrintedReceipt: pending.isPrintedReceipt,
-          },
-          token,
-        );
-        dispatch(removePendingHaul(pending.localId));
-        synced++;
-      } catch (err) {
-        console.log('Sync fail:', pending.localId, err);
+
+    try {
+      for (const pending of pendingQueue) {
+        // Eğer bu sefer şu anda işleniyorsa atla
+        if (inFlightIdsRef.current.has(pending.localId)) continue;
+        inFlightIdsRef.current.add(pending.localId);
+
+        try {
+          await createHaul(
+            {
+              jobSiteId: pending.jobSiteId,
+              plateNumber: pending.plateNumber,
+              paymentType: pending.paymentType,
+              tonage: pending.tonage,
+              cashAmount: pending.cashAmount,
+              fuelAmount: pending.fuelAmount,
+              dumpLocation: pending.dumpLocation,
+              note: pending.note,
+              timeOfHaul: pending.timeOfHaul,
+              isPrintedReceipt: pending.isPrintedReceipt,
+              clientUniqueId: pending.localId,
+            },
+            token,
+          );
+          dispatch(removePendingHaul(pending.localId));
+          synced++;
+        } catch (err) {
+          console.log('Sync fail:', pending.localId, err);
+        } finally {
+          inFlightIdsRef.current.delete(pending.localId);
+        }
       }
+    } finally {
+      syncLockRef.current = false;
+      setSyncing(false);
     }
-    setSyncing(false);
+
     if (synced > 0) {
       fetchHauls();
-      Alert.alert('Senkronize Edildi', `${synced} bekleyen sefer sunucuya gönderildi.`);
+      Alert.alert('Senkronize Edildi', `${synced} bekleyen sefer sunucuya başarıyla aktarıldı.`);
     }
   }, [token, pendingQueue]);
 
@@ -447,9 +570,6 @@ export default function JobDetails() {
         fetchHauls();
         setSelectedHaul(normalizeHaul(created));
         setReceiptVisible(true);
-        if (isPrinted) {
-          triggerPrint(created);
-        }
       } catch (err: any) {
         setFormSaving(false);
         Alert.alert('Hata', err.response?.data?.message || 'Sefer kaydedilemedi.');
@@ -517,18 +637,14 @@ export default function JobDetails() {
       fuel = 0;
       paymentType = 0;
     } else {
-      if (!manualDump.trim()) {
-        Alert.alert('Eksik Bilgi', 'Döküm yeri zorunludur.');
-        return;
-      }
-      dumpLoc = manualDump.trim();
+      dumpLoc = manualDump.trim() || 'Serbest Döküm';
       cash = parseFloat(manualCash.replace(',', '.')) || 0;
       fuel = parseFloat(manualFuel.replace(',', '.')) || 0;
       tonage = 0; // Hafriyat tonaj alanı kaldırıldı
       paymentType = cash > 0 && fuel > 0 ? 2 : fuel > 0 ? 1 : 0;
     }
 
-    const timeNow = isKum ? ddmmyyyyToISOUTC(manualDate) : nowTR();
+    const timeNow = ddmmyyyyToISOUTC(manualDate, manualTime);
     setManualSaving(true);
     const online = await checkOnline();
 
@@ -550,14 +666,12 @@ export default function JobDetails() {
           },
           token!,
         );
+        saveRecentPlate(cleanPlate);
         setManualSaving(false);
         closeManualModal();
         fetchHauls();
         setSelectedHaul(normalizeHaul(created));
         setReceiptVisible(true);
-        if (isPrinted) {
-          triggerPrint(created);
-        }
       } catch (err: any) {
         setManualSaving(false);
         Alert.alert('Hata', err.response?.data?.message || 'Sefer kaydedilemedi.');
@@ -579,6 +693,7 @@ export default function JobDetails() {
         createdAt: timeNow,
       };
       dispatch(addPendingHaul(pending));
+      saveRecentPlate(cleanPlate);
       setManualSaving(false);
       closeManualModal();
       if (isPrinted) {
@@ -757,6 +872,7 @@ export default function JobDetails() {
     setManualPricePerTon('');
     setManualMaterial('');
     setManualDate(todayDDMMYYYY());
+    setManualTime(getNowTimeStr());
   };
 
   const formatDate = (dateString: string) => {
@@ -902,20 +1018,102 @@ export default function JobDetails() {
     </View>
   );
 
+  // ── Sefer arama yardımcıları (Plaka, Seri No, Döküm Yeri, Tarih, Şoför vb.)
+  const getHaulDateStrings = (dateIso?: string): string[] => {
+    if (!dateIso) return [];
+    const d = new Date(dateIso.endsWith('Z') ? dateIso : dateIso + 'Z');
+    if (isNaN(d.getTime())) return [];
+
+    const tr = new Date(d.getTime() + 3 * 3600 * 1000);
+    const day = String(tr.getUTCDate()).padStart(2, '0');
+    const month = String(tr.getUTCMonth() + 1).padStart(2, '0');
+    const year = String(tr.getUTCFullYear());
+    const hour = String(tr.getUTCHours()).padStart(2, '0');
+    const min = String(tr.getUTCMinutes()).padStart(2, '0');
+
+    const monthNamesTR = [
+      'ocak', 'şubat', 'mart', 'nisan', 'mayıs', 'haziran',
+      'temmuz', 'ağustos', 'eylül', 'ekim', 'kasım', 'aralık',
+    ];
+    const monthName = monthNamesTR[tr.getUTCMonth()] || '';
+
+    return [
+      `${day}.${month}.${year}`,
+      `${day}.${month}`,
+      `${month}.${year}`,
+      `${day}/${month}/${year}`,
+      `${day}/${month}`,
+      `${day}-${month}-${year}`,
+      `${day}-${month}`,
+      `${day} ${monthName} ${year}`,
+      `${day} ${monthName}`,
+      monthName,
+      year,
+      `${hour}:${min}`,
+    ];
+  };
+
+  const matchesHaulSearch = (h: any, query: string): boolean => {
+    if (!query || !query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    const qClean = q.replace(/\s/g, '');
+
+    // 1. Plaka
+    const plate = (h.plateNumber || '').toLowerCase();
+    const plateClean = plate.replace(/\s/g, '');
+    if (plateClean.includes(qClean) || plate.includes(q)) return true;
+
+    // 2. Seri No
+    const serial = autoSerial(h).toLowerCase();
+    const serialClean = serial.replace(/\s/g, '');
+    const rawSerial = (h.serialNumber || '').toLowerCase().replace(/\s/g, '');
+    if (serialClean.includes(qClean) || serial.includes(q) || rawSerial.includes(qClean)) return true;
+
+    // 3. Döküm Sahası / Yeri
+    const dump = (h.dumpLocation || '').toLowerCase();
+    if (dump.includes(q)) return true;
+
+    // 4. Şantiye Adı
+    const jobSite = (h.jobSiteName || '').toLowerCase();
+    if (jobSite.includes(q)) return true;
+
+    // 5. Şoför Adı
+    const driver = (h.driverName || '').toLowerCase();
+    if (driver.includes(q)) return true;
+
+    // 6. Rota / Teklif Adı / Not
+    const offer1 = (h.offer1Name || '').toLowerCase();
+    const offer2 = (h.offer2Name || '').toLowerCase();
+    const note = (h.note || '').toLowerCase();
+    if (offer1.includes(q) || offer2.includes(q) || note.includes(q)) return true;
+
+    // 7. Tarih ve Saat Eşleşmeleri
+    const timeDates = getHaulDateStrings(h.timeOfHaul);
+    const createdDates = getHaulDateStrings(h.createdDate);
+    const allDates = [...timeDates, ...createdDates];
+    for (const dt of allDates) {
+      if (dt.toLowerCase().includes(q)) return true;
+    }
+
+    return false;
+  };
+
   const filteredHauls = plateFilter.trim()
-    ? hauls.filter(h => {
-        const q = plateFilter.replace(/\s/g, '').toLowerCase();
-        const plate = h.plateNumber.replace(/\s/g, '').toLowerCase();
-        const serial = autoSerial(h).replace(/\s/g, '').toLowerCase();
-        return plate.includes(q) || serial.includes(q);
-      })
+    ? hauls.filter(h => matchesHaulSearch(h, plateFilter))
     : hauls;
 
-  // ── Özet çubuğu (compact tek satır)
+  const filteredPending = plateFilter.trim()
+    ? pendingForThisJob.filter(h => matchesHaulSearch(h, plateFilter))
+    : pendingForThisJob;
+
+  // ── Özet çubuğu (filtrelenmiş sonuçlara göre dinamik hesaplanır)
   const renderSummaryCards = () => {
     const todayStr = new Date().toDateString();
-    const todayCount = hauls.filter(h => new Date(h.timeOfHaul).toDateString() === todayStr).length + pendingForThisJob.filter(h => new Date(h.timeOfHaul).toDateString() === todayStr).length;
-    const totalTonKg = hauls.reduce((a, h) => a + (h.tonage || 0), 0);
+    const todayCount =
+      filteredHauls.filter(h => new Date(h.timeOfHaul).toDateString() === todayStr).length +
+      filteredPending.filter(h => new Date(h.timeOfHaul).toDateString() === todayStr).length;
+
+    const totalTonKg = filteredHauls.reduce((a, h) => a + (h.tonage || 0), 0);
     const remainingFuel = fuelStock;
     const totalTonDisplay = isKum ? `${(totalTonKg / 1000).toFixed(1)}t` : `${remainingFuel.toFixed(0)}lt`;
     const totalTonLabel = isKum ? 'Toplam Ton' : 'Kalan Yakıt';
@@ -928,7 +1126,7 @@ export default function JobDetails() {
         </View>
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
-          <Text style={styles.summaryValue}>{hauls.length + pendingForThisJob.length}</Text>
+          <Text style={styles.summaryValue}>{filteredHauls.length + filteredPending.length}</Text>
           <Text style={styles.summaryLabel}>Toplam</Text>
         </View>
         <View style={styles.summaryDivider} />
@@ -938,7 +1136,7 @@ export default function JobDetails() {
         </View>
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
-          <Text style={[styles.summaryValue, { color: '#E53935' }]}>{hauls.filter(h => !h.isPaid).length}</Text>
+          <Text style={[styles.summaryValue, { color: '#E53935' }]}>{filteredHauls.filter(h => !h.isPaid).length}</Text>
           <Text style={styles.summaryLabel}>Bekliyor</Text>
         </View>
       </View>
@@ -972,6 +1170,93 @@ export default function JobDetails() {
   const isWithinOneHour = (createdDate: string) => {
     const utc = createdDate.endsWith('Z') ? createdDate : createdDate + 'Z';
     return Date.now() - new Date(utc).getTime() < 3600000;
+  };
+
+  const formatUpdatedDate = (dateString?: string) => {
+    if (!dateString || dateString.startsWith('0001-01-01')) return '';
+    const utcMs = new Date(dateString.endsWith('Z') ? dateString : dateString + 'Z').getTime();
+    if (!isNaN(utcMs)) {
+      const tr = new Date(utcMs + 3 * 3600 * 1000);
+      const day = String(tr.getUTCDate()).padStart(2, '0');
+      const month = String(tr.getUTCMonth() + 1).padStart(2, '0');
+      const year = tr.getUTCFullYear();
+      const hour = String(tr.getUTCHours()).padStart(2, '0');
+      const min = String(tr.getUTCMinutes()).padStart(2, '0');
+      return `${day}.${month}.${year} ${hour}:${min}`;
+    }
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return '';
+    return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
+  const isHaulUpdated = (item: any): boolean => {
+    if (item?.isUpdated !== undefined) return Boolean(item.isUpdated);
+    if (item?.IsUpdated !== undefined) return Boolean(item.IsUpdated);
+    const createdStr = item?.createdDate || item?.CreatedDate;
+    const updatedStr = item?.updatedDate || item?.UpdatedDate;
+    if (!createdStr || !updatedStr) return false;
+    const created = new Date(createdStr.endsWith?.('Z') ? createdStr : createdStr + 'Z').getTime();
+    const updated = new Date(updatedStr.endsWith?.('Z') ? updatedStr : updatedStr + 'Z').getTime();
+    return updated - created > 1000;
+  };
+
+  const handleOpenEditHaul = (item: HaulApi) => {
+    // Sadece Owner (Firma Sahibi) düzenleyebilir
+    if (job?.userRole !== undefined && job?.userRole !== 0) {
+      Alert.alert('Yetki Uyarısı', 'Bu seferi sadece yetkili değiştirebilir.');
+      return;
+    }
+    setEditingHaul(item);
+    setEditPlate(item.plateNumber);
+    setEditDump(item.dumpLocation || '');
+    setEditTonage(item.tonage > 0 ? String(item.tonage) : '');
+    setEditCash(item.cashAmount > 0 ? String(item.cashAmount) : '');
+    setEditFuel(item.fuelAmount > 0 ? String(item.fuelAmount) : '');
+    setEditNote(item.note || '');
+    setEditHaulModalVisible(true);
+  };
+
+  const handleSaveEditHaul = async () => {
+    if (!editingHaul) return;
+    setEditSaving(true);
+    try {
+      if (editingHaul.isPaid) {
+        // Onaylanmış seferde sadece Not güncellenir
+        await updateHaul(
+          editingHaul.id,
+          {
+            note: editNote.trim() || undefined,
+          },
+          token!,
+        );
+      } else {
+        if (!editPlate.trim()) {
+          Alert.alert('Hata', 'Plaka numarası boş olamaz.');
+          setEditSaving(false);
+          return;
+        }
+        await updateHaul(
+          editingHaul.id,
+          {
+            plateNumber: editPlate.trim().toUpperCase().replace(/\s/g, ''),
+            dumpLocation: editDump.trim(),
+            tonage: isKum ? 0 : (parseFloat(editTonage.replace(',', '.')) || 0),
+            cashAmount: parseFloat(editCash.replace(',', '.')) || 0,
+            fuelAmount: parseFloat(editFuel.replace(',', '.')) || 0,
+            note: editNote.trim() || undefined,
+          },
+          token!,
+        );
+      }
+      setEditHaulModalVisible(false);
+      Alert.alert('Başarılı', 'Sefer başarıyla güncellendi.');
+      fetchHauls();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Sefer güncellenemedi.';
+      Alert.alert('Hata', msg);
+    } finally {
+      setEditSaving(false);
+    }
   };
 
   const handleDeleteHaul = (item: HaulApi) => {
@@ -1020,20 +1305,27 @@ export default function JobDetails() {
               </Text>
             </TouchableOpacity>
           </View>
-          {item.isPrintedReceipt && (
-            <View style={styles.printedBadge}>
-              <Text style={styles.printedBadgeText}>🖨 Yazdırıldı</Text>
-            </View>
-          )}
-          {item.isPaid ? (
-            <View style={styles.statusPaid}>
-              <Text style={styles.statusPaidText}>✔ Ödendi</Text>
-            </View>
-          ) : (
-            <View style={styles.statusPending}>
-              <Text style={styles.statusPendingText}>⏳ Bekliyor</Text>
-            </View>
-          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {item.isPrintedReceipt && (
+              <View style={styles.printedBadge}>
+                <Text style={styles.printedBadgeText}>🖨 Yazdırıldı</Text>
+              </View>
+            )}
+            {item.isPaid ? (
+              <View style={styles.statusPaid}>
+                <Text style={styles.statusPaidText}>✔ Ödendi</Text>
+              </View>
+            ) : (
+              <View style={styles.statusPending}>
+                <Text style={styles.statusPendingText}>⏳ Bekliyor</Text>
+              </View>
+            )}
+            {isHaulUpdated(item) && (
+              <View style={styles.updatedBadge}>
+                <Text style={styles.updatedBadgeText}>✏️ Düzenlendi</Text>
+              </View>
+            )}
+          </View>
         </View>
 
         <View style={styles.haulCardMid}>
@@ -1074,9 +1366,12 @@ export default function JobDetails() {
             → {item.dumpLocation || '-'}
           </Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEditHaul(item)}>
+              <Text style={styles.editBtnText}>✏️ Düzenle</Text>
+            </TouchableOpacity>
             {!item.isPaid && item.isPrintedReceipt && (
               <TouchableOpacity style={styles.approveBtn} onPress={() => openPaymentConfirm(item)}>
-                <Text style={styles.approveBtnText}>✔ Onayla</Text>
+                <Text style={styles.approveBtnText}>Ödeme</Text>
               </TouchableOpacity>
             )}
             {console.log('[deleteBtn]', item.id.slice(0, 8), '| isPaid:', item.isPaid, '| canEdit:', job?.canEdit, '| createdDate:', item.createdDate, '| withinHour:', isWithinOneHour(item.createdDate)) as any}
@@ -1123,7 +1418,13 @@ export default function JobDetails() {
               </TouchableOpacity>
             </View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity style={styles.manualBtn} onPress={() => setManualModal(true)}>
+              <TouchableOpacity
+                style={styles.manualBtn}
+                onPress={() => {
+                  setManualDate(todayDDMMYYYY());
+                  setManualTime(getNowTimeStr());
+                  setManualModal(true);
+                }}>
                 <Text style={styles.manualBtnText}>Manuel Ekle</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -1138,10 +1439,10 @@ export default function JobDetails() {
           </View>
 
           {/* Bekleyen (offline) seferler */}
-          {pendingForThisJob.length > 0 && (
+          {filteredPending.length > 0 && (
             <View style={{ marginBottom: 8 }}>
               <Text style={styles.pendingTitle}>Çevrimdışı Kaydedilenler</Text>
-              {pendingForThisJob.map(renderPendingItem)}
+              {filteredPending.map(renderPendingItem)}
             </View>
           )}
 
@@ -1156,17 +1457,29 @@ export default function JobDetails() {
           ) : (
             <>
               {hauls.length > 0 && (
-                <View style={styles.searchBox}>
-                  <Text style={styles.searchIcon}>🔍</Text>
-                  <TextInput style={styles.searchInput} placeholder="Plaka veya seri no ara..." placeholderTextColor="#aaa" value={plateFilter} onChangeText={setPlateFilter} autoCapitalize="characters" />
-                  {plateFilter.length > 0 && (
-                    <TouchableOpacity onPress={() => setPlateFilter('')}>
-                      <Text style={styles.searchClear}>✕</Text>
-                    </TouchableOpacity>
-                  )}
+                <View style={styles.searchRow}>
+                  <View style={styles.searchBox}>
+                    <Text style={styles.searchIcon}>🔍</Text>
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Plaka, seri no, döküm yeri, tarih..."
+                      placeholderTextColor="#aaa"
+                      value={plateFilter}
+                      onChangeText={setPlateFilter}
+                      autoCapitalize="none"
+                    />
+                    {plateFilter.length > 0 && (
+                      <TouchableOpacity onPress={() => setPlateFilter('')}>
+                        <Text style={styles.searchClear}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <TouchableOpacity style={styles.qrScanBtn} onPress={() => setQrModalVisible(true)} activeOpacity={0.8}>
+                    <Text style={styles.qrScanBtnText}>📷 QR</Text>
+                  </TouchableOpacity>
                 </View>
               )}
-              {filteredHauls.length === 0 && plateFilter.length > 0 ? (
+              {filteredHauls.length === 0 && filteredPending.length === 0 && plateFilter.length > 0 ? (
                 <View style={styles.emptyBox}>
                   <Text style={{ fontSize: 32 }}>🔍</Text>
                   <Text style={styles.emptyText}>"{plateFilter}" için sonuç bulunamadı.</Text>
@@ -1196,9 +1509,20 @@ export default function JobDetails() {
 
                   <View style={styles.addCardBody}>
                     {/* Plaka */}
-                    <Text style={styles.fieldLabel}>
-                      Plaka Numarası <Text style={styles.req}>*</Text>
-                    </Text>
+                    <View style={styles.plateLabelRow}>
+                      <Text style={styles.fieldLabel}>
+                        Plaka Numarası <Text style={styles.req}>*</Text>
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.plateScanBtn}
+                        onPress={() => {
+                          setPlateTarget('form');
+                          setPlateScannerVisible(true);
+                        }}
+                        activeOpacity={0.8}>
+                        <Text style={styles.plateScanBtnText}>📷 Plaka Tara</Text>
+                      </TouchableOpacity>
+                    </View>
                     <TextInput value={formPlate} onChangeText={t => setFormPlate(t.toUpperCase())} style={styles.plateInput} placeholder="34 ABC 123" autoCapitalize="characters" maxLength={14} />
                     {recentPlates.length > 0 &&
                       (() => {
@@ -1206,7 +1530,7 @@ export default function JobDetails() {
                         if (filtered.length === 0) return null;
                         return (
                           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }} contentContainerStyle={styles.recentPlatesRow} keyboardShouldPersistTaps="handled">
-                            {filtered.map(plate => (
+                            {filtered.slice(0, 10).map(plate => (
                               <TouchableOpacity key={plate} style={styles.recentPlateChip} onPress={() => setFormPlate(plate)}>
                                 <Text style={styles.recentPlateText}>{plate}</Text>
                               </TouchableOpacity>
@@ -1318,18 +1642,34 @@ export default function JobDetails() {
 
                   <View style={styles.addCardBody}>
                     {/* Plaka */}
-                    <Text style={styles.fieldLabel}>
-                      Plaka Numarası <Text style={styles.req}>*</Text>
-                    </Text>
+                    <View style={styles.plateLabelRow}>
+                      <Text style={styles.fieldLabel}>
+                        Plaka Numarası <Text style={styles.req}>*</Text>
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.plateScanBtn}
+                        onPress={() => {
+                          setPlateTarget('manual');
+                          setPlateScannerVisible(true);
+                        }}
+                        activeOpacity={0.8}>
+                        <Text style={styles.plateScanBtnText}>📷 Plaka Tara</Text>
+                      </TouchableOpacity>
+                    </View>
                     <TextInput value={manualPlate} onChangeText={t => setManualPlate(t.toUpperCase())} style={styles.plateInput} placeholder="34 ABC 123" autoCapitalize="characters" maxLength={14} />
+
+                    {/* Tarih ve Saat Seçimi */}
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                      <View style={{ flex: 1.3 }}>
+                        <DatePickerInput label="Sefer Tarihi" value={manualDate} onChange={setManualDate} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <TimePickerInput label="Saat" value={manualTime} onChange={setManualTime} />
+                      </View>
+                    </View>
 
                     {isKum ? (
                       <>
-                        {/* Tarih */}
-                        <View style={{ marginTop: 14 }}>
-                          <DatePickerInput label="Tarih" value={manualDate} onChange={setManualDate} />
-                        </View>
-
                         {/* Yükleme Yeri */}
                         <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
                           Yükleme Yeri <Text style={styles.req}>*</Text>
@@ -1404,11 +1744,146 @@ export default function JobDetails() {
                     <TouchableOpacity style={styles.cancelBtn} onPress={closeManualModal}>
                       <Text style={styles.cancelBtnText}>İptal</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.manualReceiptBtn, (!manualPlate || (isKum ? !manualLoading || !manualUnloading || !manualPricePerTon || !manualTonage : !manualDump) || manualSaving) && { opacity: 0.4 }]} onPress={() => handleManualHaul(false)} disabled={!manualPlate || (isKum ? !manualLoading || !manualUnloading || !manualPricePerTon || !manualTonage : !manualDump) || manualSaving}>
+                    <TouchableOpacity
+                      style={[styles.manualReceiptBtn, manualSaving && { opacity: 0.4 }]}
+                      onPress={() => handleManualHaul(false)}
+                      disabled={manualSaving}>
                       <Text style={styles.manualReceiptBtnText}>{manualSaving ? 'Kaydediliyor...' : 'Sanal Fiş Kes'}</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.manualSaveBtn, (!manualPlate || (isKum ? !manualLoading || !manualUnloading || !manualPricePerTon || !manualTonage : !manualDump) || manualSaving) && { opacity: 0.4 }]} onPress={() => handleManualHaul(true)} disabled={!manualPlate || (isKum ? !manualLoading || !manualUnloading || !manualPricePerTon || !manualTonage : !manualDump) || manualSaving}>
+                    <TouchableOpacity
+                      style={[styles.manualSaveBtn, manualSaving && { opacity: 0.4 }]}
+                      onPress={() => handleManualHaul(true)}
+                      disabled={manualSaving}>
                       <Text style={styles.manualSaveBtnText}>{manualSaving ? 'Kaydediliyor...' : 'Fiş Kes ve Yazdır'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* ═══════════════ SEFER DÜZENLE MODAL ═══════════════ */}
+      <Modal visible={editHaulModalVisible} transparent animationType="slide">
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
+              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ alignItems: 'center' }}>
+                <View style={styles.addCard}>
+                  {/* Header */}
+                  <View style={[styles.addCardHeader, { backgroundColor: '#F57C00' }]}>
+                    <Text style={styles.addCardHeaderText}>✏️ Sefer Düzenle</Text>
+                    <TouchableOpacity onPress={() => setEditHaulModalVisible(false)} style={styles.closeX}>
+                      <Text style={styles.closeXText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.addCardBody}>
+                    {editingHaul?.isPaid ? (
+                      <View style={{ backgroundColor: '#FFF8E1', padding: 10, borderRadius: 8, marginBottom: 12, borderWidth: 1, borderColor: '#FFE082' }}>
+                        <Text style={{ fontSize: 12, color: '#E65100', fontWeight: '700' }}>
+                          🔒 Bu sefer onaylandığı (ödendiği) için sadece Not alanı düzenlenebilir.
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={{ backgroundColor: '#FFF3E0', padding: 10, borderRadius: 8, marginBottom: 12 }}>
+                        <Text style={{ fontSize: 12, color: '#E65100', fontWeight: '600' }}>
+                          ℹ️ Sefer bilgileri firma sahibi tarafından güncellenmektedir.
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Plaka */}
+                    <View style={styles.plateLabelRow}>
+                      <Text style={styles.fieldLabel}>
+                        Plaka Numarası <Text style={styles.req}>*</Text>
+                      </Text>
+                      {!editingHaul?.isPaid && (
+                        <TouchableOpacity
+                          style={styles.plateScanBtn}
+                          onPress={() => {
+                            setPlateTarget('edit');
+                            setPlateScannerVisible(true);
+                          }}
+                          activeOpacity={0.8}>
+                          <Text style={styles.plateScanBtnText}>📷 Plaka Tara</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <TextInput
+                      value={editPlate}
+                      onChangeText={t => setEditPlate(t.toUpperCase())}
+                      style={[styles.plateInput, editingHaul?.isPaid && { opacity: 0.5, backgroundColor: '#f0f0f0' }]}
+                      placeholder="34 ABC 123"
+                      autoCapitalize="characters"
+                      maxLength={14}
+                      editable={!editingHaul?.isPaid}
+                    />
+
+                    {/* Rota / Döküm Yeri */}
+                    <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+                      Rota / Döküm Yeri
+                    </Text>
+                    <TextInput
+                      value={editDump}
+                      onChangeText={setEditDump}
+                      style={[styles.textInput, editingHaul?.isPaid && { opacity: 0.5, backgroundColor: '#f0f0f0' }]}
+                      placeholder="Döküm Yeri veya Rota"
+                      editable={!editingHaul?.isPaid}
+                    />
+
+                    {/* Nakit + Yakıt (Hafriyat tipi için) */}
+                    {!isKum && (
+                      <View style={{ flexDirection: 'row', gap: 12, marginTop: 14 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.fieldLabel, { color: '#2E7D32' }]}>Nakit (₺)</Text>
+                          <TextInput
+                            value={editCash}
+                            onChangeText={t => setEditCash(t.replace(/[^0-9,.]/g, ''))}
+                            style={[styles.textInput, editingHaul?.isPaid && { opacity: 0.5, backgroundColor: '#f0f0f0' }]}
+                            placeholder="0"
+                            keyboardType="decimal-pad"
+                            editable={!editingHaul?.isPaid}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.fieldLabel, { color: '#E65100' }]}>Mazot (Lt)</Text>
+                          <TextInput
+                            value={editFuel}
+                            onChangeText={t => setEditFuel(t.replace(/[^0-9,.]/g, ''))}
+                            style={[styles.textInput, editingHaul?.isPaid && { opacity: 0.5, backgroundColor: '#f0f0f0' }]}
+                            placeholder="0"
+                            keyboardType="decimal-pad"
+                            editable={!editingHaul?.isPaid}
+                          />
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Not */}
+                    <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+                      Not <Text style={styles.optional}>(Opsiyonel)</Text>
+                    </Text>
+                    <TextInput
+                      value={editNote}
+                      onChangeText={setEditNote}
+                      style={styles.noteInput}
+                      placeholder="Örn: İrsaliye No, Açıklama"
+                      maxLength={250}
+                      multiline
+                    />
+                  </View>
+
+                  <View style={[styles.addCardFooter, { justifyContent: 'flex-end', gap: 8 }]}>
+                    <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditHaulModalVisible(false)}>
+                      <Text style={styles.cancelBtnText}>İptal</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.manualSaveBtn, { backgroundColor: '#F57C00' }, (!editPlate || editSaving) && { opacity: 0.4 }]}
+                      onPress={handleSaveEditHaul}
+                      disabled={!editPlate || editSaving}>
+                      <Text style={styles.manualSaveBtnText}>{editSaving ? 'Kaydediliyor...' : 'Güncelle'}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1622,6 +2097,15 @@ export default function JobDetails() {
                         </Text>
                       </View>
 
+                      {isHaulUpdated(selectedHaul) && (
+                        <View style={[styles.receiptRow, { backgroundColor: '#FFFBEB', paddingVertical: 4, borderRadius: 4 }]}>
+                          <Text style={[styles.receiptRowLabel, { color: '#D97706', fontWeight: '700' }]}>Düzenleme Tarihi :</Text>
+                          <Text style={[styles.receiptRowValue, { color: '#D97706', fontWeight: '800' }]}>
+                            {formatUpdatedDate(selectedHaul.updatedDate || (selectedHaul as any).UpdatedDate)}
+                          </Text>
+                        </View>
+                      )}
+
                       <View style={[styles.receiptRow, { borderBottomWidth: 0 }]}>
                         <Text style={styles.receiptRowLabel}>Yetkili :</Text>
                         <Text style={styles.receiptRowValue}>{getAuthorizedContact(selectedHaul)}</Text>
@@ -1650,7 +2134,7 @@ export default function JobDetails() {
                       setReceiptVisible(false);
                       openPaymentConfirm(selectedHaul);
                     }}>
-                    <Text style={styles.receiptApproveBtnNewText}>Onayla</Text>
+                    <Text style={styles.receiptApproveBtnNewText}>Ödeme</Text>
                   </TouchableOpacity>
                 )}
                 {selectedHaul.isPrintedReceipt && (
@@ -1915,6 +2399,19 @@ export default function JobDetails() {
         }}
         onConnected={handlePrinterConnected}
       />
+
+      <QRScannerModal
+        visible={qrModalVisible}
+        onClose={() => setQrModalVisible(false)}
+        onScan={handleQRScan}
+        title="Şantiye Sefer Fişi Okutun"
+      />
+
+      <PlateScannerModal
+        visible={plateScannerVisible}
+        onClose={() => setPlateScannerVisible(false)}
+        onPlateDetected={handlePlateDetected}
+      />
     </SafeAreaView>
   );
 }
@@ -2028,6 +2525,8 @@ const styles = StyleSheet.create({
   haulSerialRow: { flexDirection: 'row', gap: 4, flex: 1 },
   haulSerial: { fontSize: 10, color: '#888', fontFamily: 'monospace', backgroundColor: '#F0F0F0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   haulSerialCopied: { backgroundColor: '#E8F5E9', color: '#2E7D32' },
+  updatedBadge: { backgroundColor: '#FFF3E0', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: '#FFE0B2' },
+  updatedBadgeText: { fontSize: 10, color: '#E65100', fontWeight: '700' },
   printedBadge: { backgroundColor: '#E3F2FD', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   printedBadgeText: { fontSize: 10, color: '#1565C0', fontWeight: '600' },
   statusPaid: { backgroundColor: '#E8F5E9', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
@@ -2047,6 +2546,8 @@ const styles = StyleSheet.create({
   haulNoteText: { fontSize: 12, color: '#555', fontStyle: 'italic', paddingHorizontal: 12, paddingBottom: 6 },
   haulCardBot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F0F0F0', paddingTop: 8 },
   haulDump: { fontSize: 15, color: '#666', flex: 1 },
+  editBtn: { borderWidth: 1.5, borderColor: '#F57C00', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  editBtnText: { color: '#F57C00', fontSize: 12, fontWeight: '700' },
   eyeBtn: { borderWidth: 1.5, borderColor: '#1565C0', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   deleteBtn: { borderWidth: 1.5, borderColor: '#E53935', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   deleteBtnText: { color: '#E53935', fontSize: 12, fontWeight: '700' },
@@ -2557,7 +3058,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    marginBottom: 10,
     borderWidth: 1,
     borderColor: '#E8E8E8',
     shadowColor: '#000',
@@ -2565,6 +3065,32 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 2,
     elevation: 1,
+    flex: 1,
+    marginBottom: 0,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+    marginBottom: 10,
+  },
+  qrScanBtn: {
+    backgroundColor: '#2E7D32',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  qrScanBtnText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 14,
   },
   searchIcon: { fontSize: 14, marginRight: 8 },
   searchInput: {
@@ -2576,5 +3102,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#aaa',
     paddingHorizontal: 4,
+  },
+  plateLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  plateScanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1,
+    borderColor: '#2E7D32',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  plateScanBtnText: {
+    color: '#2E7D32',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

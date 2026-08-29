@@ -337,6 +337,34 @@ export default function DriverJobs() {
     );
   };
 
+  const formatUpdatedDate = (dateString?: string) => {
+    if (!dateString || dateString.startsWith('0001-01-01')) return '';
+    const utcMs = new Date(dateString.endsWith('Z') ? dateString : dateString + 'Z').getTime();
+    if (!isNaN(utcMs)) {
+      const tr = new Date(utcMs + 3 * 3600 * 1000);
+      const day = String(tr.getUTCDate()).padStart(2, '0');
+      const month = String(tr.getUTCMonth() + 1).padStart(2, '0');
+      const year = tr.getUTCFullYear();
+      const hour = String(tr.getUTCHours()).padStart(2, '0');
+      const min = String(tr.getUTCMinutes()).padStart(2, '0');
+      return `${day}.${month}.${year} ${hour}:${min}`;
+    }
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return '';
+    return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
+  const isHaulUpdated = (item: any): boolean => {
+    if (item?.isUpdated !== undefined) return Boolean(item.isUpdated);
+    if (item?.IsUpdated !== undefined) return Boolean(item.IsUpdated);
+    const createdStr = item?.createdDate || item?.CreatedDate;
+    const updatedStr = item?.updatedDate || item?.UpdatedDate;
+    if (!createdStr || !updatedStr) return false;
+    const created = new Date(createdStr.endsWith?.('Z') ? createdStr : createdStr + 'Z').getTime();
+    const updated = new Date(updatedStr.endsWith?.('Z') ? updatedStr : updatedStr + 'Z').getTime();
+    return updated - created > 1000;
+  };
+
   /* ─── SEFER KARTI ─── */
   const renderItem = ({ item }: { item: HaulApi }) => {
     const today = isToday(item.timeOfHaul);
@@ -367,6 +395,11 @@ export default function DriverJobs() {
               <View style={styles.statusPaid}><Text style={styles.statusPaidText}>✔ Ödendi</Text></View>
             ) : (
               <View style={styles.statusPending}><Text style={styles.statusPendingText}>⏳ Bekliyor</Text></View>
+            )}
+            {isHaulUpdated(item) && (
+              <View style={styles.updatedBadge}>
+                <Text style={styles.updatedBadgeText}>✏️ Düzenlendi</Text>
+              </View>
             )}
           </View>
         </View>
@@ -417,7 +450,7 @@ export default function DriverJobs() {
             >
               {approvingId === item.id
                 ? <ActivityIndicator size="small" color="#fff" />
-                : <Text style={styles.haulApproveBtnText}>✔ Onayla</Text>}
+                : <Text style={styles.haulApproveBtnText}>Ödeme</Text>}
             </TouchableOpacity>
           ) : isPaid ? (
             <View style={styles.haulApprovedTag}>
@@ -517,6 +550,14 @@ export default function DriverJobs() {
                         {item.isPaid ? '✔ Ödendi' : '⏳ Bekliyor'}
                       </Text>
                     </View>
+                    {isHaulUpdated(item) && (
+                      <View style={[styles.receiptRow, { backgroundColor: '#FFFBEB', paddingVertical: 4, borderRadius: 4 }]}>
+                        <Text style={[styles.receiptRowLabel, { color: '#D97706', fontWeight: '700' }]}>Düzenleme Tarihi :</Text>
+                        <Text style={[styles.receiptRowValue, { color: '#D97706', fontWeight: '800' }]}>
+                          {formatUpdatedDate(item.updatedDate || (item as any).UpdatedDate)}
+                        </Text>
+                      </View>
+                    )}
                     {!!item.contactPhone && (
                       <View style={[styles.receiptRow, { borderBottomWidth: 0 }]}>
                         <Text style={styles.receiptRowLabel}>Yetkili :</Text>
@@ -551,7 +592,7 @@ export default function DriverJobs() {
                 >
                   {paymentSaving
                     ? <ActivityIndicator color="#fff" />
-                    : <Text style={styles.receiptApproveBtnText}>Onayla</Text>}
+                    : <Text style={styles.receiptApproveBtnText}>Ödeme</Text>}
                 </TouchableOpacity>
               )}
             </View>
@@ -832,6 +873,8 @@ const styles = StyleSheet.create({
 
   todayBadge: { backgroundColor: '#E3F2FD', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 },
   todayText: { fontSize: 10, color: '#1565C0', fontWeight: '700' },
+  updatedBadge: { backgroundColor: '#FFF3E0', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: '#FFE0B2' },
+  updatedBadgeText: { fontSize: 10, color: '#E65100', fontWeight: '700' },
   statusPaid: { backgroundColor: '#E8F5E9', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   statusPaidText: { fontSize: 11, color: '#2E7D32', fontWeight: '700' },
   statusPending: {

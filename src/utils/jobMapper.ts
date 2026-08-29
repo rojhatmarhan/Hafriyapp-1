@@ -1,4 +1,4 @@
-const API_BASE = 'https://api.hafriyapp.com/api';
+import { BASE_HOST, API_BASE_URL } from '../services/api';
 
 function resolveLogoUrl(path?: string): any {
   if (!path) return require('../../assets/logokarakalem.png');
@@ -7,7 +7,7 @@ function resolveLogoUrl(path?: string): any {
   const fullUrl = path.startsWith('http')
     ? path
     : path.startsWith('/uploads')
-    ? `https://api.hafriyapp.com${path}`
+    ? `${BASE_HOST}${path}`
     : null;
 
   if (fullUrl) {

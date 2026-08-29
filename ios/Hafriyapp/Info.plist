@@ -38,7 +38,7 @@
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Bluetooth yazıcıya bağlanmak ve fiş basmak için Bluetooth erişimi gerekiyor.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Profil fotoğrafı veya grup görseli yüklemek için kameraya erişim gerekiyor.</string>
+	<string>Araç plakalarını otomatik okumak, sefer fişi QR kodlarını taramak ve görsel yüklemek için kamera erişimi gerekiyor.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string></string>
 	<key>NSPhotoLibraryUsageDescription</key>

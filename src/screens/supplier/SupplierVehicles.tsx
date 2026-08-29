@@ -4,7 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppSelector } from '../../hooks';
 import BluetoothPrinterModal from '../../components/BluetoothPrinterModal';
 import { deleteVehicle, getVehicles, updateVehicle, createVehicle, assignDriver, getVehicleDriver, removeDriver } from '../../services/vehicleService';
-import { getHauls, updateHaulPayment, HaulApi } from '../../services/haulService';
+import { getHauls, updateHaulPayment, getHaulById, HaulApi } from '../../services/haulService';
+import { QRScannerModal, ScannedQRData } from '../../components/QRScannerModal';
+import { PlateScannerModal } from '../../components/PlateScannerModal';
 import { getCompanyById } from '../../services/userService';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
@@ -386,10 +388,70 @@ export default function SupplierVehicles() {
     };
   };
 
+  const [qrModalVisible, setQrModalVisible] = useState(false);
+  const [plateScannerVisible, setPlateScannerVisible] = useState(false);
+
   const openReceipt = (item: HaulApi) => {
     console.log('[FİŞ] Ham API verisi:', JSON.stringify(item, null, 2));
     setSelectedTrip(normalizeReceiptHaul(item));
     setReceiptVisible(true);
+  };
+
+  const handleQRScan = async (scanned: ScannedQRData) => {
+    const cleanScannedPlate = scanned.plateNumber?.replace(/\s/g, '').toUpperCase();
+
+    // 1. Araç Yetkisi Kontrolü
+    if (cleanScannedPlate) {
+      const isMyVehicle = vehicles.some(v => v.plate.replace(/\s/g, '').toUpperCase() === cleanScannedPlate);
+      if (!isMyVehicle) {
+        Alert.alert('Yetkisiz Sefer', 'Bu sefer fişi sizin veya firmanızın araçlarına ait değildir.');
+        return;
+      }
+    }
+
+    // 2. Mevcut listede eşleşen seferi ara
+    const matched = hauls.find(h =>
+      (scanned.haulId && h.id.toLowerCase() === scanned.haulId.toLowerCase()) ||
+      (scanned.serialNumber && autoSerial(h) === scanned.serialNumber) ||
+      (scanned.raw && (h.id.toLowerCase() === scanned.raw.toLowerCase() || autoSerial(h) === scanned.raw))
+    );
+
+    if (matched) {
+      openReceipt(matched);
+      return;
+    }
+
+    // 3. Listede yoksa API'den çek
+    if (scanned.haulId && token) {
+      try {
+        const res = await getHaulById(token, scanned.haulId);
+        if (res) {
+          const resPlate = res.plateNumber?.replace(/\s/g, '').toUpperCase();
+          const isMyVehicle = vehicles.some(v => v.plate.replace(/\s/g, '').toUpperCase() === resPlate);
+          if (isMyVehicle) {
+            openReceipt(res);
+            return;
+          } else {
+            Alert.alert('Yetkisiz Sefer', 'Bu sefer fişi sizin veya firmanızın araçlarına ait değildir.');
+            return;
+          }
+        }
+      } catch (err: any) {
+        if (err?.response?.status === 403 || err?.response?.status === 401) {
+          Alert.alert('Erişim Engellendi', 'Bu sefere ait bilgileri ve fişi görüntüleme yetkiniz bulunmamaktadır.');
+          return;
+        }
+      }
+    }
+
+    // 4. Plaka veya Seri Numarası ile arama kutusunu filtrele
+    if (scanned.plateNumber) {
+      setHaulFilter(scanned.plateNumber);
+    } else if (scanned.serialNumber) {
+      setHaulFilter(scanned.serialNumber);
+    } else {
+      Alert.alert('Bulunamadı', 'Okutulan QR koda ait sefer araçlarınız arasında bulunamadı.');
+    }
   };
 
   const getAuthorizedContact = (haul?: HaulApi | null) => {
@@ -724,19 +786,124 @@ export default function SupplierVehicles() {
     return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   };
 
+  // ── Sefer arama yardımcıları (Plaka, Şantiye, Döküm Yeri, Tarih, Şoför, Seri No)
+  const getHaulDateStrings = (dateIso?: string): string[] => {
+    if (!dateIso) return [];
+    const d = new Date(dateIso.endsWith('Z') ? dateIso : dateIso + 'Z');
+    if (isNaN(d.getTime())) return [];
+
+    const tr = new Date(d.getTime() + 3 * 3600 * 1000);
+    const day = String(tr.getUTCDate()).padStart(2, '0');
+    const month = String(tr.getUTCMonth() + 1).padStart(2, '0');
+    const year = String(tr.getUTCFullYear());
+    const hour = String(tr.getUTCHours()).padStart(2, '0');
+    const min = String(tr.getUTCMinutes()).padStart(2, '0');
+
+    const monthNamesTR = [
+      'ocak', 'şubat', 'mart', 'nisan', 'mayıs', 'haziran',
+      'temmuz', 'ağustos', 'eylül', 'ekim', 'kasım', 'aralık',
+    ];
+    const monthName = monthNamesTR[tr.getUTCMonth()] || '';
+
+    return [
+      `${day}.${month}.${year}`,
+      `${day}.${month}`,
+      `${month}.${year}`,
+      `${day}/${month}/${year}`,
+      `${day}/${month}`,
+      `${day}-${month}-${year}`,
+      `${day}-${month}`,
+      `${day} ${monthName} ${year}`,
+      `${day} ${monthName}`,
+      monthName,
+      year,
+      `${hour}:${min}`,
+    ];
+  };
+
+  const matchesHaulSearch = (h: HaulApi, query: string): boolean => {
+    if (!query || !query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    const qClean = q.replace(/\s/g, '');
+
+    // 1. Plaka
+    const plate = (h.plateNumber || '').toLowerCase();
+    const plateClean = plate.replace(/\s/g, '');
+    if (plateClean.includes(qClean) || plate.includes(q)) return true;
+
+    // 2. Seri No
+    const serial = autoSerial(h).toLowerCase();
+    const serialClean = serial.replace(/\s/g, '');
+    const rawSerial = (h.serialNumber || '').toLowerCase().replace(/\s/g, '');
+    if (serialClean.includes(qClean) || serial.includes(q) || rawSerial.includes(qClean)) return true;
+
+    // 3. Döküm Sahası / Yeri
+    const dump = (h.dumpLocation || '').toLowerCase();
+    if (dump.includes(q)) return true;
+
+    // 4. Şantiye Adı
+    const jobSite = (h.jobSiteName || '').toLowerCase();
+    if (jobSite.includes(q)) return true;
+
+    // 5. Şoför Adı
+    const driver = (h.driverName || '').toLowerCase();
+    if (driver.includes(q)) return true;
+
+    // 6. Rota / Teklif Adı / Not
+    const offer1 = (h.offer1Name || '').toLowerCase();
+    const offer2 = (h.offer2Name || '').toLowerCase();
+    const note = (h.note || '').toLowerCase();
+    if (offer1.includes(q) || offer2.includes(q) || note.includes(q)) return true;
+
+    // 7. Tarih ve Saat Eşleşmeleri
+    const timeDates = getHaulDateStrings(h.timeOfHaul);
+    const createdDates = getHaulDateStrings(h.createdDate);
+    const allDates = [...timeDates, ...createdDates];
+    for (const dt of allDates) {
+      if (dt.toLowerCase().includes(q)) return true;
+    }
+
+    return false;
+  };
+
   // Aktif filtreye göre gösterilecek sefer listesi
   const filteredHauls = hauls.filter(h => {
     const d = new Date(h.timeOfHaul);
     if (filterYear !== null && d.getFullYear() !== filterYear) return false;
     if (filterMonth !== null && d.getMonth() + 1 !== filterMonth) return false;
-    if (haulFilter) {
-      const q = haulFilter.toLowerCase();
-      if (!h.plateNumber.toLowerCase().includes(q) && !(h.jobSiteName || '').toLowerCase().includes(q) && !(h.dumpLocation || '').toLowerCase().includes(q) && !(h.serialNumber || '').toLowerCase().includes(q)) return false;
-    }
+    if (haulFilter && !matchesHaulSearch(h, haulFilter)) return false;
     return true;
   });
 
   const todayInFiltered = filteredHauls.filter(h => isToday(h.timeOfHaul)).length;
+
+  const formatUpdatedDate = (dateString?: string) => {
+    if (!dateString || dateString.startsWith('0001-01-01')) return '';
+    const utcMs = new Date(dateString.endsWith('Z') ? dateString : dateString + 'Z').getTime();
+    if (!isNaN(utcMs)) {
+      const tr = new Date(utcMs + 3 * 3600 * 1000);
+      const day = String(tr.getUTCDate()).padStart(2, '0');
+      const month = String(tr.getUTCMonth() + 1).padStart(2, '0');
+      const year = tr.getUTCFullYear();
+      const hour = String(tr.getUTCHours()).padStart(2, '0');
+      const min = String(tr.getUTCMinutes()).padStart(2, '0');
+      return `${day}.${month}.${year} ${hour}:${min}`;
+    }
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return '';
+    return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
+  const isHaulUpdated = (item: any): boolean => {
+    if (item?.isUpdated !== undefined) return Boolean(item.isUpdated);
+    if (item?.IsUpdated !== undefined) return Boolean(item.IsUpdated);
+    const createdStr = item?.createdDate || item?.CreatedDate;
+    const updatedStr = item?.updatedDate || item?.UpdatedDate;
+    if (!createdStr || !updatedStr) return false;
+    const created = new Date(createdStr.endsWith?.('Z') ? createdStr : createdStr + 'Z').getTime();
+    const updated = new Date(updatedStr.endsWith?.('Z') ? updatedStr : updatedStr + 'Z').getTime();
+    return updated - created > 1000;
+  };
 
   const renderTrip = ({ item }: { item: HaulApi }) => {
     const today = isToday(item.timeOfHaul);
@@ -769,6 +936,11 @@ export default function SupplierVehicles() {
                 <Text style={styles.statusPendingText}>⏳ Bekliyor</Text>
               </View>
             )}
+            {isHaulUpdated(item) && (
+              <View style={styles.updatedBadge}>
+                <Text style={styles.updatedBadgeText}>✏️ Düzenlendi</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -777,20 +949,6 @@ export default function SupplierVehicles() {
           <View style={{ flex: 1 }}>
             <Text style={styles.haulDateText}>{formatHaulDate(item.timeOfHaul)}</Text>
             <Text style={styles.haulPlateText}>{item.plateNumber}</Text>
-          </View>
-          {/* Tonaj + Ödeme Badge */}
-          <View style={{ alignItems: 'flex-end', gap: 4 }}>
-            {item.tonage > 0 && <Text style={styles.tonageText}>{item.tonage} kg</Text>}
-            {item.cashAmount > 0 && (
-              <View style={styles.cashBadge}>
-                <Text style={styles.cashBadgeText}>{item.cashAmount.toLocaleString('tr-TR')} ₺</Text>
-              </View>
-            )}
-            {item.fuelAmount > 0 && (
-              <View style={styles.fuelBadge}>
-                <Text style={styles.fuelBadgeText}>{item.fuelAmount.toLocaleString('tr-TR')} Lt</Text>
-              </View>
-            )}
           </View>
         </View>
 
@@ -814,7 +972,7 @@ export default function SupplierVehicles() {
 
           {!paid && !item.isPrintedReceipt ? (
             <TouchableOpacity style={styles.haulApproveBtn} onPress={() => openPaymentConfirm(item)}>
-              <Text style={styles.haulApproveBtnText}>✔ Onayla</Text>
+              <Text style={styles.haulApproveBtnText}>Ödeme</Text>
             </TouchableOpacity>
           ) : paid ? (
             <View style={styles.haulApprovedTag}>
@@ -886,15 +1044,27 @@ export default function SupplierVehicles() {
           {/* Filtre satırı */}
           {!haulsLoading && !haulsError && hauls.length > 0 && (
             <>
-              {/* Metin arama */}
-              <View style={styles.searchBox}>
-                <Text style={styles.searchIcon}>🔍</Text>
-                <TextInput style={styles.searchInput} placeholder="Plaka veya şantiye ara..." placeholderTextColor="#aaa" value={haulFilter} onChangeText={setHaulFilter} autoCapitalize="characters" />
-                {haulFilter.length > 0 && (
-                  <TouchableOpacity onPress={() => setHaulFilter('')}>
-                    <Text style={styles.searchClear}>✕</Text>
-                  </TouchableOpacity>
-                )}
+              {/* Metin arama & QR */}
+              <View style={styles.searchRow}>
+                <View style={styles.searchBox}>
+                  <Text style={styles.searchIcon}>🔍</Text>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Plaka, şantiye, döküm yeri, tarih..."
+                    placeholderTextColor="#aaa"
+                    value={haulFilter}
+                    onChangeText={setHaulFilter}
+                    autoCapitalize="none"
+                  />
+                  {haulFilter.length > 0 && (
+                    <TouchableOpacity onPress={() => setHaulFilter('')}>
+                      <Text style={styles.searchClear}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <TouchableOpacity style={styles.qrScanBtn} onPress={() => setQrModalVisible(true)} activeOpacity={0.8}>
+                  <Text style={styles.qrScanBtnText}>📷 QR</Text>
+                </TouchableOpacity>
               </View>
 
               {/* Yıl / Ay filtresi */}
@@ -1164,6 +1334,15 @@ export default function SupplierVehicles() {
                         </Text>
                       </View>
 
+                      {isHaulUpdated(selectedTrip) && (
+                        <View style={[styles.receiptRow, { backgroundColor: '#FFFBEB', paddingVertical: 4, borderRadius: 4 }]}>
+                          <Text style={[styles.receiptRowLabel, { color: '#D97706', fontWeight: '700' }]}>Düzenleme Tarihi :</Text>
+                          <Text style={[styles.receiptRowValue, { color: '#D97706', fontWeight: '800' }]}>
+                            {formatUpdatedDate(selectedTrip.updatedDate || (selectedTrip as any).UpdatedDate)}
+                          </Text>
+                        </View>
+                      )}
+
                       <View style={[styles.receiptRow, { borderBottomWidth: 0 }]}>
                         <Text style={styles.receiptRowLabel}>Yetkili :</Text>
                         <Text style={styles.receiptRowValue}>{getAuthorizedContact(selectedTrip)}</Text>
@@ -1192,7 +1371,7 @@ export default function SupplierVehicles() {
                       setReceiptVisible(false);
                       openPaymentConfirm(selectedTrip);
                     }}>
-                    <Text style={styles.receiptApproveBtnNewText}>Onayla</Text>
+                    <Text style={styles.receiptApproveBtnNewText}>Ödeme</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
@@ -1396,7 +1575,15 @@ export default function SupplierVehicles() {
 
                   {/* PLAKA */}
                   <View style={{ padding: '5%' }}>
-                    <Text style={styles.label}>PLAKA NUMARASI *</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <Text style={styles.label}>PLAKA NUMARASI *</Text>
+                      <TouchableOpacity
+                        style={styles.plateScanBtn}
+                        onPress={() => setPlateScannerVisible(true)}
+                        activeOpacity={0.8}>
+                        <Text style={styles.plateScanBtnText}>📷 Plaka Tara</Text>
+                      </TouchableOpacity>
+                    </View>
                     <TextInput value={newPlate} onChangeText={setNewPlate} style={styles.plateInput} placeholder="34 ABC 123" autoCapitalize="characters" />
                     <Text style={styles.hint}>ℹ Örn: 34 ABC 123</Text>
 
@@ -1516,6 +1703,19 @@ export default function SupplierVehicles() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      <QRScannerModal
+        visible={qrModalVisible}
+        onClose={() => setQrModalVisible(false)}
+        onScan={handleQRScan}
+        title="Araç Sefer Fişi Okutun"
+      />
+
+      <PlateScannerModal
+        visible={plateScannerVisible}
+        onClose={() => setPlateScannerVisible(false)}
+        onPlateDetected={plate => setNewPlate(plate)}
+      />
     </SafeAreaView>
   );
 }
@@ -1635,7 +1835,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    marginBottom: 10,
     borderWidth: 1,
     borderColor: '#E8E8E8',
     shadowColor: '#000',
@@ -1643,9 +1842,55 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 2,
     elevation: 1,
+    flex: 1,
+    marginBottom: 0,
+  },
+
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+    marginBottom: 10,
+  },
+
+  qrScanBtn: {
+    backgroundColor: '#2E7D32',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+
+  qrScanBtnText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 14,
   },
 
   searchIcon: { fontSize: 14, marginRight: 8 },
+
+  plateScanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1,
+    borderColor: '#2E7D32',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+
+  plateScanBtnText: {
+    color: '#2E7D32',
+    fontSize: 12,
+    fontWeight: '700',
+  },
 
   searchInput: {
     flex: 1,
@@ -1729,6 +1974,21 @@ const styles = StyleSheet.create({
   todayText: {
     fontSize: 10,
     color: '#1565C0',
+    fontWeight: '700',
+  },
+
+  updatedBadge: {
+    backgroundColor: '#FFF3E0',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: '#FFE0B2',
+  },
+
+  updatedBadgeText: {
+    fontSize: 10,
+    color: '#E65100',
     fontWeight: '700',
   },
 

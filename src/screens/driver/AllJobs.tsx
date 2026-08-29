@@ -7,6 +7,7 @@ import { CITIES } from '../../constants/cities';
 import { DISTRICTS } from '../../constants/districts';
 import { useAppSelector, useAppDispatch } from '../../hooks';
 import { setSelectedCity } from '../../store/slices/uiSlice';
+import CityPickerModal from '../../components/CityPickerModal';
 import { getMarketJobs } from '../../services/jobSiteService';
 import { mapJobFromApi } from '../../utils/jobMapper';
 import { useFocusEffect } from '@react-navigation/native';
@@ -384,33 +385,10 @@ const AllJobs = () => {
     fetchJobs();
   }, [selectedCity]);
 
-  const openCityPicker = () => {
-    const allOption = 'Tüm Türkiye';
-    const options = ['İptal', allOption, ...CITIES.map(c => c.label)];
+  const [cityPickerModalVisible, setCityPickerModalVisible] = useState(false);
 
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options, cancelButtonIndex: 0 },
-        buttonIndex => {
-          if (buttonIndex === 0) return;
-          if (buttonIndex === 1) { dispatch(setSelectedCity(null)); return; }
-          dispatch(setSelectedCity(CITIES[buttonIndex - 2].value));
-        },
-      );
-    } else {
-      Alert.alert(
-        'İl Seç',
-        undefined,
-        [
-          { text: allOption, onPress: () => dispatch(setSelectedCity(null)) },
-          ...CITIES.map(city => ({
-            text: city.label,
-            onPress: () => dispatch(setSelectedCity(city.value)),
-          })),
-        ],
-        { cancelable: true },
-      );
-    }
+  const openCityPicker = () => {
+    setCityPickerModalVisible(true);
   };
   const handleCallPress1 = (phone?: string) => {
     if (!phone) return;
@@ -718,6 +696,13 @@ const AllJobs = () => {
           </View>
         }
 
+      />
+
+      <CityPickerModal
+        visible={cityPickerModalVisible}
+        onClose={() => setCityPickerModalVisible(false)}
+        onSelectCity={(val) => dispatch(setSelectedCity(val))}
+        selectedCity={selectedCity}
       />
     </SafeAreaView>
   );

@@ -10,30 +10,33 @@ import {
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 type Props = {
-  value: string;           // "HH:MM" formatında
+  value: string;        // "HH:mm" formatında (Örn: "14:30")
   onChange: (time: string) => void;
+  label?: string;
   placeholder?: string;
   flex?: boolean;
 };
 
-const timeStringToDate = (timeStr: string): Date => {
-  const now = new Date();
-  if (timeStr && /^\d{1,2}:\d{2}$/.test(timeStr)) {
-    const [h, m] = timeStr.split(':').map(Number);
-    now.setHours(h, m, 0, 0);
-  } else {
-    now.setHours(8, 0, 0, 0);
+const timeStringToDate = (str: string): Date => {
+  const d = new Date();
+  if (str && /^\d{1,2}:\d{2}$/.test(str)) {
+    const [h, m] = str.split(':').map(Number);
+    d.setHours(h, m, 0, 0);
+    return d;
   }
-  return now;
+  const trMs = Date.now() + 3 * 60 * 60000;
+  const tr = new Date(trMs);
+  d.setHours(tr.getUTCHours(), tr.getUTCMinutes(), 0, 0);
+  return d;
 };
 
-const dateToTimeString = (date: Date): string => {
+const dateToHHMM = (date: Date): string => {
   const h = String(date.getHours()).padStart(2, '0');
   const m = String(date.getMinutes()).padStart(2, '0');
   return `${h}:${m}`;
 };
 
-const TimePickerInput: React.FC<Props> = ({ value, onChange, placeholder = 'Saat seçin', flex }) => {
+const TimePickerInput: React.FC<Props> = ({ value, onChange, label, placeholder, flex }) => {
   const [show, setShow] = useState(false);
   const [tempDate, setTempDate] = useState<Date>(timeStringToDate(value));
 
@@ -42,63 +45,55 @@ const TimePickerInput: React.FC<Props> = ({ value, onChange, placeholder = 'Saat
     setShow(true);
   };
 
-  // Android: picker doğrudan dialog açar, seçince kapanır
   const handleAndroidChange = (_event: DateTimePickerEvent, selected?: Date) => {
     setShow(false);
-    if (selected) {
-      onChange(dateToTimeString(selected));
-    }
+    if (selected) onChange(dateToHHMM(selected));
   };
 
-  // iOS: modal içinde spinner, "Tamam" ile onaylanır
   const handleIOSChange = (_event: DateTimePickerEvent, selected?: Date) => {
     if (selected) setTempDate(selected);
   };
 
   const handleIOSConfirm = () => {
-    onChange(dateToTimeString(tempDate));
-    setShow(false);
-  };
-
-  const handleIOSCancel = () => {
+    onChange(dateToHHMM(tempDate));
     setShow(false);
   };
 
   return (
-    <View style={[styles.wrapper, flex && { flex: 1 }]}>
+    <View style={[styles.wrapper, flex ? { flex: 1 } : undefined]}>
+      {label && <Text style={styles.label}>{label}</Text>}
       <TouchableOpacity style={styles.input} onPress={handleOpen} activeOpacity={0.7}>
-        <Text style={[styles.valueText, !value && styles.placeholder]}>
-          {value || placeholder}
+        <Text style={[styles.valueText, !value && styles.placeholderText]}>
+          {value || placeholder || '00:00'}
         </Text>
-        <Text style={styles.clockIcon}>🕐</Text>
+        <Text style={styles.clockIcon}>⏰</Text>
       </TouchableOpacity>
 
-      {/* Android: doğrudan göster */}
       {Platform.OS === 'android' && show && (
         <DateTimePicker
           value={tempDate}
           mode="time"
           is24Hour={true}
-          display="spinner"
+          display="default"
           onChange={handleAndroidChange}
+          locale="tr-TR"
         />
       )}
 
-      {/* iOS: Modal içinde spinner */}
       {Platform.OS === 'ios' && (
         <Modal
           visible={show}
           transparent
           animationType="slide"
-          onRequestClose={handleIOSCancel}
+          onRequestClose={() => setShow(false)}
         >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContainer}>
-              <View style={styles.modalHeader}>
-                <TouchableOpacity onPress={handleIOSCancel}>
+          <View style={styles.overlay}>
+            <View style={styles.sheet}>
+              <View style={styles.header}>
+                <TouchableOpacity onPress={() => setShow(false)}>
                   <Text style={styles.cancelText}>İptal</Text>
                 </TouchableOpacity>
-                <Text style={styles.modalTitle}>Saat Seçin</Text>
+                <Text style={styles.title}>Saat Seçin</Text>
                 <TouchableOpacity onPress={handleIOSConfirm}>
                   <Text style={styles.confirmText}>Tamam</Text>
                 </TouchableOpacity>
@@ -124,7 +119,13 @@ export default TimePickerInput;
 
 const styles = StyleSheet.create({
   wrapper: {
-    marginHorizontal: 4,
+    marginBottom: 12,
+  },
+  label: {
+    fontSize: 13,
+    color: '#555',
+    fontWeight: '600',
+    marginBottom: 6,
   },
   input: {
     flexDirection: 'row',
@@ -143,26 +144,25 @@ const styles = StyleSheet.create({
     color: '#222',
     fontWeight: '600',
   },
-  placeholder: {
-    color: '#AAA',
+  placeholderText: {
+    color: '#999',
     fontWeight: '400',
   },
   clockIcon: {
-    fontSize: 14,
+    fontSize: 16,
   },
-  // iOS modal
-  modalOverlay: {
+  overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
-  modalContainer: {
+  sheet: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     paddingBottom: 30,
   },
-  modalHeader: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
-  modalTitle: {
+  title: {
     fontSize: 16,
     fontWeight: '700',
     color: '#222',

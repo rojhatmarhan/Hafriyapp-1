@@ -70,18 +70,26 @@ export async function requestBluetoothPermissions(): Promise<boolean> {
 
   try {
     if (Platform.Version >= 31) {
-      // Android 12+ — BLUETOOTH_SCAN + BLUETOOTH_CONNECT
-      const results = await PermissionsAndroid.requestMultiple([PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN, PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT]);
-      return results[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN] === PermissionsAndroid.RESULTS.GRANTED && results[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT] === PermissionsAndroid.RESULTS.GRANTED;
+      // Android 12+ — BLUETOOTH_SCAN + BLUETOOTH_CONNECT + LOCATION
+      const results = await PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+      ]);
+      const scanGranted = results[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN] === PermissionsAndroid.RESULTS.GRANTED;
+      const connectGranted = results[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT] === PermissionsAndroid.RESULTS.GRANTED;
+      return scanGranted && connectGranted;
     } else {
-      // Android 6–11 — konum izni tarama için gerekli
-      const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION, {
-        title: 'Konum İzni',
-        message: 'Bluetooth yazıcı taraması için konum izni gereklidir.',
-        buttonPositive: 'Tamam',
-        buttonNegative: 'İptal',
-      });
-      return result === PermissionsAndroid.RESULTS.GRANTED;
+      // Android 6–11 — konum izni Bluetooth Classic taraması için gereklidir
+      const results = await PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+      ]);
+      return (
+        results[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED ||
+        results[PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED
+      );
     }
   } catch {
     return false;
@@ -145,18 +153,31 @@ export async function clearSavedPrinter(): Promise<void> {
 
 // ─── Cihaz Tarama ───────────────────────────────────────────────────────────
 
+export async function stopScan(): Promise<void> {
+  try {
+    await BluetoothManager.stopScan();
+  } catch {}
+}
+
 export async function getPairedAndScannedDevices(): Promise<{ paired: BluetoothDevice[]; found: BluetoothDevice[] }> {
   await ensureBluetoothPermission();
 
   // iOS'ta CBCentralManager init sonrası hazır olması için kısa bekleme
   if (Platform.OS === 'ios') {
-    await new Promise<void>(resolve => setTimeout(resolve, 800));
+    await new Promise<void>(resolve => setTimeout(resolve, 400));
   }
 
-  const result = await BluetoothManager.scanDevices();
-  const data: { paired?: any; found?: any } = typeof result === 'string' ? JSON.parse(result) : result;
+  let result: any;
+  try {
+    result = await BluetoothManager.scanDevices();
+  } catch (err) {
+    console.warn('Bluetooth scanDevices error:', err);
+    result = { paired: [], found: [] };
+  }
 
-  // iOS'ta paired/found bazen JSON string olarak gelir, bazen array — her ikisini de destekle
+  const data: { paired?: any; found?: any } = typeof result === 'string' ? JSON.parse(result) : (result || {});
+
+  // iOS ve Android formatlarını ayrıştır
   const parseList = (val: any): any[] => {
     if (Array.isArray(val)) return val;
     if (typeof val === 'string') {
@@ -166,16 +187,13 @@ export async function getPairedAndScannedDevices(): Promise<{ paired: BluetoothD
   };
 
   const toDevice = (d: any): BluetoothDevice => ({
-    // iOS'ta d.name yoksa UUID'ye düşmesin — anlaşılır bir fallback kullan
     name: d.name?.trim() || 'Bilinmeyen Cihaz',
-    // iOS: adres, MAC değil CBPeripheral UUID'dir (örn. "12345678-ABCD-...")
     address: d.address || d.id || '',
   });
 
   return {
-    // iOS'ta 'paired' kavramı yoktur; tüm BLE cihazlar 'found'da gelir
-    paired: parseList(data.paired).map(toDevice),
-    found: parseList(data.found).map(toDevice),
+    paired: parseList(data.paired).map(toDevice).filter(d => !!d.address),
+    found: parseList(data.found).map(toDevice).filter(d => !!d.address),
   };
 }
 
@@ -302,17 +320,17 @@ function withPrintTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 import { api } from './api';
 
-export async function verifyPrinterPermission(macAddress: string): Promise<{ isAllowed: boolean; message: string }> {
-  if (Platform.OS === 'ios') {
-    return { isAllowed: true, message: 'iOS cihaz için doğrulama atlandı.' };
-  }
-
-  if (!macAddress) {
-    return { isAllowed: false, message: 'Yazıcı adresi (MAC) bulunamadı.' };
+export async function verifyPrinterPermission(address: string, name?: string): Promise<{ isAllowed: boolean; message: string }> {
+  if (!address && !name) {
+    return { isAllowed: false, message: 'Yazıcı bilgisi bulunamadı.' };
   }
 
   try {
-    const res = await api.post('/Printer/validate', { macAddress });
+    const res = await api.post('/Printer/validate', {
+      macAddress: address,
+      deviceName: name,
+      platform: Platform.OS,
+    });
     const data = res.data;
 
     // Sadece ve sadece sunucu açıkça true derse izin ver
@@ -341,7 +359,7 @@ export async function verifyPrinterPermission(macAddress: string): Promise<{ isA
 
 /**
  * View'dan yakalanan base64 PNG'yi yazıcıya gönderir.
- * Kayıtlı yazıcı varsa önce yetki kontrol edilir, yetkiliyse bağlanıp görsel gönderilir.
+ * Kayıtlı yazıcı varsa önce yetki kontrol edilir (Android: MAC / iOS: Cihaz Adı veya UUID), yetkiliyse bağlanıp görsel gönderilir.
  */
 export async function printImage(base64: string): Promise<void> {
   await ensureBluetoothPermission();
@@ -351,12 +369,10 @@ export async function printImage(base64: string): Promise<void> {
     throw new Error('Kayıtlı yazıcı bulunamadı. Lütfen yazıcı seçim ekranından bir yazıcı seçiniz.');
   }
 
-  // Android cihazlar için yetkili yazıcı (MAC adresi) kontrolünü YAZICIYA BAĞLANMADAN ÖNCE YAP!
-  if (Platform.OS === 'android' && saved.address) {
-    const verification = await verifyPrinterPermission(saved.address);
-    if (!verification.isAllowed) {
-      throw new Error(`YETKI_ENGEL: ${verification.message || 'Bu yazıcı için fiş kesme yetkiniz bulunmamaktadır.'}`);
-    }
+  // Yetkili yazıcı kontrolü (Android: MAC / iOS: Cihaz Adı veya UUID)
+  const verification = await verifyPrinterPermission(saved.address, saved.name);
+  if (!verification.isAllowed) {
+    throw new Error(`YETKI_ENGEL: ${verification.message || 'Bu yazıcı için fiş kesme yetkiniz bulunmamaktadır.'}`);
   }
 
   // Yetki onaylandıysa yazıcıya bağlan
