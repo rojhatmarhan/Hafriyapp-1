@@ -15,7 +15,7 @@ import { createHaul, updateHaulPayment, updateHaul, deleteHaul, getHaulById, Hau
 import { QRScannerModal, ScannedQRData } from '../../components/QRScannerModal';
 import { PlateScannerModal } from '../../components/PlateScannerModal';
 import { getCompanyById } from '../../services/userService';
-import { addPendingHaul, removePendingHaul, PendingHaul } from '../../store/slices/pendingHaulSlice';
+import { addPendingHaul, removePendingHaul, updatePendingHaul, PendingHaul } from '../../store/slices/pendingHaulSlice';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
 import { ensurePrinterReady, printImage, clearSavedPrinter, getReceiptCaptureLayout } from '../../services/printService';
@@ -181,6 +181,7 @@ export default function JobDetails() {
   const user = useAppSelector(state => state.auth.user);
   const pendingQueue = useAppSelector(state => state.pendingHaul.queue);
   const isKum = job?.jobType === 1;
+  const isOwner = job?.userRole === 0 || job?.userRole === undefined || job?.isOwner === true;
 
   const normalizeHaul = (h: HaulApi): HaulApi => ({
     ...h,
@@ -268,6 +269,11 @@ export default function JobDetails() {
   const [editFuel, setEditFuel] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editSaving, setEditSaving] = useState(false);
+
+  // ── Fiş Notu Düzenleme (Herkes ve Süresiz)
+  const [receiptNoteModalVisible, setReceiptNoteModalVisible] = useState(false);
+  const [receiptNoteInput, setReceiptNoteInput] = useState('');
+  const [receiptNoteSaving, setReceiptNoteSaving] = useState(false);
 
   // ── Son plakalar
   const [recentPlates, setRecentPlates] = useState<string[]>([]);
@@ -575,9 +581,11 @@ export default function JobDetails() {
         Alert.alert('Hata', err.response?.data?.message || 'Sefer kaydedilemedi.');
       }
     } else {
+      const sequentialSerial = generateSequentialSerial();
       const localId = `local_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       const pending: PendingHaul = {
         localId,
+        serialNumber: sequentialSerial,
         jobSiteId: job.id,
         plateNumber: cleanPlate,
         paymentType,
@@ -677,9 +685,11 @@ export default function JobDetails() {
         Alert.alert('Hata', err.response?.data?.message || 'Sefer kaydedilemedi.');
       }
     } else {
+      const sequentialSerial = generateSequentialSerial();
       const localId = `local_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       const pending: PendingHaul = {
         localId,
+        serialNumber: sequentialSerial,
         jobSiteId: job.id,
         plateNumber: cleanPlate,
         paymentType,
@@ -830,6 +840,7 @@ export default function JobDetails() {
     // PendingHaul → HaulApi şekline dönüştür, mevcut fiş modal'ını yeniden kullan
     const fakeHaul: HaulApi = {
       id: item.localId,
+      serialNumber: item.serialNumber,
       jobSiteId: item.jobSiteId,
       jobSiteName: job?.name || '-',
       companyName: '',
@@ -883,10 +894,56 @@ export default function JobDetails() {
 
   const autoSerial = (haul: HaulApi) => {
     if (haul.serialNumber) return haul.serialNumber;
-    const d = new Date(haul.createdDate);
+    const d = new Date(haul.createdDate || Date.now());
     const datePart = `${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-    const idPart = haul.id.substring(0, 4).toUpperCase();
+    const rawId = haul.id || '';
+    const cleanId = rawId.replace(/^local_\d*_?/i, '').replace(/[^a-zA-Z0-9]/g, '');
+    const idPart = (cleanId.length >= 4 ? cleanId.slice(-4) : (rawId.slice(-4) || '0001')).toUpperCase();
     return `${datePart}${idPart}`;
+  };
+
+  // ── Çevrimdışı fişler için son kesilen fişi bulup sıradaki ardışık seri numarasını üreten fonksiyon
+  const generateSequentialSerial = () => {
+    const d = new Date();
+    const datePart = `${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+
+    // 1. Mevcut tüm seferlerin (sunucu + offline kuyruk) seri numaralarını topla
+    const existingSerials = new Set<string>();
+    hauls.forEach(h => {
+      if (h.serialNumber) existingSerials.add(h.serialNumber.toUpperCase());
+      const s = autoSerial(h);
+      if (s) existingSerials.add(s.toUpperCase());
+    });
+    pendingQueue.forEach(p => {
+      if (p.serialNumber) existingSerials.add(p.serialNumber.toUpperCase());
+      if (p.localId) {
+        const s = autoSerial({ id: p.localId, createdDate: p.createdAt } as any);
+        if (s) existingSerials.add(s.toUpperCase());
+      }
+    });
+
+    // 2. Bugünün tarihine göre kesilen fişleri incele ve en büyük numarayı bul
+    let maxNum = 0;
+    existingSerials.forEach(serial => {
+      if (serial.startsWith(datePart)) {
+        const suffix = serial.slice(datePart.length);
+        const parsed = parseInt(suffix, 16);
+        if (!isNaN(parsed) && parsed > maxNum) {
+          maxNum = parsed;
+        }
+      }
+    });
+
+    // 3. Sonraki sıralı numarayı üret (Örn: 2608300001, 2608300002 ...)
+    let nextNum = maxNum > 0 ? maxNum + 1 : (existingSerials.size + 1);
+    let candidate = `${datePart}${nextNum.toString(16).padStart(4, '0').toUpperCase()}`;
+
+    while (existingSerials.has(candidate)) {
+      nextNum++;
+      candidate = `${datePart}${nextNum.toString(16).padStart(4, '0').toUpperCase()}`;
+    }
+
+    return candidate;
   };
 
   // ── Ayarlar menüsü
@@ -1192,20 +1249,10 @@ export default function JobDetails() {
   const isHaulUpdated = (item: any): boolean => {
     if (item?.isUpdated !== undefined) return Boolean(item.isUpdated);
     if (item?.IsUpdated !== undefined) return Boolean(item.IsUpdated);
-    const createdStr = item?.createdDate || item?.CreatedDate;
-    const updatedStr = item?.updatedDate || item?.UpdatedDate;
-    if (!createdStr || !updatedStr) return false;
-    const created = new Date(createdStr.endsWith?.('Z') ? createdStr : createdStr + 'Z').getTime();
-    const updated = new Date(updatedStr.endsWith?.('Z') ? updatedStr : updatedStr + 'Z').getTime();
-    return updated - created > 1000;
+    return false;
   };
 
   const handleOpenEditHaul = (item: HaulApi) => {
-    // Sadece Owner (Firma Sahibi) düzenleyebilir
-    if (job?.userRole !== undefined && job?.userRole !== 0) {
-      Alert.alert('Yetki Uyarısı', 'Bu seferi sadece yetkili değiştirebilir.');
-      return;
-    }
     setEditingHaul(item);
     setEditPlate(item.plateNumber);
     setEditDump(item.dumpLocation || '');
@@ -1281,6 +1328,35 @@ export default function JobDetails() {
     ]);
   };
 
+  // ── Fiş Notunu Düzenle ve Kaydet (Herkes & Süresiz)
+  const handleSaveReceiptNote = async () => {
+    if (!selectedHaul) return;
+    try {
+      setReceiptNoteSaving(true);
+      const newNote = receiptNoteInput.trim();
+
+      if (selectedHaul.id.startsWith('local_')) {
+        // Çevrimdışı fiş ise kuyrukta güncelle
+        dispatch(updatePendingHaul({ id: selectedHaul.id, changes: { note: newNote } }));
+        setSelectedHaul({ ...selectedHaul, note: newNote });
+        setHauls(prev => prev.map(h => (h.id === selectedHaul.id ? { ...h, note: newNote } : h)));
+        setReceiptNoteModalVisible(false);
+        Alert.alert('Başarılı', 'Fiş notu güncellendi.');
+        return;
+      }
+
+      await updateHaul(selectedHaul.id, { note: newNote }, token!);
+      setSelectedHaul({ ...selectedHaul, note: newNote });
+      setHauls(prev => prev.map(h => (h.id === selectedHaul.id ? { ...h, note: newNote } : h)));
+      setReceiptNoteModalVisible(false);
+      Alert.alert('Başarılı', 'Fiş notu güncellendi.');
+    } catch (err: any) {
+      Alert.alert('Hata', err?.response?.data?.message || 'Fiş notu güncellenemedi.');
+    } finally {
+      setReceiptNoteSaving(false);
+    }
+  };
+
   // ── Material lookup helper (Kum/Mıcır)
   const getMaterialFromDumpLocation = (dumpLocation: string): string => {
     if (!isKum || !dumpLocation) return '';
@@ -1315,13 +1391,9 @@ export default function JobDetails() {
                 <Text style={styles.printedBadgeText}>🖨 Yazdırıldı</Text>
               </View>
             )}
-            {item.isPaid ? (
+            {item.isPaid && (
               <View style={styles.statusPaid}>
                 <Text style={styles.statusPaidText}>✔ Ödendi</Text>
-              </View>
-            ) : (
-              <View style={styles.statusPending}>
-                <Text style={styles.statusPendingText}>⏳ Bekliyor</Text>
               </View>
             )}
             {isHaulUpdated(item) && (
@@ -1370,9 +1442,6 @@ export default function JobDetails() {
             → {item.dumpLocation || '-'}
           </Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEditHaul(item)}>
-              <Text style={styles.editBtnText}>✏️ Düzenle</Text>
-            </TouchableOpacity>
             {!item.isPaid && item.isPrintedReceipt && (
               <TouchableOpacity style={styles.approveBtn} onPress={() => openPaymentConfirm(item)}>
                 <Text style={styles.approveBtnText}>Ödeme</Text>
@@ -1621,6 +1690,11 @@ export default function JobDetails() {
             </KeyboardAvoidingView>
           </View>
         </TouchableWithoutFeedback>
+        <PlateScannerModal
+          visible={plateScannerVisible && plateTarget === 'form'}
+          onClose={() => setPlateScannerVisible(false)}
+          onPlateDetected={handlePlateDetected}
+        />
       </Modal>
 
       {/* ═══════════════ MANUEL EKLE MODAL ═══════════════ */}
@@ -1659,7 +1733,16 @@ export default function JobDetails() {
                     {/* Tarih ve Saat Seçimi */}
                     <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
                       <View style={{ flex: 1.3 }}>
-                        <DatePickerInput label="Sefer Tarihi" value={manualDate} onChange={setManualDate} />
+                        {isOwner ? (
+                          <DatePickerInput label="Sefer Tarihi" value={manualDate} onChange={setManualDate} />
+                        ) : (
+                          <View>
+                            <Text style={styles.fieldLabel}>Sefer Tarihi</Text>
+                            <View style={[styles.textInput, { backgroundColor: '#ECEFF1', borderColor: '#CFD8DC', justifyContent: 'center' }]}>
+                              <Text style={{ fontSize: 13, color: '#546E7A', fontWeight: '700' }}>📅 {manualDate} (Bugün)</Text>
+                            </View>
+                          </View>
+                        )}
                       </View>
                       <View style={{ flex: 1 }}>
                         <TimePickerInput label="Saat" value={manualTime} onChange={setManualTime} />
@@ -1760,6 +1843,11 @@ export default function JobDetails() {
             </KeyboardAvoidingView>
           </View>
         </TouchableWithoutFeedback>
+        <PlateScannerModal
+          visible={plateScannerVisible && plateTarget === 'manual'}
+          onClose={() => setPlateScannerVisible(false)}
+          onPlateDetected={handlePlateDetected}
+        />
       </Modal>
 
       {/* ═══════════════ SEFER DÜZENLE MODAL ═══════════════ */}
@@ -1896,6 +1984,11 @@ export default function JobDetails() {
             </KeyboardAvoidingView>
           </View>
         </TouchableWithoutFeedback>
+        <PlateScannerModal
+          visible={plateScannerVisible && plateTarget === 'edit'}
+          onClose={() => setPlateScannerVisible(false)}
+          onPlateDetected={handlePlateDetected}
+        />
       </Modal>
 
       {/* ═══════════════ DÜZENLE MODAL ═══════════════ */}
@@ -2128,23 +2221,41 @@ export default function JobDetails() {
               </View>
 
               {/* Footer butonlar */}
-              <View style={styles.receiptFooterRow}>
-                <TouchableOpacity style={styles.receiptCloseBtnNew} onPress={() => setReceiptVisible(false)}>
-                  <Text style={styles.receiptCloseBtnNewText}>Kapat</Text>
-                </TouchableOpacity>
-                {!selectedHaul.isPaid && selectedHaul.isPrintedReceipt && (
+              <View style={styles.receiptFooterWrap}>
+                {/* Üst Satır: 3 Buton */}
+                <View style={styles.receiptFooterRow}>
+                  <TouchableOpacity style={styles.receiptCloseBtnNew} onPress={() => setReceiptVisible(false)}>
+                    <Text style={styles.receiptCloseBtnNewText}>Kapat</Text>
+                  </TouchableOpacity>
+                  {!selectedHaul.isPaid && selectedHaul.isPrintedReceipt && (
+                    <TouchableOpacity
+                      style={styles.receiptApproveBtnNew}
+                      onPress={() => {
+                        setReceiptVisible(false);
+                        openPaymentConfirm(selectedHaul);
+                      }}>
+                      <Text style={styles.receiptApproveBtnNewText}>Ödeme</Text>
+                    </TouchableOpacity>
+                  )}
+                  {selectedHaul.isPrintedReceipt && (
+                    <TouchableOpacity style={styles.receiptPrintBtnNew} onPress={() => triggerPrint(selectedHaul)}>
+                      <Text style={styles.receiptPrintBtnNewText}>Yazdır</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Alt Satır: Sadece Ödenmemiş Seferlerde Düzenle Butonu Gösterilir */}
+                {!selectedHaul.isPaid && (
                   <TouchableOpacity
-                    style={styles.receiptApproveBtnNew}
+                    style={styles.receiptFullEditBtn}
                     onPress={() => {
                       setReceiptVisible(false);
-                      openPaymentConfirm(selectedHaul);
-                    }}>
-                    <Text style={styles.receiptApproveBtnNewText}>Ödeme</Text>
-                  </TouchableOpacity>
-                )}
-                {selectedHaul.isPrintedReceipt && (
-                  <TouchableOpacity style={styles.receiptPrintBtnNew} onPress={() => triggerPrint(selectedHaul)}>
-                    <Text style={styles.receiptPrintBtnNewText}>Yazdır</Text>
+                      setTimeout(() => {
+                        handleOpenEditHaul(selectedHaul);
+                      }, 250);
+                    }}
+                    activeOpacity={0.8}>
+                    <Text style={styles.receiptFullEditBtnText}>✏️ Seferi Düzenle</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -2394,6 +2505,41 @@ export default function JobDetails() {
             <Text style={[styles.sheetItemText, styles.sheetCancelText]}>İptal</Text>
           </TouchableOpacity>
         </View>
+      </Modal>
+
+      {/* ═══════════════ FİŞ NOTU DÜZENLE MODAL ═══════════════ */}
+      <Modal visible={receiptNoteModalVisible} transparent animationType="fade" onRequestClose={() => setReceiptNoteModalVisible(false)}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.addCard, { maxWidth: 360 }]}>
+              <View style={[styles.addCardHeader, { backgroundColor: '#1976D2' }]}>
+                <Text style={styles.addCardHeaderText}>💬 Fiş Notunu Düzenle</Text>
+              </View>
+              <View style={styles.addCardBody}>
+                <Text style={styles.fieldLabel}>Fiş Notu</Text>
+                <TextInput
+                  value={receiptNoteInput}
+                  onChangeText={setReceiptNoteInput}
+                  style={[styles.textInput, { minHeight: 70, textAlignVertical: 'top' }]}
+                  placeholder="Sefer fişi ile ilgili notunuzu yazın..."
+                  multiline
+                  maxLength={250}
+                />
+                <View style={[styles.addCardFooter, { marginTop: 14 }]}>
+                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setReceiptNoteModalVisible(false)}>
+                    <Text style={styles.cancelBtnText}>İptal</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.manualSaveBtn, { backgroundColor: '#1976D2' }, receiptNoteSaving && { opacity: 0.5 }]}
+                    onPress={handleSaveReceiptNote}
+                    disabled={receiptNoteSaving}>
+                    <Text style={styles.manualSaveBtnText}>{receiptNoteSaving ? 'Kaydediliyor...' : 'Kaydet'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       <BluetoothPrinterModal
@@ -2646,12 +2792,12 @@ const styles = StyleSheet.create({
   addCardBody: { padding: 20 },
   addCardFooter: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
     padding: 16,
     backgroundColor: '#F9F9F9',
     borderTopWidth: 1,
     borderTopColor: '#eee',
-    flexWrap: 'wrap',
   },
 
   // Fields
@@ -2748,16 +2894,89 @@ const styles = StyleSheet.create({
   radioDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#1976D2' },
 
   // Footer buttons
-  cancelBtn: { backgroundColor: '#455A64', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center' },
-  cancelBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  sanalBtn: { flex: 1, borderWidth: 2, borderColor: '#1976D2', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
-  sanalBtnText: { color: '#1976D2', fontWeight: '800', fontSize: 13 },
-  printSubmitBtn: { flex: 1, backgroundColor: '#1976D2', borderRadius: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
-  printSubmitBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  manualReceiptBtn: { flex: 1, backgroundColor: '#fff', borderRadius: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#4CAF50' },
-  manualReceiptBtnText: { color: '#4CAF50', fontWeight: '800', fontSize: 13, textAlign: 'center' },
-  manualSaveBtn: { flex: 1, backgroundColor: '#4CAF50', borderRadius: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
-  manualSaveBtnText: { color: '#fff', fontWeight: '800', fontSize: 13, textAlign: 'center' },
+  cancelBtn: {
+    backgroundColor: '#455A64',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 46,
+  },
+  cancelBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  sanalBtn: {
+    flex: 1,
+    borderWidth: 2,
+    borderColor: '#1976D2',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 46,
+    backgroundColor: '#fff',
+  },
+  sanalBtnText: {
+    color: '#1976D2',
+    fontWeight: '800',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  printSubmitBtn: {
+    flex: 1.15,
+    backgroundColor: '#1976D2',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 46,
+  },
+  printSubmitBtnText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  manualReceiptBtn: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#4CAF50',
+    minHeight: 46,
+  },
+  manualReceiptBtnText: {
+    color: '#4CAF50',
+    fontWeight: '800',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  manualSaveBtn: {
+    flex: 1.15,
+    backgroundColor: '#4CAF50',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 46,
+  },
+  manualSaveBtnText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 13,
+    textAlign: 'center',
+  },
 
   // ── Ödeme Onay Modal
   paymentCard: {
@@ -3010,10 +3229,27 @@ const styles = StyleSheet.create({
     borderColor: '#e0e0e0',
   },
 
+  receiptFooterWrap: {
+    gap: 8,
+    paddingTop: 12,
+  },
   receiptFooterRow: {
     flexDirection: 'row',
     gap: 10,
-    paddingTop: 12,
+  },
+  receiptFullEditBtn: {
+    backgroundColor: '#FFF3E0',
+    borderColor: '#FFB74D',
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  receiptFullEditBtnText: {
+    color: '#E65100',
+    fontWeight: '800',
+    fontSize: 15,
   },
   receiptCloseBtnNew: {
     flex: 1,

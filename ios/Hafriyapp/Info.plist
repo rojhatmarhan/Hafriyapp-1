@@ -40,9 +40,11 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Araç plakalarını otomatik okumak, sefer fişi QR kodlarını taramak ve görsel yüklemek için kamera erişimi gerekiyor.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
+	<string>Uygulamamız şantiye döküm sahalarını harita üzerinde görüntülemek ve sürücülere en yakın hafriyat işlerini listelemek amacıyla sadece ön planda (kullanım sırasında) konum bilgisine erişmektedir. Arka planda konum toplanmamaktadır.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Profil fotoğrafı veya grup görseli yüklemek için fotoğraf kütüphanesine erişim gerekiyor.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

@@ -12,7 +12,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { Camera } from 'react-native-camera-kit';
+import { Camera, CameraType } from 'react-native-camera-kit';
 import TextRecognition from '@react-native-ml-kit/text-recognition';
 
 interface PlateScannerModalProps {
@@ -97,10 +97,7 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
   const [processing, setProcessing] = useState(false);
   const [detectedPlate, setDetectedPlate] = useState<string | null>(null);
 
-  const isScanningRef = useRef(false);
   const isDetectedRef = useRef(false);
-  const isMountedRef = useRef(false);
-  const autoScanTimerRef = useRef<any>(null);
 
   const formatUri = useCallback((rawUri: string): string => {
     let formatted = rawUri;
@@ -113,88 +110,22 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
   const handleSuccess = useCallback((plate: string) => {
     if (isDetectedRef.current) return;
     isDetectedRef.current = true;
-    if (autoScanTimerRef.current) {
-      clearTimeout(autoScanTimerRef.current);
-      autoScanTimerRef.current = null;
-    }
     setDetectedPlate(plate);
+    setProcessing(false);
 
     setTimeout(() => {
       onPlateDetected(plate);
       onClose();
-    }, 350);
+    }, 450);
   }, [onPlateDetected, onClose]);
-
-  const runAutoScan = useCallback(async () => {
-    if (!isMountedRef.current || isDetectedRef.current || !cameraRef.current) {
-      return;
-    }
-
-    try {
-      isScanningRef.current = true;
-      const photo = await cameraRef.current.capture();
-      const rawUri = photo?.uri || photo?.path;
-
-      if (rawUri && isMountedRef.current && !isDetectedRef.current) {
-        const formattedUri = formatUri(rawUri);
-        const result = await TextRecognition.recognize(formattedUri);
-
-        let plate = extractTurkishPlate(result?.text || '');
-        if (!plate && result?.blocks) {
-          for (const block of result.blocks) {
-            plate = extractTurkishPlate(block.text);
-            if (plate) break;
-            if (block.lines) {
-              for (const line of block.lines) {
-                plate = extractTurkishPlate(line.text);
-                if (plate) break;
-              }
-            }
-            if (plate) break;
-          }
-        }
-
-        if (plate && isMountedRef.current && !isDetectedRef.current) {
-          handleSuccess(plate);
-          return;
-        }
-      }
-    } catch {
-      // sessizce devam et
-    } finally {
-      isScanningRef.current = false;
-      if (isMountedRef.current && !isDetectedRef.current) {
-        autoScanTimerRef.current = setTimeout(runAutoScan, 350);
-      }
-    }
-  }, [formatUri, handleSuccess]);
 
   useEffect(() => {
     if (visible) {
-      isMountedRef.current = true;
       isDetectedRef.current = false;
       setDetectedPlate(null);
       setProcessing(false);
-
-      autoScanTimerRef.current = setTimeout(runAutoScan, 600);
-
-      return () => {
-        isMountedRef.current = false;
-        isDetectedRef.current = true;
-        if (autoScanTimerRef.current) {
-          clearTimeout(autoScanTimerRef.current);
-          autoScanTimerRef.current = null;
-        }
-      };
-    } else {
-      isMountedRef.current = false;
-      isDetectedRef.current = true;
-      if (autoScanTimerRef.current) {
-        clearTimeout(autoScanTimerRef.current);
-        autoScanTimerRef.current = null;
-      }
     }
-  }, [visible, runAutoScan]);
+  }, [visible]);
 
   const handleShow = async () => {
     setProcessing(false);
@@ -263,15 +194,11 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
     }
   };
 
+  if (!visible) return null;
+
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      onRequestClose={onClose}
-      onShow={handleShow}
-      statusBarTranslucent
-    >
-      <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
+      <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="light-content" backgroundColor="#000" />
 
         {/* Üst Başlık Barı (Sade & Temiz) */}
@@ -283,8 +210,9 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
         <View style={styles.cameraContainer}>
           <Camera
             ref={cameraRef}
+            cameraType={CameraType.Back}
             torchMode={torchOn ? 'on' : 'off'}
-            style={styles.camera}
+            style={StyleSheet.absoluteFillObject}
           />
 
           {/* Plaka Hizalama Vizörü */}
@@ -305,7 +233,7 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
               <Text style={styles.guideText}>
                 {detectedPlate
                   ? `✓ Algılandı: ${detectedPlate}`
-                  : 'Canlı Taranıyor... Plakayı çerçeveye hizalayın'}
+                  : 'Plakayı çerçeveye ortalayıp butona basınız'}
               </Text>
             </View>
           </View>
@@ -355,14 +283,23 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
           </View>
         </View>
       </SafeAreaView>
-    </Modal>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 999999,
+    elevation: 999999,
     backgroundColor: '#000',
+  },
+  safeArea: {
+    flex: 1,
   },
   header: {
     alignItems: 'center',

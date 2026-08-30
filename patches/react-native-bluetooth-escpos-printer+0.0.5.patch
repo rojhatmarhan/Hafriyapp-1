@@ -39,10 +39,10 @@ index 0000000..a3d1cfd
 +  s.dependency "React-Core"
 +end
 diff --git a/node_modules/react-native-bluetooth-escpos-printer/android/build.gradle b/node_modules/react-native-bluetooth-escpos-printer/android/build.gradle
-index d86e4f5..66344cb 100644
+index d86e4f5..bcc3cd5 100644
 --- a/node_modules/react-native-bluetooth-escpos-printer/android/build.gradle
 +++ b/node_modules/react-native-bluetooth-escpos-printer/android/build.gradle
-@@ -1,31 +1,23 @@
+@@ -1,31 +1,24 @@
  buildscript {
      repositories {
 -        jcenter { url "http://jcenter.bintray.com/" }
@@ -57,7 +57,7 @@ index d86e4f5..66344cb 100644
 -            url 'https://maven.google.com'
 -        }
      }
--
+ 
      dependencies {
 -        classpath 'com.android.tools.build:gradle:3.1.4'
 +        classpath 'com.android.tools.build:gradle:8.1.0'
@@ -81,7 +81,7 @@ index d86e4f5..66344cb 100644
          versionCode 1
          versionName "1.0"
      }
-@@ -40,21 +32,15 @@ android {
+@@ -40,21 +33,15 @@ android {
  }
  
  repositories {
@@ -107,7 +107,6 @@ index d86e4f5..66344cb 100644
 +    implementation 'com.facebook.react:react-native:+'
 +    implementation "com.google.zxing:core:3.5.3"
  }
-\ No newline at end of file
 diff --git a/node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/RNBluetoothManagerModule.java b/node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/RNBluetoothManagerModule.java
 index dd5d33e..bcdf209 100644
 --- a/node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/RNBluetoothManagerModule.java
@@ -136,10 +135,10 @@ index 3fa7409..ae1583a 100644
              sendDataByte(PrinterCommand.POS_Set_PrtInit());
          }
 diff --git a/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m b/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
-index d8e5cd6..995cc36 100644
+index d8e5cd6..86c62f3 100644
 --- a/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
 +++ b/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
-@@ -20,15 +20,9 @@
+@@ -20,15 +20,9 @@ - (void) didWriteDataToBle: (BOOL)success
  //            ASCII ESC M 0 CR LF
  //            Hex 1B 4D 0 0D 0A
  //            Decimal 27 77 0 13 10
@@ -156,36 +155,43 @@ index d8e5cd6..995cc36 100644
          }else {
              [self print];
          }
-@@ -43,19 +37,16 @@
+@@ -42,20 +36,18 @@ - (void) didWriteDataToBle: (BOOL)success
+ -(void) print
  {
      @synchronized (self) {
-      NSInteger sizePerLine = (int)(_width/8);
+-     NSInteger sizePerLine = (int)(_width/8);
 -   // do{
 -//        if(sizePerLine+_now>=[_toPrint length]){
 -//            sizePerLine = [_toPrint length] - _now;
 -//        }
 -       // if(sizePerLine>0){
-+        if(sizePerLine+_now>=[_toPrint length]){
-+            sizePerLine = [_toPrint length] - _now;
+-            NSData *subData = [_toPrint subdataWithRange:NSMakeRange(_now, sizePerLine)];
+-            NSLog(@"Write data:%@",subData);
++        NSInteger bytesPerLine = (int)(_width/8);
++        if (bytesPerLine <= 0) bytesPerLine = 48;
++        // Batch 4 lines per BLE write (192 bytes) for ultra-fast and smooth printing on iOS
++        NSInteger chunkSize = bytesPerLine * 4;
++        if(chunkSize + _now >= [_toPrint length]){
++            chunkSize = [_toPrint length] - _now;
 +        }
-+        if(sizePerLine>0){
-             NSData *subData = [_toPrint subdataWithRange:NSMakeRange(_now, sizePerLine)];
-             NSLog(@"Write data:%@",subData);
++        if(chunkSize > 0){
++            NSData *subData = [_toPrint subdataWithRange:NSMakeRange(_now, chunkSize)];
              [RNBluetoothManager writeValue:subData withDelegate:self];
 -        //}
-+        }
-         _now = _now+sizePerLine;
+-        _now = _now+sizePerLine;
 -        [NSThread sleepForTimeInterval:0.01f];
-         
+-        
++        }
++        _now = _now + chunkSize;
      }
 -    //}while(_now<[_toPrint length]);
  }
  @end
 diff --git a/node_modules/react-native-bluetooth-escpos-printer/ios/RNBluetoothManager.m b/node_modules/react-native-bluetooth-escpos-printer/ios/RNBluetoothManager.m
-index c96d205..608fb4d 100644
+index c96d205..4fce3cc 100644
 --- a/node_modules/react-native-bluetooth-escpos-printer/ios/RNBluetoothManager.m
 +++ b/node_modules/react-native-bluetooth-escpos-printer/ios/RNBluetoothManager.m
-@@ -24,24 +24,42 @@ static CBPeripheral *connected;
+@@ -24,24 +24,42 @@ @implementation RNBluetoothManager
  static RNBluetoothManager *instance;
  static NSObject<WriteDataToBleDelegate> *writeDataDelegate;// delegate of write data resule;
  static NSData *toWrite;
@@ -233,7 +239,7 @@ index c96d205..608fb4d 100644
      }
  }
  
-@@ -337,6 +355,7 @@ RCT_EXPORT_METHOD(connect:(NSString *)address
+@@ -337,6 +355,7 @@ - (void)centralManager:(CBCentralManager *)central didDisconnectPeripheral:(CBPe
              [self sendEventWithName:EVENT_UNABLE_CONNECT body:@{@"name":peripheral.name?peripheral.name:@"",@"address":peripheral.identifier.UUIDString}];
          }
      }else{
@@ -241,64 +247,49 @@ index c96d205..608fb4d 100644
          connected = nil;
          if(hasListeners){
              [self sendEventWithName:EVENT_CONNECTION_LOST body:nil];
-@@ -418,23 +437,24 @@ RCT_EXPORT_METHOD(connect:(NSString *)address
+@@ -418,26 +437,27 @@ - (void)peripheral:(CBPeripheral *)peripheral didDiscoverCharacteristicsForServi
              NSLog(@"Discrover charactoreristics error:%@",error);
             if(writeDataDelegate)
             {
 -               [writeDataDelegate didWriteDataToBle:false];
 +               notifyBleWriteDelegate(writeDataDelegate, false);
                 return;
-            }
-         }
-         for(CBCharacteristic *cc in service.characteristics){
-             NSLog(@"Characterstic found: %@ in service: %@" ,cc,service.UUID.UUIDString);
-             if([cc.UUID.UUIDString isEqualToString:[writeableCharactiscs objectForKey: supportServices[0]]]){
-+                cachedWriteChar = cc; // Karakteristigi cache'le
-                 @try{
-                     [connected writeValue:toWrite forCharacteristic:cc type:CBCharacteristicWriteWithoutResponse];
--                   if(writeDataDelegate) [writeDataDelegate didWriteDataToBle:true];
-+                   if(writeDataDelegate) notifyBleWriteDelegate(writeDataDelegate, true);
-                     if(toWrite){
-                         NSLog(@"Value wrote: %lu",[toWrite length]);
-                     }
-                 }
-                 @catch(NSException *e){
-                     NSLog(@"ERRO IN WRITE VALUE: %@",e);
--                      [writeDataDelegate didWriteDataToBle:false];
-+                      notifyBleWriteDelegate(writeDataDelegate, false);
-                 }
-             }
-         }
-diff --git a/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m b/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
-index 1111111..2222222 100644
---- a/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
-+++ b/node_modules/react-native-bluetooth-escpos-printer/ios/PrintImageBleWriteDelegate.m
-@@ -36,17 +36,18 @@ @implementation PrintImageBleWriteDelegate
- -(void) print
- {
-     @synchronized (self) {
--     NSInteger sizePerLine = (int)(_width/8);
--        if(sizePerLine+_now>=[_toPrint length]){
--            sizePerLine = [_toPrint length] - _now;
+-           }
 -        }
--        if(sizePerLine>0){
--            NSData *subData = [_toPrint subdataWithRange:NSMakeRange(_now, sizePerLine)];
--            NSLog(@"Write data:%@",subData);
-+        NSInteger bytesPerLine = (int)(_width/8);
-+        if (bytesPerLine <= 0) bytesPerLine = 48;
-+        // Batch 4 lines per BLE write (192 bytes) for ultra-fast and smooth printing on iOS
-+        NSInteger chunkSize = bytesPerLine * 4;
-+        if(chunkSize + _now >= [_toPrint length]){
-+            chunkSize = [_toPrint length] - _now;
-+        }
-+        if(chunkSize > 0){
-+            NSData *subData = [_toPrint subdataWithRange:NSMakeRange(_now, chunkSize)];
-             [RNBluetoothManager writeValue:subData withDelegate:self];
-         }
--        _now = _now+sizePerLine;
--        
-+        _now = _now + chunkSize;
+-        for(CBCharacteristic *cc in service.characteristics){
+-            NSLog(@"Characterstic found: %@ in service: %@" ,cc,service.UUID.UUIDString);
+-            if([cc.UUID.UUIDString isEqualToString:[writeableCharactiscs objectForKey: supportServices[0]]]){
+-                @try{
+-                    [connected writeValue:toWrite forCharacteristic:cc type:CBCharacteristicWriteWithoutResponse];
+-                   if(writeDataDelegate) [writeDataDelegate didWriteDataToBle:true];
+-                    if(toWrite){
+-                        NSLog(@"Value wrote: %lu",[toWrite length]);
+-                    }
+-                }
+-                @catch(NSException *e){
+-                    NSLog(@"ERRO IN WRITE VALUE: %@",e);
+-                      [writeDataDelegate didWriteDataToBle:false];
+-                }
+             }
+-        }
++         }
++         for(CBCharacteristic *cc in service.characteristics){
++             NSLog(@"Characterstic found: %@ in service: %@" ,cc,service.UUID.UUIDString);
++             if([cc.UUID.UUIDString isEqualToString:[writeableCharactiscs objectForKey: supportServices[0]]]){
++                cachedWriteChar = cc; // Karakteristigi cache'le
++                 @try{
++                     [connected writeValue:toWrite forCharacteristic:cc type:CBCharacteristicWriteWithoutResponse];
++                   if(writeDataDelegate) notifyBleWriteDelegate(writeDataDelegate, true);
++                     if(toWrite){
++                         NSLog(@"Value wrote: %lu",[toWrite length]);
++                     }
++                 }
++                 @catch(NSException *e){
++                     NSLog(@"ERRO IN WRITE VALUE: %@",e);
++                      notifyBleWriteDelegate(writeDataDelegate, false);
++                 }
++             }
++         }
+         
+         
      }
- }
- @end
-

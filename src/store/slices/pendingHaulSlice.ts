@@ -11,6 +11,7 @@ export type PendingHaul = {
   dumpLocation: string;
   note: string;
   isPrintedReceipt: boolean;
+  serialNumber?: string;     // Çevrimdışı kesilen fişin sıralı/benzersiz seri no'su
   timeOfHaul: string;        // ISO string — sefer anı
   createdAt: string;         // kuyruğa eklenme zamanı
 };
@@ -33,12 +34,18 @@ const pendingHaulSlice = createSlice({
     removePendingHaul(state, action: PayloadAction<string>) {
       state.queue = state.queue.filter(h => h.localId !== action.payload);
     },
+    updatePendingHaul(state, action: PayloadAction<{ id: string; changes: Partial<PendingHaul> }>) {
+      const idx = state.queue.findIndex(h => h.localId === action.payload.id || `local_${h.localId}` === action.payload.id);
+      if (idx !== -1) {
+        state.queue[idx] = { ...state.queue[idx], ...action.payload.changes };
+      }
+    },
     clearPendingHauls(state) {
       state.queue = [];
     },
   },
 });
 
-export const { addPendingHaul, removePendingHaul, clearPendingHauls } =
+export const { addPendingHaul, removePendingHaul, updatePendingHaul, clearPendingHauls } =
   pendingHaulSlice.actions;
 export default pendingHaulSlice.reducer;

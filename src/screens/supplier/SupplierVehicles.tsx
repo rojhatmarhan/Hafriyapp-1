@@ -897,12 +897,7 @@ export default function SupplierVehicles() {
   const isHaulUpdated = (item: any): boolean => {
     if (item?.isUpdated !== undefined) return Boolean(item.isUpdated);
     if (item?.IsUpdated !== undefined) return Boolean(item.IsUpdated);
-    const createdStr = item?.createdDate || item?.CreatedDate;
-    const updatedStr = item?.updatedDate || item?.UpdatedDate;
-    if (!createdStr || !updatedStr) return false;
-    const created = new Date(createdStr.endsWith?.('Z') ? createdStr : createdStr + 'Z').getTime();
-    const updated = new Date(updatedStr.endsWith?.('Z') ? updatedStr : updatedStr + 'Z').getTime();
-    return updated - created > 1000;
+    return false;
   };
 
   const renderTrip = ({ item }: { item: HaulApi }) => {
@@ -927,13 +922,9 @@ export default function SupplierVehicles() {
                 <Text style={styles.todayText}>Bugün</Text>
               </View>
             )}
-            {paid ? (
+            {paid && (
               <View style={styles.statusPaid}>
                 <Text style={styles.statusPaidText}>✔ Ödendi</Text>
-              </View>
-            ) : (
-              <View style={styles.statusPending}>
-                <Text style={styles.statusPendingText}>⏳ Bekliyor</Text>
               </View>
             )}
             {isHaulUpdated(item) && (
@@ -1645,6 +1636,11 @@ export default function SupplierVehicles() {
             </KeyboardAvoidingView>
           </View>
         </TouchableWithoutFeedback>
+        <PlateScannerModal
+          visible={plateScannerVisible}
+          onClose={() => setPlateScannerVisible(false)}
+          onPlateDetected={plate => setNewPlate(plate)}
+        />
       </Modal>
 
       <BluetoothPrinterModal
