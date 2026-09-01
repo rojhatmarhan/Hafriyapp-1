@@ -10,7 +10,7 @@ import { name as appName } from './app.json';
 import React from 'react';
 
 // Cihaz yazı puntosu büyütmelerinin uygulama mizanpajını bozmasını engelle (Global Font Scaling Lock - iOS & Android)
-const isTextType = (type: any): boolean => {
+const isTextType = function (type) {
   if (!type) return false;
   if (type === Text || type === TextInput) return true;
   const name = type.displayName || type.name || (type.render && (type.render.displayName || type.render.name));
@@ -19,7 +19,7 @@ const isTextType = (type: any): boolean => {
 
 // 1. React.createElement interceptor
 const originalCreateElement = React.createElement;
-(React as any).createElement = function (type: any, props: any, ...children: any[]) {
+React.createElement = function (type, props, ...children) {
   if (isTextType(type)) {
     props = Object.assign({}, props, {
       allowFontScaling: false,
@@ -30,12 +30,13 @@ const originalCreateElement = React.createElement;
 };
 
 // 2. JSX Runtimes (Babel / Metro production & development transforms)
-const patchJsxRuntime = (runtime: any, methodNames: string[]) => {
+const patchJsxRuntime = function (runtime, methodNames) {
   if (!runtime) return;
-  for (const method of methodNames) {
+  for (let i = 0; i < methodNames.length; i++) {
+    const method = methodNames[i];
     if (typeof runtime[method] === 'function') {
       const original = runtime[method];
-      runtime[method] = function (type: any, props: any, ...rest: any[]) {
+      runtime[method] = function (type, props, ...rest) {
         if (isTextType(type)) {
           props = Object.assign({}, props, {
             allowFontScaling: false,
@@ -57,23 +58,23 @@ try {
 } catch (e) {}
 
 // 3. Fallback defaultProps
-if ((Text as any).defaultProps == null) {
-  (Text as any).defaultProps = {};
+if (Text.defaultProps == null) {
+  Text.defaultProps = {};
 }
-(Text as any).defaultProps.allowFontScaling = false;
-(Text as any).defaultProps.maxFontSizeMultiplier = 1;
+Text.defaultProps.allowFontScaling = false;
+Text.defaultProps.maxFontSizeMultiplier = 1;
 
-if ((TextInput as any).defaultProps == null) {
-  (TextInput as any).defaultProps = {};
+if (TextInput.defaultProps == null) {
+  TextInput.defaultProps = {};
 }
-(TextInput as any).defaultProps.allowFontScaling = false;
-(TextInput as any).defaultProps.maxFontSizeMultiplier = 1;
+TextInput.defaultProps.allowFontScaling = false;
+TextInput.defaultProps.maxFontSizeMultiplier = 1;
 
 import { getMessaging, setBackgroundMessageHandler } from '@react-native-firebase/messaging';
 
 // Arka planda / kilitli ekranda gelen bildirimleri işle
 try {
-  setBackgroundMessageHandler(getMessaging(), async (remoteMessage: any) => {
+  setBackgroundMessageHandler(getMessaging(), async function (remoteMessage) {
     console.log('[NotificationService] Background message received:', remoteMessage);
   });
 } catch (e) {
