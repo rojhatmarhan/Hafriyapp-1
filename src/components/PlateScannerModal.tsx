@@ -102,6 +102,11 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
   const processingRef = useRef(false);
   const autoScanTimerRef = useRef<any>(null);
 
+  const onPlateDetectedRef = useRef(onPlateDetected);
+  const onCloseRef = useRef(onClose);
+  onPlateDetectedRef.current = onPlateDetected;
+  onCloseRef.current = onClose;
+
   const formatUri = useCallback((rawUri: string): string => {
     let formatted = rawUri;
     if (!formatted.startsWith('file://') && !formatted.startsWith('content://')) {
@@ -110,21 +115,22 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
     return formatted;
   }, []);
 
-  const handleSuccess = useCallback((plate: string) => {
+  const handleSuccess = (plate: string) => {
     if (isDetectedRef.current) return;
     isDetectedRef.current = true;
     isScanningRef.current = false;
     if (autoScanTimerRef.current) {
       clearTimeout(autoScanTimerRef.current);
+      autoScanTimerRef.current = null;
     }
     setDetectedPlate(plate);
     setProcessing(false);
 
     setTimeout(() => {
-      onPlateDetected(plate);
-      onClose();
-    }, 450);
-  }, [onPlateDetected, onClose]);
+      onPlateDetectedRef.current(plate);
+      onCloseRef.current();
+    }, 400);
+  };
 
   const scanFrame = useCallback(async () => {
     if (!isScanningRef.current || isDetectedRef.current || !cameraRef.current || processingRef.current) {
@@ -154,35 +160,33 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
         }
       }
     } catch (err) {
-      // Background auto-scan error ignored for next retry
+      // Ignored for next retry
     } finally {
       processingRef.current = false;
     }
 
-    // Schedule next frame if still active (Android only)
-    if (Platform.OS === 'android' && isScanningRef.current && !isDetectedRef.current) {
-      autoScanTimerRef.current = setTimeout(scanFrame, 900);
+    // Schedule next frame if still active (both iOS & Android)
+    if (isScanningRef.current && !isDetectedRef.current) {
+      autoScanTimerRef.current = setTimeout(scanFrame, 350);
     }
-  }, [formatUri, handleSuccess]);
+  }, [formatUri]);
 
   useEffect(() => {
     if (visible) {
       isDetectedRef.current = false;
-      isScanningRef.current = Platform.OS === 'android';
+      isScanningRef.current = true;
       processingRef.current = false;
       setDetectedPlate(null);
       setProcessing(false);
       handleShow();
 
-      // Android'de deklanşör sesi yazılımla tamamen kapatılabildiği için sessiz otomatik tarama çalışır.
-      // iOS'ta Apple donanım seviyesinde her çekimde deklanşör sesi çaldığı için sürekli ses yapmaması adına manuel butona bağlanır.
-      if (Platform.OS === 'android') {
-        autoScanTimerRef.current = setTimeout(scanFrame, 700);
-      }
+      // Kamera açıldıktan 400ms sonra canlı plaka taramasını başlat
+      autoScanTimerRef.current = setTimeout(scanFrame, 400);
     } else {
       isScanningRef.current = false;
       if (autoScanTimerRef.current) {
         clearTimeout(autoScanTimerRef.current);
+        autoScanTimerRef.current = null;
       }
     }
 
@@ -190,9 +194,10 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
       isScanningRef.current = false;
       if (autoScanTimerRef.current) {
         clearTimeout(autoScanTimerRef.current);
+        autoScanTimerRef.current = null;
       }
     };
-  }, [visible, scanFrame]);
+  }, [visible]);
 
   const handleShow = async () => {
     setProcessing(false);
