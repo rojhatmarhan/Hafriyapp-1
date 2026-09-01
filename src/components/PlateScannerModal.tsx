@@ -98,6 +98,9 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
   const [detectedPlate, setDetectedPlate] = useState<string | null>(null);
 
   const isDetectedRef = useRef(false);
+  const isScanningRef = useRef(false);
+  const processingRef = useRef(false);
+  const autoScanTimerRef = useRef<any>(null);
 
   const formatUri = useCallback((rawUri: string): string => {
     let formatted = rawUri;
@@ -110,6 +113,10 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
   const handleSuccess = useCallback((plate: string) => {
     if (isDetectedRef.current) return;
     isDetectedRef.current = true;
+    isScanningRef.current = false;
+    if (autoScanTimerRef.current) {
+      clearTimeout(autoScanTimerRef.current);
+    }
     setDetectedPlate(plate);
     setProcessing(false);
 
@@ -119,14 +126,70 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
     }, 450);
   }, [onPlateDetected, onClose]);
 
+  const scanFrame = useCallback(async () => {
+    if (!isScanningRef.current || isDetectedRef.current || !cameraRef.current || processingRef.current) {
+      return;
+    }
+
+    try {
+      processingRef.current = true;
+      const photo = await cameraRef.current.capture();
+      const rawUri = photo?.uri || photo?.path;
+
+      if (rawUri && isScanningRef.current && !isDetectedRef.current) {
+        const formattedUri = formatUri(rawUri);
+        const result = await TextRecognition.recognize(formattedUri);
+
+        let plate = extractTurkishPlate(result?.text || '');
+        if (!plate && result?.blocks) {
+          for (const block of result.blocks) {
+            plate = extractTurkishPlate(block.text);
+            if (plate) break;
+          }
+        }
+
+        if (plate && !isDetectedRef.current) {
+          handleSuccess(plate);
+          return;
+        }
+      }
+    } catch (err) {
+      // Background auto-scan error ignored for next retry
+    } finally {
+      processingRef.current = false;
+    }
+
+    // Schedule next frame if still active
+    if (isScanningRef.current && !isDetectedRef.current) {
+      autoScanTimerRef.current = setTimeout(scanFrame, 900);
+    }
+  }, [formatUri, handleSuccess]);
+
   useEffect(() => {
     if (visible) {
       isDetectedRef.current = false;
+      isScanningRef.current = true;
+      processingRef.current = false;
       setDetectedPlate(null);
       setProcessing(false);
       handleShow();
+
+      // Initial delay for camera preview setup before auto-scan
+      autoScanTimerRef.current = setTimeout(scanFrame, 700);
+    } else {
+      isScanningRef.current = false;
+      if (autoScanTimerRef.current) {
+        clearTimeout(autoScanTimerRef.current);
+      }
     }
-  }, [visible]);
+
+    return () => {
+      isScanningRef.current = false;
+      if (autoScanTimerRef.current) {
+        clearTimeout(autoScanTimerRef.current);
+      }
+    };
+  }, [visible, scanFrame]);
 
   const handleShow = async () => {
     setProcessing(false);
@@ -207,13 +270,14 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
           <Text style={styles.title}>Plaka Tara (Canlı)</Text>
         </View>
 
-          {/* Kamera & Plaka Çerçevesi */}
-          <View style={styles.cameraContainer}>
-            <Camera
-              ref={cameraRef}
-              torchMode={torchOn ? 'on' : 'off'}
-              style={styles.camera}
-            />
+        {/* Kamera & Plaka Çerçevesi */}
+        <View style={styles.cameraContainer}>
+          <Camera
+            ref={cameraRef}
+            shutterPhotoSound={false}
+            torchMode={torchOn ? 'on' : 'off'}
+            style={styles.camera}
+          />
 
             {/* Plaka Hizalama Vizörü */}
             <View style={styles.overlay} pointerEvents="box-none">
