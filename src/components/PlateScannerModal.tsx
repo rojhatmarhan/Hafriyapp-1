@@ -159,8 +159,8 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
       processingRef.current = false;
     }
 
-    // Schedule next frame if still active
-    if (isScanningRef.current && !isDetectedRef.current) {
+    // Schedule next frame if still active (Android only)
+    if (Platform.OS === 'android' && isScanningRef.current && !isDetectedRef.current) {
       autoScanTimerRef.current = setTimeout(scanFrame, 900);
     }
   }, [formatUri, handleSuccess]);
@@ -168,14 +168,17 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
   useEffect(() => {
     if (visible) {
       isDetectedRef.current = false;
-      isScanningRef.current = true;
+      isScanningRef.current = Platform.OS === 'android';
       processingRef.current = false;
       setDetectedPlate(null);
       setProcessing(false);
       handleShow();
 
-      // Initial delay for camera preview setup before auto-scan
-      autoScanTimerRef.current = setTimeout(scanFrame, 700);
+      // Android'de deklanşör sesi yazılımla tamamen kapatılabildiği için sessiz otomatik tarama çalışır.
+      // iOS'ta Apple donanım seviyesinde her çekimde deklanşör sesi çaldığı için sürekli ses yapmaması adına manuel butona bağlanır.
+      if (Platform.OS === 'android') {
+        autoScanTimerRef.current = setTimeout(scanFrame, 700);
+      }
     } else {
       isScanningRef.current = false;
       if (autoScanTimerRef.current) {
