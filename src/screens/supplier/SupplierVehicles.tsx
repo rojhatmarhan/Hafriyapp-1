@@ -1727,12 +1727,6 @@ export default function SupplierVehicles() {
         onScan={handleQRScan}
         title="Araç Sefer Fişi Okutun"
       />
-
-      <PlateScannerModal
-        visible={plateScannerVisible}
-        onClose={() => setPlateScannerVisible(false)}
-        onPlateDetected={plate => setNewPlate(plate)}
-      />
     </SafeAreaView>
   );
 }

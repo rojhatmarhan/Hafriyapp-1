@@ -211,13 +211,12 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
           <View style={styles.cameraContainer}>
             <Camera
               ref={cameraRef}
-              cameraType={CameraType.Back}
               torchMode={torchOn ? 'on' : 'off'}
               style={styles.camera}
             />
 
             {/* Plaka Hizalama Vizörü */}
-            <View style={styles.overlay}>
+            <View style={styles.overlay} pointerEvents="box-none">
               <View style={[styles.plateFrame, detectedPlate ? styles.plateFrameSuccess : null]}>
                 <View style={styles.plateFrameHeader}>
                   <View style={styles.trBadge}>
@@ -318,7 +317,7 @@ const styles = StyleSheet.create({
   },
   cameraContainer: {
     flex: 1,
-    position: 'relative',
+    overflow: 'hidden',
   },
   camera: {
     flex: 1,

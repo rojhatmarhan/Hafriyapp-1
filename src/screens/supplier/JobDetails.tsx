@@ -2564,12 +2564,6 @@ export default function JobDetails() {
         onScan={handleQRScan}
         title="Şantiye Sefer Fişi Okutun"
       />
-
-      <PlateScannerModal
-        visible={plateScannerVisible}
-        onClose={() => setPlateScannerVisible(false)}
-        onPlateDetected={handlePlateDetected}
-      />
     </SafeAreaView>
   );
 }
