@@ -5,6 +5,33 @@ PODS:
   - DoubleConversion (1.1.6)
   - fast_float (8.0.0)
   - FBLazyVector (0.82.1)
+  - Firebase/CoreOnly (12.18.0):
+    - FirebaseCore (~> 12.18.0)
+  - Firebase/Messaging (12.18.0):
+    - Firebase/CoreOnly
+    - FirebaseMessaging (~> 12.18.0)
+  - FirebaseCore (12.18.0):
+    - FirebaseCoreInternal (~> 12.18.0)
+    - GoogleUtilities/Environment (~> 8.1)
+    - GoogleUtilities/Logger (~> 8.1)
+  - FirebaseCoreExtension (12.18.0):
+    - FirebaseCore (~> 12.18.0)
+  - FirebaseCoreInternal (12.18.0):
+    - "GoogleUtilities/NSData+zlib (~> 8.1)"
+  - FirebaseInstallations (12.18.0):
+    - FirebaseCore (~> 12.18.0)
+    - GoogleUtilities/Environment (~> 8.1)
+    - GoogleUtilities/UserDefaults (~> 8.1)
+    - PromisesObjC (~> 2.4)
+  - FirebaseMessaging (12.18.0):
+    - FirebaseCore (~> 12.18.0)
+    - FirebaseInstallations (~> 12.18.0)
+    - GoogleDataTransport (~> 10.1)
+    - GoogleUtilities/AppDelegateSwizzler (~> 8.1)
+    - GoogleUtilities/Environment (~> 8.1)
+    - GoogleUtilities/Reachability (~> 8.1)
+    - GoogleUtilities/UserDefaults (~> 8.1)
+    - nanopb (~> 3.30910.0)
   - fmt (11.0.2)
   - glog (0.3.5)
   - GoogleDataTransport (10.1.1):
@@ -32,12 +59,27 @@ PODS:
     - GoogleToolboxForMac/Defines (= 4.2.1)
   - "GoogleToolboxForMac/NSData+zlib (4.2.1)":
     - GoogleToolboxForMac/Defines (= 4.2.1)
+  - GoogleUtilities/AppDelegateSwizzler (8.1.3):
+    - GoogleUtilities/Environment
+    - GoogleUtilities/Logger
+    - GoogleUtilities/Network
+    - GoogleUtilities/Privacy
   - GoogleUtilities/Environment (8.1.3):
     - GoogleUtilities/Privacy
   - GoogleUtilities/Logger (8.1.3):
     - GoogleUtilities/Environment
     - GoogleUtilities/Privacy
+  - GoogleUtilities/Network (8.1.3):
+    - GoogleUtilities/Logger
+    - "GoogleUtilities/NSData+zlib"
+    - GoogleUtilities/Privacy
+    - GoogleUtilities/Reachability
+  - "GoogleUtilities/NSData+zlib (8.1.3)":
+    - GoogleUtilities/Privacy
   - GoogleUtilities/Privacy (8.1.3)
+  - GoogleUtilities/Reachability (8.1.3):
+    - GoogleUtilities/Logger
+    - GoogleUtilities/Privacy
   - GoogleUtilities/UserDefaults (8.1.3):
     - GoogleUtilities/Logger
     - GoogleUtilities/Privacy
@@ -2747,6 +2789,66 @@ PODS:
     - Yoga
   - RNDeviceInfo (10.3.0):
     - React-Core
+  - RNFBApp (26.3.3):
+    - boost
+    - DoubleConversion
+    - fast_float
+    - Firebase/CoreOnly (= 12.18.0)
+    - fmt
+    - glog
+    - hermes-engine
+    - RCT-Folly
+    - RCT-Folly/Fabric
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - SocketRocket
+    - Yoga
+  - RNFBMessaging (26.3.3):
+    - boost
+    - DoubleConversion
+    - fast_float
+    - Firebase/Messaging (= 12.18.0)
+    - FirebaseCoreExtension (= 12.18.0)
+    - fmt
+    - glog
+    - hermes-engine
+    - RCT-Folly
+    - RCT-Folly/Fabric
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - RNFBApp
+    - SocketRocket
+    - Yoga
   - RNGestureHandler (2.30.0):
     - boost
     - DoubleConversion
@@ -3197,6 +3299,8 @@ DEPENDENCIES:
   - "RNCPicker (from `../node_modules/@react-native-picker/picker`)"
   - "RNDateTimePicker (from `../node_modules/@react-native-community/datetimepicker`)"
   - RNDeviceInfo (from `../node_modules/react-native-device-info`)
+  - "RNFBApp (from `../node_modules/@react-native-firebase/app`)"
+  - "RNFBMessaging (from `../node_modules/@react-native-firebase/messaging`)"
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNKeychain (from `../node_modules/react-native-keychain`)
   - "RNMLKitTextRecognition (from `../node_modules/@react-native-ml-kit/text-recognition`)"
@@ -3209,6 +3313,12 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
+    - Firebase
+    - FirebaseCore
+    - FirebaseCoreExtension
+    - FirebaseCoreInternal
+    - FirebaseInstallations
+    - FirebaseMessaging
     - GoogleDataTransport
     - GoogleMLKit
     - GoogleToolboxForMac
@@ -3399,6 +3509,10 @@ EXTERNAL SOURCES:
     :path: "../node_modules/@react-native-community/datetimepicker"
   RNDeviceInfo:
     :path: "../node_modules/react-native-device-info"
+  RNFBApp:
+    :path: "../node_modules/@react-native-firebase/app"
+  RNFBMessaging:
+    :path: "../node_modules/@react-native-firebase/messaging"
   RNGestureHandler:
     :path: "../node_modules/react-native-gesture-handler"
   RNKeychain:
@@ -3422,6 +3536,12 @@ SPEC CHECKSUMS:
   DoubleConversion: cb417026b2400c8f53ae97020b2be961b59470cb
   fast_float: b32c788ed9c6a8c584d114d0047beda9664e7cc6
   FBLazyVector: 0aa6183b9afe3c31fc65b5d1eeef1f3c19b63bfa
+  Firebase: 5523dd53ebe603451b4e1befcd99fa20a5c015cd
+  FirebaseCore: 96787d19ee32dc2242cc487b301bc616afeb398b
+  FirebaseCoreExtension: a86bab02524ca2bff95dddab7a3fcad505c2ddeb
+  FirebaseCoreInternal: 93b2d5f9e184c6818a04433891c358b0720a6a38
+  FirebaseInstallations: 933b2747e8594084c9117b65e8358fce29d7ced7
+  FirebaseMessaging: 422bb80cbf8ff83e69e50bea4d4984fc4704f665
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
   GoogleDataTransport: a24e58982ab3ba2f64d79613e027fe7f57e88539
@@ -3518,6 +3638,8 @@ SPEC CHECKSUMS:
   RNCPicker: 3fc4d505041318ee8f59662d8d66892ce3c3295c
   RNDateTimePicker: e39ae9532555909f20861f3347cfe36b4a0d4b68
   RNDeviceInfo: 4701f0bf2a06b34654745053db0ce4cb0c53ada7
+  RNFBApp: bf63068bef9fd93e533bf0f5b899da6a2757ce8f
+  RNFBMessaging: 27a498e2c54bded8771f57d9dbf6724f218cd23c
   RNGestureHandler: 67d0939149fdc7d619ca6bb2de7ecf5b959539ae
   RNKeychain: 182d986f809280edd9444a557adc21845f7d1e6f
   RNMLKitTextRecognition: 02e17c2274c9c98aeaab68be51f6921746ffc8e1
@@ -3528,6 +3650,6 @@ SPEC CHECKSUMS:
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   Yoga: 8e01cef9947ca77f0477a098f0b32848a8e448c6
 
-PODFILE CHECKSUM: d500a5c2319e601caad98e83f612850172b05c84
+PODFILE CHECKSUM: 64fab4ee5456c4d25061e4437586fc0b29d760d2
 
 COCOAPODS: 1.14.3
