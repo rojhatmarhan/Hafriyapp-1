@@ -124,6 +124,7 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
       isDetectedRef.current = false;
       setDetectedPlate(null);
       setProcessing(false);
+      handleShow();
     }
   }, [visible]);
 
@@ -197,21 +198,14 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
   if (!visible) return null;
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      onRequestClose={onClose}
-      onShow={handleShow}
-      statusBarTranslucent
-    >
-      <View style={styles.container}>
-        <SafeAreaView style={styles.safeArea}>
-          <StatusBar barStyle="light-content" backgroundColor="#000" />
+    <View style={styles.container}>
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" backgroundColor="#000" />
 
-          {/* Üst Başlık Barı (Sade & Temiz) */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Plaka Tara (Canlı)</Text>
-          </View>
+        {/* Üst Başlık Barı (Sade & Temiz) */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Plaka Tara (Canlı)</Text>
+        </View>
 
           {/* Kamera & Plaka Çerçevesi */}
           <View style={styles.cameraContainer}>
@@ -291,7 +285,6 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
           </View>
         </SafeAreaView>
       </View>
-    </Modal>
   );
 };
 
