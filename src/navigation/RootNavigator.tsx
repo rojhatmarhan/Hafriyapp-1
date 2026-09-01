@@ -13,6 +13,8 @@ import { setUser, logout } from '../store/slices/authSlice';
 import { clearAuth } from '../utils/secureStore';
 import { checkAndPromptAppUpdate } from '../services/appUpdateService';
 
+import { initPushNotifications } from '../services/notificationService';
+
 export default function RootNavigator() {
   const dispatch = useDispatch();
   // 🔐 Keychain → Redux
@@ -26,6 +28,13 @@ export default function RootNavigator() {
   const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
   const token = useSelector((state: RootState) => state.auth.token);
   const user = useSelector((state: RootState) => state.auth.user);
+
+  // Giriş yapıldığında FCM Bildirim Token'ını backend'e kaydet
+  useEffect(() => {
+    if (isLoggedIn && token) {
+      initPushNotifications();
+    }
+  }, [isLoggedIn, token]);
 
   // Poll profile every 3 minutes to keep warning and blocked states updated dynamically
   useEffect(() => {

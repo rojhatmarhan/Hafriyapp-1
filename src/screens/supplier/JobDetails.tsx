@@ -181,7 +181,7 @@ export default function JobDetails() {
   const user = useAppSelector(state => state.auth.user);
   const pendingQueue = useAppSelector(state => state.pendingHaul.queue);
   const isKum = job?.jobType === 1;
-  const isOwner = job?.userRole === 0 || job?.userRole === undefined || job?.isOwner === true;
+  const isOwner = (user?.userType === 0 || job?.userRole === 0 || job?.isOwner === true) && job?.userRole !== 1 && job?.userRole !== 2;
 
   const normalizeHaul = (h: HaulApi): HaulApi => ({
     ...h,
@@ -1267,8 +1267,18 @@ export default function JobDetails() {
     if (!editingHaul) return;
     setEditSaving(true);
     try {
-      if (editingHaul.isPaid) {
-        // Onaylanmış seferde sadece Not güncellenir
+      const isOfflineItem = pendingQueue.some(q => q.localId === editingHaul.id || `local_${q.localId}` === editingHaul.id);
+      const isOnlyNoteEdit = editingHaul.isPaid || !isOwner;
+
+      if (isOfflineItem) {
+        dispatch(updatePendingHaul({ id: editingHaul.id, changes: { note: editNote.trim() || undefined } }));
+        setEditHaulModalVisible(false);
+        Alert.alert('Başarılı', 'Çevrimdışı fiş notu güncellendi.');
+        return;
+      }
+
+      if (isOnlyNoteEdit) {
+        // Onaylanmış seferde veya sahip olmayan personelde sadece Not güncellenir
         await updateHaul(
           editingHaul.id,
           {
@@ -1296,7 +1306,7 @@ export default function JobDetails() {
         );
       }
       setEditHaulModalVisible(false);
-      Alert.alert('Başarılı', 'Sefer başarıyla güncellendi.');
+      Alert.alert('Başarılı', isOnlyNoteEdit ? 'Fiş notu başarıyla güncellendi.' : 'Sefer başarıyla güncellendi.');
       fetchHauls();
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Sefer güncellenemedi.';
@@ -1478,13 +1488,13 @@ export default function JobDetails() {
 
           {/* Liste başlığı + butonlar */}
           <View style={styles.listHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={styles.listTitle}>Son Seferler</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 110 }}>
+              <Text style={styles.listTitle} numberOfLines={1}>Son Seferler</Text>
               <TouchableOpacity style={styles.refreshIconBtn} onPress={onRefresh} disabled={refreshing}>
                 <Text style={styles.refreshIconText}>{refreshing ? '⏳' : '🔄'}</Text>
               </TouchableOpacity>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexShrink: 0 }}>
               <TouchableOpacity
                 style={styles.manualBtn}
                 onPress={() => {
@@ -1492,7 +1502,7 @@ export default function JobDetails() {
                   setManualTime(getNowTimeStr());
                   setManualModal(true);
                 }}>
-                <Text style={styles.manualBtnText}>Manuel Ekle</Text>
+                <Text style={styles.manualBtnText}>Manuel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.addHaulBtn}
@@ -1730,24 +1740,17 @@ export default function JobDetails() {
                     </View>
                     <TextInput value={manualPlate} onChangeText={t => setManualPlate(t.toUpperCase())} style={styles.plateInput} placeholder="34 ABC 123" autoCapitalize="characters" maxLength={14} />
 
-                    {/* Tarih ve Saat Seçimi */}
-                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
-                      <View style={{ flex: 1.3 }}>
-                        {isOwner ? (
+                    {/* Tarih ve Saat Seçimi (Yalnızca Firma Sahibi) */}
+                    {isOwner && (
+                      <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                        <View style={{ flex: 1.3 }}>
                           <DatePickerInput label="Sefer Tarihi" value={manualDate} onChange={setManualDate} />
-                        ) : (
-                          <View>
-                            <Text style={styles.fieldLabel}>Sefer Tarihi</Text>
-                            <View style={[styles.textInput, { backgroundColor: '#ECEFF1', borderColor: '#CFD8DC', justifyContent: 'center' }]}>
-                              <Text style={{ fontSize: 13, color: '#546E7A', fontWeight: '700' }}>📅 {manualDate} (Bugün)</Text>
-                            </View>
-                          </View>
-                        )}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <TimePickerInput label="Saat" value={manualTime} onChange={setManualTime} />
+                        </View>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <TimePickerInput label="Saat" value={manualTime} onChange={setManualTime} />
-                      </View>
-                    </View>
+                    )}
 
                     {isKum ? (
                       <>
@@ -1872,20 +1875,26 @@ export default function JobDetails() {
                           🔒 Bu sefer onaylandığı (ödendiği) için sadece Not alanı düzenlenebilir.
                         </Text>
                       </View>
+                    ) : (!isOwner ? (
+                      <View style={{ backgroundColor: '#FFF3E0', padding: 10, borderRadius: 8, marginBottom: 12 }}>
+                        <Text style={{ fontSize: 12, color: '#E65100', fontWeight: '600' }}>
+                          ℹ️ Sefer detayları sadece firma sahibi tarafından güncellenebilir. Not alanını düzenleyebilirsiniz.
+                        </Text>
+                      </View>
                     ) : (
                       <View style={{ backgroundColor: '#FFF3E0', padding: 10, borderRadius: 8, marginBottom: 12 }}>
                         <Text style={{ fontSize: 12, color: '#E65100', fontWeight: '600' }}>
                           ℹ️ Sefer bilgileri firma sahibi tarafından güncellenmektedir.
                         </Text>
                       </View>
-                    )}
+                    ))}
 
                     {/* Plaka */}
                     <View style={styles.plateLabelRow}>
                       <Text style={styles.fieldLabel}>
                         Plaka Numarası <Text style={styles.req}>*</Text>
                       </Text>
-                      {!editingHaul?.isPaid && (
+                      {!editingHaul?.isPaid && isOwner && (
                         <TouchableOpacity
                           style={styles.plateScanBtn}
                           onPress={() => {
@@ -1900,11 +1909,11 @@ export default function JobDetails() {
                     <TextInput
                       value={editPlate}
                       onChangeText={t => setEditPlate(t.toUpperCase())}
-                      style={[styles.plateInput, editingHaul?.isPaid && { opacity: 0.5, backgroundColor: '#f0f0f0' }]}
+                      style={[styles.plateInput, (editingHaul?.isPaid || !isOwner) && { opacity: 0.5, backgroundColor: '#f0f0f0' }]}
                       placeholder="34 ABC 123"
                       autoCapitalize="characters"
                       maxLength={14}
-                      editable={!editingHaul?.isPaid}
+                      editable={!editingHaul?.isPaid && isOwner}
                     />
 
                     {/* Rota / Döküm Yeri */}
@@ -1914,9 +1923,9 @@ export default function JobDetails() {
                     <TextInput
                       value={editDump}
                       onChangeText={setEditDump}
-                      style={[styles.textInput, editingHaul?.isPaid && { opacity: 0.5, backgroundColor: '#f0f0f0' }]}
+                      style={[styles.textInput, (editingHaul?.isPaid || !isOwner) && { opacity: 0.5, backgroundColor: '#f0f0f0' }]}
                       placeholder="Döküm Yeri veya Rota"
-                      editable={!editingHaul?.isPaid}
+                      editable={!editingHaul?.isPaid && isOwner}
                     />
 
                     {/* Nakit + Yakıt (Hafriyat tipi için) */}
@@ -1927,10 +1936,10 @@ export default function JobDetails() {
                           <TextInput
                             value={editCash}
                             onChangeText={t => setEditCash(t.replace(/[^0-9,.]/g, ''))}
-                            style={[styles.textInput, editingHaul?.isPaid && { opacity: 0.5, backgroundColor: '#f0f0f0' }]}
+                            style={[styles.textInput, (editingHaul?.isPaid || !isOwner) && { opacity: 0.5, backgroundColor: '#f0f0f0' }]}
                             placeholder="0"
                             keyboardType="decimal-pad"
-                            editable={!editingHaul?.isPaid}
+                            editable={!editingHaul?.isPaid && isOwner}
                           />
                         </View>
                         <View style={{ flex: 1 }}>
@@ -1938,10 +1947,10 @@ export default function JobDetails() {
                           <TextInput
                             value={editFuel}
                             onChangeText={t => setEditFuel(t.replace(/[^0-9,.]/g, ''))}
-                            style={[styles.textInput, editingHaul?.isPaid && { opacity: 0.5, backgroundColor: '#f0f0f0' }]}
+                            style={[styles.textInput, (editingHaul?.isPaid || !isOwner) && { opacity: 0.5, backgroundColor: '#f0f0f0' }]}
                             placeholder="0"
                             keyboardType="decimal-pad"
-                            editable={!editingHaul?.isPaid}
+                            editable={!editingHaul?.isPaid && isOwner}
                           />
                         </View>
                       </View>
@@ -1973,10 +1982,12 @@ export default function JobDetails() {
                       </TouchableOpacity>
                     )}
                     <TouchableOpacity
-                      style={[styles.manualSaveBtn, { backgroundColor: '#F57C00' }, (!editPlate || editSaving) && { opacity: 0.4 }]}
+                      style={[styles.manualSaveBtn, { backgroundColor: '#F57C00' }, ((!isOwner || editingHaul?.isPaid) ? editSaving : (!editPlate || editSaving)) && { opacity: 0.4 }]}
                       onPress={handleSaveEditHaul}
-                      disabled={!editPlate || editSaving}>
-                      <Text style={styles.manualSaveBtnText}>{editSaving ? 'Kaydediliyor...' : 'Güncelle'}</Text>
+                      disabled={(!isOwner || editingHaul?.isPaid) ? editSaving : (!editPlate || editSaving)}>
+                      <Text style={styles.manualSaveBtnText}>
+                        {editSaving ? 'Kaydediliyor...' : (editingHaul?.isPaid || !isOwner ? 'Notu Güncelle' : 'Güncelle')}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -2138,7 +2149,21 @@ export default function JobDetails() {
                       <Text style={styles.receiptCompanyName}>{(selectedHaul.companyName || user?.companyName || '').toUpperCase()}</Text>
                       <Text style={styles.receiptJobSiteName}>{(selectedHaul.jobSiteName || job?.name || '').toUpperCase()}</Text>
                     </View>
-                    <Text style={styles.receiptTimeText}>{new Date(selectedHaul.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</Text>
+                    <View style={styles.receiptRightBlock}>
+                      <Text style={styles.receiptTimeText}>{new Date(selectedHaul.timeOfHaul).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</Text>
+                      <TouchableOpacity
+                        style={styles.receiptEditIconBtn}
+                        onPress={() => {
+                          setReceiptVisible(false);
+                          setTimeout(() => {
+                            handleOpenEditHaul(selectedHaul);
+                          }, 250);
+                        }}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Text style={styles.receiptEditIconText}>✏️</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
 
                   {/* Gövde: Satırlar (sol) + QR (sağ) */}
@@ -2221,41 +2246,23 @@ export default function JobDetails() {
               </View>
 
               {/* Footer butonlar */}
-              <View style={styles.receiptFooterWrap}>
-                {/* Üst Satır: 3 Buton */}
-                <View style={styles.receiptFooterRow}>
-                  <TouchableOpacity style={styles.receiptCloseBtnNew} onPress={() => setReceiptVisible(false)}>
-                    <Text style={styles.receiptCloseBtnNewText}>Kapat</Text>
-                  </TouchableOpacity>
-                  {!selectedHaul.isPaid && selectedHaul.isPrintedReceipt && (
-                    <TouchableOpacity
-                      style={styles.receiptApproveBtnNew}
-                      onPress={() => {
-                        setReceiptVisible(false);
-                        openPaymentConfirm(selectedHaul);
-                      }}>
-                      <Text style={styles.receiptApproveBtnNewText}>Ödeme</Text>
-                    </TouchableOpacity>
-                  )}
-                  {selectedHaul.isPrintedReceipt && (
-                    <TouchableOpacity style={styles.receiptPrintBtnNew} onPress={() => triggerPrint(selectedHaul)}>
-                      <Text style={styles.receiptPrintBtnNewText}>Yazdır</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-
-                {/* Alt Satır: Sadece Ödenmemiş Seferlerde Düzenle Butonu Gösterilir */}
-                {!selectedHaul.isPaid && (
+              <View style={styles.receiptFooterRow}>
+                <TouchableOpacity style={styles.receiptCloseBtnNew} onPress={() => setReceiptVisible(false)}>
+                  <Text style={styles.receiptCloseBtnNewText}>Kapat</Text>
+                </TouchableOpacity>
+                {!selectedHaul.isPaid && selectedHaul.isPrintedReceipt && (
                   <TouchableOpacity
-                    style={styles.receiptFullEditBtn}
+                    style={styles.receiptApproveBtnNew}
                     onPress={() => {
                       setReceiptVisible(false);
-                      setTimeout(() => {
-                        handleOpenEditHaul(selectedHaul);
-                      }, 250);
-                    }}
-                    activeOpacity={0.8}>
-                    <Text style={styles.receiptFullEditBtnText}>✏️ Seferi Düzenle</Text>
+                      openPaymentConfirm(selectedHaul);
+                    }}>
+                    <Text style={styles.receiptApproveBtnNewText}>Ödeme</Text>
+                  </TouchableOpacity>
+                )}
+                {selectedHaul.isPrintedReceipt && (
+                  <TouchableOpacity style={styles.receiptPrintBtnNew} onPress={() => triggerPrint(selectedHaul)}>
+                    <Text style={styles.receiptPrintBtnNewText}>Yazdır</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -2630,18 +2637,36 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#fff',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
     borderRadius: 12,
     marginBottom: 12,
+    flexWrap: 'wrap',
+    rowGap: 8,
   },
   listTitle: { fontSize: 15, fontWeight: '800', color: DARK },
   refreshIconBtn: { padding: 4 },
   refreshIconText: { fontSize: 16 },
-  addHaulBtn: { backgroundColor: '#1976D2', paddingVertical: 9, paddingHorizontal: 14, borderRadius: 10 },
-  addHaulBtnText: { fontWeight: '800', fontSize: 13, color: '#fff' },
-  manualBtn: { backgroundColor: '#F5F5F5', paddingVertical: 9, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: '#ccc' },
-  manualBtnText: { fontWeight: '700', fontSize: 13, color: '#555' },
+  addHaulBtn: {
+    backgroundColor: '#1976D2',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addHaulBtnText: { fontWeight: '800', fontSize: 12.5, color: '#fff' },
+  manualBtn: {
+    backgroundColor: '#F5F5F5',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  manualBtnText: { fontWeight: '700', fontSize: 12.5, color: '#555' },
 
   pendingTitle: { fontSize: 12, fontWeight: '700', color: '#E65100', marginBottom: 6 },
   pendingRow: {
@@ -3170,11 +3195,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
+  receiptRightBlock: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    marginLeft: 6,
+    gap: 4,
+  },
   receiptTimeText: {
     fontSize: 13,
     fontWeight: '700',
     color: '#111',
-    marginLeft: 6,
+  },
+  receiptEditIconBtn: {
+    backgroundColor: '#FFF3E0',
+    borderColor: '#FFB74D',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  receiptEditIconText: {
+    fontSize: 13,
   },
 
   // Gövde: satırlar + QR yan yana

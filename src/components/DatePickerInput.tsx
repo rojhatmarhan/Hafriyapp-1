@@ -111,6 +111,8 @@ const DatePickerInput: React.FC<Props> = ({ value, onChange, label, placeholder,
                 onChange={handleIOSChange}
                 style={styles.picker}
                 locale="tr-TR"
+                textColor="#111111"
+                themeVariant="light"
               />
             </View>
           </View>
@@ -179,16 +181,17 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#222',
+    color: '#111',
   },
   cancelText: {
     fontSize: 15,
-    color: '#888',
+    color: '#666',
+    fontWeight: '600',
   },
   confirmText: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#FFD500',
+    fontWeight: '800',
+    color: '#E65100',
   },
   picker: {
     height: 200,

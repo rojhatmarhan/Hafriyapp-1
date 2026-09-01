@@ -1,19 +1,24 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { Platform, PermissionsAndroid, Alert } from 'react-native';
+import {
+  getMessaging,
+  getToken,
+  onMessage,
+  onTokenRefresh,
+  requestPermission,
+  AuthorizationStatus,
+} from '@react-native-firebase/messaging';
 import { api } from './api';
 
 const SYNCED_TOKEN_KEY = 'push_device_token_synced';
 
 /**
  * Cihazın push bildirim token'ını backend'e kaydeder.
- * Başarılı olduğunda yerel hafızaya işaretler.
- * Başarısız olursa (ağ yokluğu, sunucu hatası vb.) bir sonraki açılışta veya işlemde otomatik tekrar denenir.
  */
 export const registerDeviceToken = async (token: string, force: boolean = false): Promise<boolean> => {
   try {
     if (!token) return false;
 
-    // Eğer bu token zaten başarıyla sunucuya iletilmişse gereksiz istek atma
     if (!force) {
       const lastSynced = await AsyncStorage.getItem(SYNCED_TOKEN_KEY);
       if (lastSynced === token) {
@@ -28,13 +33,88 @@ export const registerDeviceToken = async (token: string, force: boolean = false)
 
     if (response.status >= 200 && response.status < 300) {
       await AsyncStorage.setItem(SYNCED_TOKEN_KEY, token);
-      console.log('[NotificationService] Device token successfully registered.');
+      console.log('[NotificationService] Device token successfully registered with backend.');
       return true;
     }
     return false;
   } catch (err) {
     console.warn('[NotificationService] Token register failed, will retry automatically on next launch:', err);
     return false;
+  }
+};
+
+/**
+ * Android 13+ ve iOS için bildirim izinlerini sorgular ve ister
+ */
+export const requestNotificationPermission = async (): Promise<boolean> => {
+  try {
+    if (Platform.OS === 'android') {
+      if (Platform.Version >= 33) {
+        const granted = await PermissionsAndroid.request(
+          (PermissionsAndroid.PERMISSIONS as any).POST_NOTIFICATIONS,
+          {
+            title: 'Bildirim İzni Gerekli',
+            message: 'Sefer fişi kesildiğinde veya düzenlendiğinde anlık bildirim alabilmek için lütfen bildirimlere izin veriniz.',
+            buttonPositive: 'İzin Ver',
+            buttonNegative: 'İptal',
+          },
+        );
+        return granted === PermissionsAndroid.RESULTS.GRANTED;
+      }
+      return true;
+    } else if (Platform.OS === 'ios') {
+      const messagingInstance = getMessaging();
+      const authStatus = await requestPermission(messagingInstance);
+      const enabled =
+        authStatus === AuthorizationStatus.AUTHORIZED ||
+        authStatus === AuthorizationStatus.PROVISIONAL;
+      return enabled;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[NotificationService] Permission request failed:', err);
+    return false;
+  }
+};
+
+/**
+ * Firebase Push Bildirim Servisini başlatır, Token alır ve dinleyicileri kurar
+ */
+export const initPushNotifications = async () => {
+  try {
+    const hasPermission = await requestNotificationPermission();
+    if (!hasPermission) {
+      console.log('[NotificationService] Notification permission not granted.');
+      return;
+    }
+
+    const messagingInstance = getMessaging();
+
+    // FCM Token al ve backend'e kaydet
+    const token = await getToken(messagingInstance);
+    if (token) {
+      console.log('[NotificationService] FCM Device Token obtained:', token);
+      await registerDeviceToken(token);
+    }
+
+    // Token yenilendiğinde backend'i güncelle
+    onTokenRefresh(messagingInstance, async (newToken: string) => {
+      console.log('[NotificationService] FCM Token refreshed:', newToken);
+      await registerDeviceToken(newToken, true);
+    });
+
+    // Uygulama açıkken (Foreground) gelen bildirimleri yakala
+    onMessage(messagingInstance, async (remoteMessage: any) => {
+      console.log('[NotificationService] Foreground message received:', remoteMessage);
+      if (remoteMessage.notification) {
+        Alert.alert(
+          remoteMessage.notification.title || 'HafriyApp',
+          remoteMessage.notification.body || ''
+        );
+      }
+    });
+  } catch (err) {
+    console.warn('[NotificationService] Init push notifications failed:', err);
   }
 };
 

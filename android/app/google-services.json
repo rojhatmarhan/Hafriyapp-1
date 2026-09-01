@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "986594484486",
+    "project_id": "fast-hafriyapp",
+    "storage_bucket": "fast-hafriyapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:986594484486:android:65fd4464216f9d9368be87",
+        "android_client_info": {
+          "package_name": "com.hafriyapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAweEFhsbDoKuLaE1oVxMmn9KTIrzMhLwQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

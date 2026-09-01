@@ -197,93 +197,101 @@ export const PlateScannerModal: React.FC<PlateScannerModalProps> = ({
   if (!visible) return null;
 
   return (
-    <View style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="light-content" backgroundColor="#000" />
+    <Modal
+      visible={visible}
+      animationType="slide"
+      onRequestClose={onClose}
+      onShow={handleShow}
+      statusBarTranslucent
+    >
+      <View style={styles.container}>
+        <SafeAreaView style={styles.safeArea}>
+          <StatusBar barStyle="light-content" backgroundColor="#000" />
 
-        {/* Üst Başlık Barı (Sade & Temiz) */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Plaka Tara (Canlı)</Text>
-        </View>
+          {/* Üst Başlık Barı (Sade & Temiz) */}
+          <View style={styles.header}>
+            <Text style={styles.title}>Plaka Tara (Canlı)</Text>
+          </View>
 
-        {/* Kamera & Plaka Çerçevesi */}
-        <View style={styles.cameraContainer}>
-          <Camera
-            ref={cameraRef}
-            cameraType={CameraType.Back}
-            torchMode={torchOn ? 'on' : 'off'}
-            style={StyleSheet.absoluteFillObject}
-          />
+          {/* Kamera & Plaka Çerçevesi */}
+          <View style={styles.cameraContainer}>
+            <Camera
+              ref={cameraRef}
+              cameraType={CameraType.Back}
+              torchMode={torchOn ? 'on' : 'off'}
+              style={styles.camera}
+            />
 
-          {/* Plaka Hizalama Vizörü */}
-          <View style={styles.overlay}>
-            <View style={[styles.plateFrame, detectedPlate ? styles.plateFrameSuccess : null]}>
-              <View style={styles.plateFrameHeader}>
-                <View style={styles.trBadge}>
-                  <Text style={styles.trText}>TR</Text>
+            {/* Plaka Hizalama Vizörü */}
+            <View style={styles.overlay}>
+              <View style={[styles.plateFrame, detectedPlate ? styles.plateFrameSuccess : null]}>
+                <View style={styles.plateFrameHeader}>
+                  <View style={styles.trBadge}>
+                    <Text style={styles.trText}>TR</Text>
+                  </View>
+                  <Text style={[styles.plateHint, detectedPlate ? styles.plateDetectedText : null]}>
+                    {detectedPlate || '34 ABC 123'}
+                  </Text>
                 </View>
-                <Text style={[styles.plateHint, detectedPlate ? styles.plateDetectedText : null]}>
-                  {detectedPlate || '34 ABC 123'}
+              </View>
+
+              <View style={styles.statusBadge}>
+                <View style={[styles.statusDot, detectedPlate && styles.statusDotSuccess]} />
+                <Text style={styles.guideText}>
+                  {detectedPlate
+                    ? `✓ Algılandı: ${detectedPlate}`
+                    : 'Plakayı çerçeveye ortalayıp butona basınız'}
                 </Text>
               </View>
             </View>
+          </View>
 
-            <View style={styles.statusBadge}>
-              <View style={[styles.statusDot, detectedPlate && styles.statusDotSuccess]} />
-              <Text style={styles.guideText}>
-                {detectedPlate
-                  ? `✓ Algılandı: ${detectedPlate}`
-                  : 'Plakayı çerçeveye ortalayıp butona basınız'}
-              </Text>
+          {/* Alt Panel & Büyük Aksiyon Butonları */}
+          <View style={styles.footer}>
+            <View style={styles.actionButtonsRow}>
+              {/* Kapat Butonu */}
+              <TouchableOpacity style={styles.bottomCloseBtn} onPress={onClose} activeOpacity={0.8}>
+                <Text style={styles.bottomCloseBtnText}>✕ Kapat</Text>
+              </TouchableOpacity>
+
+              {/* Manuel Oku Ana Buton */}
+              <TouchableOpacity
+                style={[
+                  styles.bottomCaptureBtn,
+                  detectedPlate ? styles.bottomCaptureBtnSuccess : null,
+                  (processing || !!detectedPlate) && styles.captureBtnDisabled,
+                ]}
+                onPress={handleManualCapture}
+                disabled={processing || !!detectedPlate}
+                activeOpacity={0.85}
+              >
+                {processing ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.captureIcon}>📸</Text>
+                    <Text style={styles.captureText} numberOfLines={1}>
+                      {detectedPlate ? `✓ ${detectedPlate}` : 'Plakayı Oku'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {/* Flaş Butonu */}
+              <TouchableOpacity
+                style={[styles.bottomTorchBtn, torchOn && styles.bottomTorchBtnActive]}
+                onPress={() => setTorchOn(v => !v)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.bottomTorchBtnText, torchOn && styles.bottomTorchBtnTextActive]}>
+                  {torchOn ? '🔦 Açık' : '💡 Flaş'}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </View>
-
-        {/* Alt Panel & Büyük Aksiyon Butonları */}
-        <View style={styles.footer}>
-          <View style={styles.actionButtonsRow}>
-            {/* Kapat Butonu */}
-            <TouchableOpacity style={styles.bottomCloseBtn} onPress={onClose} activeOpacity={0.8}>
-              <Text style={styles.bottomCloseBtnText}>✕ Kapat</Text>
-            </TouchableOpacity>
-
-            {/* Manuel Oku Ana Buton */}
-            <TouchableOpacity
-              style={[
-                styles.bottomCaptureBtn,
-                detectedPlate ? styles.bottomCaptureBtnSuccess : null,
-                (processing || !!detectedPlate) && styles.captureBtnDisabled,
-              ]}
-              onPress={handleManualCapture}
-              disabled={processing || !!detectedPlate}
-              activeOpacity={0.85}
-            >
-              {processing ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <>
-                  <Text style={styles.captureIcon}>📸</Text>
-                  <Text style={styles.captureText} numberOfLines={1}>
-                    {detectedPlate ? `✓ ${detectedPlate}` : 'Plakayı Oku'}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            {/* Flaş Butonu */}
-            <TouchableOpacity
-              style={[styles.bottomTorchBtn, torchOn && styles.bottomTorchBtnActive]}
-              onPress={() => setTorchOn(v => !v)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.bottomTorchBtnText, torchOn && styles.bottomTorchBtnTextActive]}>
-                {torchOn ? '🔦 Açık' : '💡 Flaş'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </SafeAreaView>
-    </View>
+        </SafeAreaView>
+      </View>
+    </Modal>
   );
 };
 
