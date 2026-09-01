@@ -6,6 +6,7 @@ import {
   onMessage,
   onTokenRefresh,
   requestPermission,
+  registerDeviceForRemoteMessages,
   AuthorizationStatus,
 } from '@react-native-firebase/messaging';
 import { api } from './api';
@@ -19,12 +20,10 @@ export const registerDeviceToken = async (token: string, force: boolean = false)
   try {
     if (!token) return false;
 
-    if (!force) {
-      const lastSynced = await AsyncStorage.getItem(SYNCED_TOKEN_KEY);
-      if (lastSynced === token) {
-        return true;
-      }
-    }
+    console.log('[NotificationService] Registering device token with backend...', {
+      platform: Platform.OS,
+      tokenPreview: token.substring(0, 15) + '...',
+    });
 
     const response = await api.post('/Notification/device-token', {
       token,
@@ -33,12 +32,12 @@ export const registerDeviceToken = async (token: string, force: boolean = false)
 
     if (response.status >= 200 && response.status < 300) {
       await AsyncStorage.setItem(SYNCED_TOKEN_KEY, token);
-      console.log('[NotificationService] Device token successfully registered with backend.');
+      console.log('✅ [NotificationService] Device token successfully registered with backend on', Platform.OS);
       return true;
     }
     return false;
-  } catch (err) {
-    console.warn('[NotificationService] Token register failed, will retry automatically on next launch:', err);
+  } catch (err: any) {
+    console.warn('⚠️ [NotificationService] Token register failed:', err?.response?.status, err?.message);
     return false;
   }
 };
@@ -90,11 +89,21 @@ export const initPushNotifications = async () => {
 
     const messagingInstance = getMessaging();
 
+    // iOS için APNs cihaz kaydı
+    if (Platform.OS === 'ios') {
+      try {
+        await registerDeviceForRemoteMessages(messagingInstance);
+        console.log('✅ [NotificationService] iOS registerDeviceForRemoteMessages successful');
+      } catch (apnsErr) {
+        console.warn('⚠️ [NotificationService] APNs register error:', apnsErr);
+      }
+    }
+
     // FCM Token al ve backend'e kaydet
     const token = await getToken(messagingInstance);
     if (token) {
-      console.log('[NotificationService] FCM Device Token obtained:', token);
-      await registerDeviceToken(token);
+      console.log('✅ [NotificationService] FCM Device Token obtained:', token);
+      await registerDeviceToken(token, true);
     }
 
     // Token yenilendiğinde backend'i güncelle

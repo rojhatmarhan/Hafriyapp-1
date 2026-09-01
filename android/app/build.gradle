@@ -92,8 +92,8 @@ android {
         applicationId "com.hafriyapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 15
-        versionName "1.7.0"
+        versionCode 16
+        versionName "1.7.1"
         manifestPlaceholders = [usesCleartextTraffic: false]
     }
     signingConfigs {
