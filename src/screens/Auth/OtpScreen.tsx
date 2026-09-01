@@ -7,6 +7,7 @@ import { useNavigation } from '@react-navigation/native';
 import LinearGradient from 'react-native-linear-gradient';
 import { login, verifySms } from '../../services/authService';
 import { getUserById } from '../../services/userService';
+import { initPushNotifications } from '../../services/notificationService';
 import { saveAuth, clearAuth } from '../../utils/secureStore';
 
 const CELL_COUNT = 6;
@@ -80,6 +81,7 @@ const OtpScreen = () => {
       dispatch(loginSuccess({ token }));
       dispatch(setRole(role));
       dispatch(setCompanyId(companyId)); // ✅ Redux'a kaydet
+      initPushNotifications();
       // 👤 USER BİLGİLERİNİ ÇEK
       const userRes = await getUserById(userId, token);
       console.log('userId', userId);

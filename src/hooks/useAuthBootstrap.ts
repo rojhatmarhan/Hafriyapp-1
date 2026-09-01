@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAuth, clearAuth } from '../utils/secureStore';
 import { loginSuccess, setRole, setPhone, setCompanyId, setUser, logout } from '../store/slices/authSlice';
 import { getProfile } from '../services/userService';
+import { initPushNotifications } from '../services/notificationService';
 
 const HAS_LAUNCHED = 'HAS_LAUNCHED';
 
@@ -32,6 +33,7 @@ export const useAuthBootstrap = () => {
           dispatch(setPhone(auth.phone));
           dispatch(setRole(auth.role as any));
           if (auth.companyId) dispatch(setCompanyId(auth.companyId));
+          initPushNotifications();
 
           // 3. Fetch latest user details to sync warning and access control
           try {
