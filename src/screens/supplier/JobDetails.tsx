@@ -1317,6 +1317,10 @@ export default function JobDetails() {
   };
 
   const handleDeleteHaul = (item: HaulApi) => {
+    if (!isOwner) {
+      Alert.alert('Yetkisiz İşlem', 'Seferleri yalnızca şantiye/firma sahibi silebilir.');
+      return;
+    }
     Alert.alert('Seferi Sil', `${item.plateNumber} - ${item.dumpLocation || ''} seferini silmek istediğinize emin misiniz?`, [
       { text: 'Vazgeç', style: 'cancel' },
       {
@@ -1974,7 +1978,7 @@ export default function JobDetails() {
                     <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditHaulModalVisible(false)}>
                       <Text style={styles.cancelBtnText}>İptal</Text>
                     </TouchableOpacity>
-                    {editingHaul && !editingHaul.isPaid && job?.canEdit && isWithinOneHour(editingHaul.createdDate) && (
+                    {isOwner && editingHaul && !editingHaul.isPaid && job?.canEdit && isWithinOneHour(editingHaul.createdDate) && (
                       <TouchableOpacity
                         style={{ paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#FFEBEE', flexDirection: 'row', alignItems: 'center', gap: 4 }}
                         onPress={() => handleDeleteHaul(editingHaul)}>
