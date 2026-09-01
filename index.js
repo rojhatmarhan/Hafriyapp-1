@@ -10,38 +10,64 @@ import { name as appName } from './app.json';
 import React from 'react';
 
 // Cihaz yazı puntosu büyütmelerinin uygulama mizanpajını bozmasını engelle (Global Font Scaling Lock - iOS & Android)
-if (Text.defaultProps == null) {
-  Text.defaultProps = {};
-}
-Text.defaultProps.allowFontScaling = false;
-Text.defaultProps.maxFontSizeMultiplier = 1;
+const isTextType = (type: any): boolean => {
+  if (!type) return false;
+  if (type === Text || type === TextInput) return true;
+  const name = type.displayName || type.name || (type.render && (type.render.displayName || type.render.name));
+  return name === 'Text' || name === 'TextInput' || type === 'RCTText' || type === 'RCTVirtualText' || type === 'RCTTextInput';
+};
 
-if (TextInput.defaultProps == null) {
-  TextInput.defaultProps = {};
-}
-TextInput.defaultProps.allowFontScaling = false;
-TextInput.defaultProps.maxFontSizeMultiplier = 1;
-
-// React Native yeni sürümlerinde defaultProps bypass edilmesini önlemek için render düzeyinde zorla kilitle
-const applyFontLock = (Component: any) => {
-  if (!Component || !Component.render) return;
-  const oldRender = Component.render;
-  Component.render = function (...args: any[]) {
-    const origin = oldRender.call(this, ...args);
-    if (!origin) return origin;
-    return React.cloneElement(origin, {
+// 1. React.createElement interceptor
+const originalCreateElement = React.createElement;
+(React as any).createElement = function (type: any, props: any, ...children: any[]) {
+  if (isTextType(type)) {
+    props = Object.assign({}, props, {
       allowFontScaling: false,
       maxFontSizeMultiplier: 1,
     });
-  };
+  }
+  return originalCreateElement.apply(this, [type, props, ...children]);
+};
+
+// 2. JSX Runtimes (Babel / Metro production & development transforms)
+const patchJsxRuntime = (runtime: any, methodNames: string[]) => {
+  if (!runtime) return;
+  for (const method of methodNames) {
+    if (typeof runtime[method] === 'function') {
+      const original = runtime[method];
+      runtime[method] = function (type: any, props: any, ...rest: any[]) {
+        if (isTextType(type)) {
+          props = Object.assign({}, props, {
+            allowFontScaling: false,
+            maxFontSizeMultiplier: 1,
+          });
+        }
+        return original.call(this, type, props, ...rest);
+      };
+    }
+  }
 };
 
 try {
-  applyFontLock(Text);
-  applyFontLock(TextInput);
-} catch (e) {
-  console.warn('[FontLock] Failed to apply render patch:', e);
+  patchJsxRuntime(require('react/jsx-runtime'), ['jsx', 'jsxs']);
+} catch (e) {}
+
+try {
+  patchJsxRuntime(require('react/jsx-dev-runtime'), ['jsxDEV']);
+} catch (e) {}
+
+// 3. Fallback defaultProps
+if ((Text as any).defaultProps == null) {
+  (Text as any).defaultProps = {};
 }
+(Text as any).defaultProps.allowFontScaling = false;
+(Text as any).defaultProps.maxFontSizeMultiplier = 1;
+
+if ((TextInput as any).defaultProps == null) {
+  (TextInput as any).defaultProps = {};
+}
+(TextInput as any).defaultProps.allowFontScaling = false;
+(TextInput as any).defaultProps.maxFontSizeMultiplier = 1;
 
 import { getMessaging, setBackgroundMessageHandler } from '@react-native-firebase/messaging';
 
