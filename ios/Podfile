@@ -6,7 +6,6 @@ require Pod::Executable.execute_command('node', ['-p',
   )', __dir__]).strip
 
 $RNFirebaseDisableSPM = true
-use_modular_headers!
 
 platform :ios, '15.5'
 prepare_react_native_project!
@@ -24,6 +23,12 @@ target 'Hafriyapp' do
     :path => config[:reactNativePath],
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
+
+  # Firebase selective modular headers
+  pod 'GoogleUtilities', :modular_headers => true
+  pod 'FirebaseCoreInternal', :modular_headers => true
+  pod 'FirebaseCore', :modular_headers => true
+  pod 'FirebaseMessaging', :modular_headers => true
 
   # Bluetooth ESC/POS yazıcı (BLE — CoreBluetooth)
   pod 'RNBluetoothEscposPrinter', :path => '../node_modules/react-native-bluetooth-escpos-printer'
