@@ -686,9 +686,6 @@ export default function CompanyChat() {
               )}
             </View>
             <Text style={styles.detailGroupName}>{title}</Text>
-            <Text style={styles.detailMemberCount}>
-              {groupData?.memberCount ? `${groupData.memberCount} üye` : ''}
-            </Text>
           </View>
 
           {/* Detaylar */}
