@@ -21,6 +21,7 @@ import {
   deleteJobSite,
   toggleJobSiteActive,
   getJobSites,
+  getJobHauls,
 } from '../../services/jobSiteNewService';
 import { useAppSelector } from '../../hooks';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -88,32 +89,58 @@ export default function MyJobs() {
       else setLoading(true);
 
       const data = await getJobSites(token);
+      console.log('[MyJobs] job list from API:', JSON.stringify(data.map((item: any) => ({ id: item.id, name: item.name, isHaulVisibleToVehicleOwners: item.isHaulVisibleToVehicleOwners })), null, 2));
 
-      const mapped: JobUI[] = (data || []).map((item: any) => {
-        const today = item.todayHauls ?? 0;
-        const total = item.totalHauls ?? 0;
-        const paid = item.paidHauls ?? 0;
-        const unpaid = item.unpaidHauls ?? 0;
-        const fuelGiven = `${(item.fuelGiven ?? 0).toFixed(0)} lt`;
-        const cashGiven = `${(item.cashGiven ?? 0).toFixed(0)}₺`;
-        const totalTonage = parseFloat(((item.totalTonage ?? 0) / 1000).toFixed(1));
+      const mapped: JobUI[] = await Promise.all(
+        data.map(async (item: any) => {
+          let today = 0, total = 0, paid = 0, unpaid = 0;
+          let fuelGiven = '0 lt', cashGiven = '0₺', totalTonage = 0;
+          let paidFuelTotal = 0;
 
-        return {
-          id: item.id,
-          site: item.name,
-          today,
-          total,
-          paid,
-          unpaid,
-          fuelLeft: `${item.fuelStock ?? 0} lt`,
-          fuelGiven,
-          cashGiven,
-          totalTonage,
-          canEdit: item.canEdit,
-          isActive: item.isActive,
-          raw: item,
-        };
-      });
+          try {
+            const hauls = await getJobHauls(token, item.id);
+            const todayStr = new Date().toDateString();
+
+            total = hauls.length;
+            paid = hauls.filter((h: any) => h.isPaid).length;
+            unpaid = hauls.filter((h: any) => !h.isPaid).length;
+            today = hauls.filter((h: any) =>
+              new Date(h.timeOfHaul).toDateString() === todayStr
+            ).length;
+
+            const paidHauls = hauls.filter((h: any) => h.isPaid);
+            paidFuelTotal = paidHauls
+              .filter((h: any) => h.paymentType === 1 || h.paymentType === 2)
+              .reduce((s: number, h: any) => s + (h.fuelAmount ?? 0), 0);
+            const totalCash = paidHauls
+              .filter((h: any) => h.paymentType === 0 || h.paymentType === 2)
+              .reduce((s: number, h: any) => s + (h.cashAmount ?? 0), 0);
+            const totalTon = hauls.reduce((s: number, h: any) => s + (h.tonage ?? 0), 0) / 1000;
+
+            fuelGiven = `${paidFuelTotal.toFixed(0)} lt`;
+            cashGiven = `${totalCash.toFixed(0)}₺`;
+            totalTonage = parseFloat(totalTon.toFixed(1));
+          } catch {
+            // haul fetch failed — leave defaults (0)
+          }
+
+          return {
+            id: item.id,
+            site: item.name,
+            today,
+            total,
+            paid,
+            unpaid,
+            fuelLeft: `${(item.fuelStock ?? 0)} lt`,
+            fuelGiven,
+            cashGiven,
+            totalTonage,
+            canEdit: item.canEdit,
+            isActive: item.isActive,
+            raw: item,
+          };
+        }),
+      );
 
       setJobs(mapped);
     } catch (err) {
@@ -124,11 +151,13 @@ export default function MyJobs() {
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchJobs();
-    }, [token]),
-  );
+  useEffect(() => {
+    fetchJobs();
+  }, [token]);
+
+  useFocusEffect(useCallback(() => {
+    fetchJobs();
+  }, [token]));
 
   const handleEdit = (job: Job) => {
     setSelectedJob(job);
@@ -416,9 +445,6 @@ export default function MyJobs() {
           style={{ marginTop: '2%' }}
           refreshing={refreshing}
           onRefresh={() => fetchJobs(true)}
-          initialNumToRender={10}
-          maxToRenderPerBatch={10}
-          windowSize={5}
           ListEmptyComponent={
             <Text style={styles.emptyText}>Sonuç bulunamadı</Text>
           }
