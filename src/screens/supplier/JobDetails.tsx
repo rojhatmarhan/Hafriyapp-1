@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Image, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, AppState, Share, RefreshControl, ActionSheetIOS } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Image, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, AppState, Share, RefreshControl, ActionSheetIOS, FlatList } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
@@ -1155,13 +1155,15 @@ export default function JobDetails() {
     return false;
   };
 
-  const filteredHauls = plateFilter.trim()
-    ? hauls.filter(h => matchesHaulSearch(h, plateFilter))
-    : hauls;
+  const filteredHauls = useMemo(() => {
+    const q = plateFilter.trim();
+    return q ? hauls.filter(h => matchesHaulSearch(h, q)) : hauls;
+  }, [hauls, plateFilter]);
 
-  const filteredPending = plateFilter.trim()
-    ? pendingForThisJob.filter(h => matchesHaulSearch(h, plateFilter))
-    : pendingForThisJob;
+  const filteredPending = useMemo(() => {
+    const q = plateFilter.trim();
+    return q ? pendingForThisJob.filter(h => matchesHaulSearch(h, q)) : pendingForThisJob;
+  }, [pendingForThisJob, plateFilter]);
 
   // ── Özet çubuğu (filtrelenmiş sonuçlara göre dinamik hesaplanır)
   const renderSummaryCards = () => {
@@ -1479,99 +1481,110 @@ export default function JobDetails() {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       {renderHeader()}
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 20 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#1976D2']} tintColor="#1976D2" />}>
-        <View style={styles.content}>
-          {renderSummaryCards()}
+      <FlatList
+        data={filteredHauls}
+        keyExtractor={item => item.id}
+        renderItem={({ item }) => renderHaulItem(item)}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#1976D2']} tintColor="#1976D2" />}
+        ListHeaderComponent={
+          <View style={{ paddingTop: 16 }}>
+            {renderSummaryCards()}
 
-          {/* Offline sync banner */}
-          {pendingQueue.length > 0 && (
-            <TouchableOpacity style={styles.syncBanner} onPress={syncPending} disabled={syncing}>
-              <Text style={styles.syncBannerText}>{syncing ? '🔄 Senkronize ediliyor...' : `📡 ${pendingQueue.length} sefer gönderilmeyi bekliyor. Senkronize et`}</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Liste başlığı + butonlar */}
-          <View style={styles.listHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 110 }}>
-              <Text style={styles.listTitle} numberOfLines={1}>Son Seferler</Text>
-              <TouchableOpacity style={styles.refreshIconBtn} onPress={onRefresh} disabled={refreshing}>
-                <Text style={styles.refreshIconText}>{refreshing ? '⏳' : '🔄'}</Text>
+            {/* Offline sync banner */}
+            {pendingQueue.length > 0 && (
+              <TouchableOpacity style={styles.syncBanner} onPress={syncPending} disabled={syncing}>
+                <Text style={styles.syncBannerText}>{syncing ? '🔄 Senkronize ediliyor...' : `📡 ${pendingQueue.length} sefer gönderilmeyi bekliyor. Senkronize et`}</Text>
               </TouchableOpacity>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-              <TouchableOpacity
-                style={styles.manualBtn}
-                onPress={() => {
-                  setManualDate(todayDDMMYYYY());
-                  setManualTime(getNowTimeStr());
-                  setManualModal(true);
-                }}>
-                <Text style={styles.manualBtnText}>Manuel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.addHaulBtn}
-                onPress={() => {
-                  loadRecentPlates();
-                  setAddModal(true);
-                }}>
-                <Text style={styles.addHaulBtnText}>＋ Sefer Gir</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+            )}
 
-          {/* Bekleyen (offline) seferler */}
-          {filteredPending.length > 0 && (
-            <View style={{ marginBottom: 8 }}>
-              <Text style={styles.pendingTitle}>Çevrimdışı Kaydedilenler</Text>
-              {filteredPending.map(renderPendingItem)}
+            {/* Liste başlığı + butonlar */}
+            <View style={styles.listHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 110 }}>
+                <Text style={styles.listTitle} numberOfLines={1}>Son Seferler</Text>
+                <TouchableOpacity style={styles.refreshIconBtn} onPress={onRefresh} disabled={refreshing}>
+                  <Text style={styles.refreshIconText}>{refreshing ? '⏳' : '🔄'}</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                <TouchableOpacity
+                  style={styles.manualBtn}
+                  onPress={() => {
+                    setManualDate(todayDDMMYYYY());
+                    setManualTime(getNowTimeStr());
+                    setManualModal(true);
+                  }}>
+                  <Text style={styles.manualBtnText}>Manuel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.addHaulBtn}
+                  onPress={() => {
+                    loadRecentPlates();
+                    setAddModal(true);
+                  }}>
+                  <Text style={styles.addHaulBtnText}>＋ Sefer Gir</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          )}
 
-          {/* Sunucudan gelen seferler */}
-          {loading ? (
-            <ActivityIndicator size="large" color={YELLOW} style={{ marginTop: 20 }} />
-          ) : hauls.length === 0 && pendingForThisJob.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <Text style={{ fontSize: 36 }}>🚛</Text>
-              <Text style={styles.emptyText}>Henüz sefer kaydı yok.</Text>
-            </View>
-          ) : (
-            <>
-              {hauls.length > 0 && (
-                <View style={styles.searchRow}>
-                  <View style={styles.searchBox}>
-                    <Text style={styles.searchIcon}>🔍</Text>
-                    <TextInput
-                      style={styles.searchInput}
-                      placeholder="Plaka, seri no, döküm yeri, tarih..."
-                      placeholderTextColor="#aaa"
-                      value={plateFilter}
-                      onChangeText={setPlateFilter}
-                      autoCapitalize="none"
-                    />
-                    {plateFilter.length > 0 && (
-                      <TouchableOpacity onPress={() => setPlateFilter('')}>
-                        <Text style={styles.searchClear}>✕</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                  <TouchableOpacity style={styles.qrScanBtn} onPress={() => setQrModalVisible(true)} activeOpacity={0.8}>
-                    <Text style={styles.qrScanBtnText}>📷 QR</Text>
-                  </TouchableOpacity>
+            {/* Bekleyen (offline) seferler */}
+            {filteredPending.length > 0 && (
+              <View style={{ marginBottom: 8 }}>
+                <Text style={styles.pendingTitle}>Çevrimdışı Kaydedilenler</Text>
+                {filteredPending.map(renderPendingItem)}
+              </View>
+            )}
+
+            {/* Arama ve QR Satırı */}
+            {(hauls.length > 0 || plateFilter.length > 0) && (
+              <View style={styles.searchRow}>
+                <View style={styles.searchBox}>
+                  <Text style={styles.searchIcon}>🔍</Text>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Plaka, seri no, döküm yeri, tarih..."
+                    placeholderTextColor="#aaa"
+                    value={plateFilter}
+                    onChangeText={setPlateFilter}
+                    autoCapitalize="none"
+                  />
+                  {plateFilter.length > 0 && (
+                    <TouchableOpacity onPress={() => setPlateFilter('')}>
+                      <Text style={styles.searchClear}>✕</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-              )}
-              {filteredHauls.length === 0 && filteredPending.length === 0 && plateFilter.length > 0 ? (
+                <TouchableOpacity style={styles.qrScanBtn} onPress={() => setQrModalVisible(true)} activeOpacity={0.8}>
+                  <Text style={styles.qrScanBtnText}>📷 QR</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {loading && <ActivityIndicator size="large" color={YELLOW} style={{ marginTop: 20 }} />}
+          </View>
+        }
+        ListEmptyComponent={
+          !loading ? (
+            <View>
+              {hauls.length === 0 && pendingForThisJob.length === 0 ? (
+                <View style={styles.emptyBox}>
+                  <Text style={{ fontSize: 36 }}>🚛</Text>
+                  <Text style={styles.emptyText}>Henüz sefer kaydı yok.</Text>
+                </View>
+              ) : filteredHauls.length === 0 && filteredPending.length === 0 && plateFilter.length > 0 ? (
                 <View style={styles.emptyBox}>
                   <Text style={{ fontSize: 32 }}>🔍</Text>
                   <Text style={styles.emptyText}>"{plateFilter}" için sonuç bulunamadı.</Text>
                 </View>
-              ) : (
-                filteredHauls.map(renderHaulItem)
-              )}
-            </>
-          )}
-        </View>
-      </ScrollView>
+              ) : null}
+            </View>
+          ) : null
+        }
+      />
 
       {/* ═══════════════ SEFER GİR MODAL (Teklifli) ═══════════════ */}
       <Modal visible={addModal} transparent animationType="slide">
