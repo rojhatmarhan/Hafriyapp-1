@@ -573,9 +573,14 @@ export default function JobDetails() {
         setFormSaving(false);
         saveRecentPlate(cleanPlate);
         closeAddModal();
-        fetchHauls();
-        setSelectedHaul(normalizeHaul(created));
-        setReceiptVisible(true);
+        const norm = normalizeHaul(created);
+        setSelectedHaul(norm);
+        setHauls(prev => [norm, ...prev.filter(h => h.id !== norm.id)]);
+        setTimeout(() => {
+          setReceiptVisible(true);
+        }, 150);
+        getJobHauls(token!, job.id).then(data => setHauls(data)).catch(() => {});
+        fetchFuelStock();
       } catch (err: any) {
         setFormSaving(false);
         Alert.alert('Hata', err.response?.data?.message || 'Sefer kaydedilemedi.');
@@ -677,9 +682,14 @@ export default function JobDetails() {
         saveRecentPlate(cleanPlate);
         setManualSaving(false);
         closeManualModal();
-        fetchHauls();
-        setSelectedHaul(normalizeHaul(created));
-        setReceiptVisible(true);
+        const norm = normalizeHaul(created);
+        setSelectedHaul(norm);
+        setHauls(prev => [norm, ...prev.filter(h => h.id !== norm.id)]);
+        setTimeout(() => {
+          setReceiptVisible(true);
+        }, 150);
+        getJobHauls(token!, job.id).then(data => setHauls(data)).catch(() => {});
+        fetchFuelStock();
       } catch (err: any) {
         setManualSaving(false);
         Alert.alert('Hata', err.response?.data?.message || 'Sefer kaydedilemedi.');
@@ -858,7 +868,9 @@ export default function JobDetails() {
       note: item.note,
     };
     setSelectedHaul(normalizeHaul(fakeHaul));
-    setReceiptVisible(true);
+    setTimeout(() => {
+      setReceiptVisible(true);
+    }, 150);
   };
 
   const closeAddModal = () => {
@@ -2142,8 +2154,13 @@ export default function JobDetails() {
       {/* ═══════════════ FİŞ DETAY MODAL ═══════════════ */}
       {selectedHaul && (
         <Modal visible={receiptVisible} transparent animationType="fade" onRequestClose={() => setReceiptVisible(false)}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.receiptWrapper}>
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setReceiptVisible(false)}
+          >
+            <TouchableWithoutFeedback>
+              <View style={styles.receiptWrapper}>
               {/* ── Fiş Kart ── */}
               <View style={styles.receiptCard}>
                 {/* Sol dikey şerit */}
@@ -2264,7 +2281,12 @@ export default function JobDetails() {
 
               {/* Footer butonlar */}
               <View style={styles.receiptFooterRow}>
-                <TouchableOpacity style={styles.receiptCloseBtnNew} onPress={() => setReceiptVisible(false)}>
+                <TouchableOpacity
+                  style={styles.receiptCloseBtnNew}
+                  onPress={() => setReceiptVisible(false)}
+                  hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                  activeOpacity={0.7}
+                >
                   <Text style={styles.receiptCloseBtnNewText}>Kapat</Text>
                 </TouchableOpacity>
                 {!selectedHaul.isPaid && selectedHaul.isPrintedReceipt && (
@@ -2284,7 +2306,8 @@ export default function JobDetails() {
                 )}
               </View>
             </View>
-          </View>
+            </TouchableWithoutFeedback>
+          </TouchableOpacity>
         </Modal>
       )}
 
