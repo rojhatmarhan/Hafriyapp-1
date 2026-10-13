@@ -17,17 +17,22 @@ import { WebView } from 'react-native-webview';
 const SHOWCASE_URL = 'https://hafriyapp.com/firma-tanitimi';
 const WebViewComponent = WebView as any;
 
-// Sadece dış site üst başlığını ve alt footer'ı gizle, ana içerik bloklarına asla dokunma
+// Dış site üst başlığını (header) ve alt bilgisini (footer) tamamen gizle
 const INJECTED_CSS = `
   header.block-header,
   .block-header,
   div[data-qa="site-header"],
+  #zSiG-O,
+  section#zSiG-O,
+  footer,
   .whats-app-bubble {
     display: none !important;
     visibility: hidden !important;
     height: 0 !important;
     max-height: 0 !important;
     overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
   body, html {
     padding-top: 0 !important;
@@ -37,7 +42,7 @@ const INJECTED_CSS = `
 
 const INJECTED_JS = `
 (function() {
-  function hideHeader() {
+  function removeHeaderFooter() {
     var style = document.getElementById('hafriyapp-custom-style');
     if (!style && document.head) {
       style = document.createElement('style');
@@ -48,15 +53,20 @@ const INJECTED_JS = `
     var h = document.querySelector('header.block-header, .block-header, div[data-qa="site-header"]');
     if (h) {
       h.style.setProperty('display', 'none', 'important');
+      h.style.setProperty('height', '0px', 'important');
+    }
+    var f = document.querySelector('#zSiG-O, section#zSiG-O, footer');
+    if (f) {
+      f.style.setProperty('display', 'none', 'important');
+      f.style.setProperty('height', '0px', 'important');
     }
   }
+  removeHeaderFooter();
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', hideHeader);
-  } else {
-    hideHeader();
+    document.addEventListener('DOMContentLoaded', removeHeaderFooter);
   }
-  window.addEventListener('load', hideHeader);
-  setTimeout(hideHeader, 500);
+  window.addEventListener('load', removeHeaderFooter);
+  setInterval(removeHeaderFooter, 250);
 })();
 true;
 `;
