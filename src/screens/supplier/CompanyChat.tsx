@@ -1,6 +1,22 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Modal, ScrollView, Image, Linking, Pressable } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Modal, ScrollView, Image, Linking, Pressable, Switch } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
+import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { launchImageLibrary } from 'react-native-image-picker';
+import { HubConnectionBuilder, HubConnection, LogLevel, HttpTransportType } from '@microsoft/signalr';
+import { useAppSelector } from '../../hooks';
+import { DISTRICTS } from '../../constants/districts';
+import { getUserById } from '../../services/userService';
+import {
+  getGroupMessages, sendMessage as sendMsgComp,
+  getGroupDetail, updateGroupSettings, uploadGroupImage,
+  deleteGroup as deleteChatGroup, getBlockedPhones,
+  addBlockedPhone, removeBlockedPhone,
+  markGroupAsRead, deleteMessage as deleteChatMessage,
+} from '../../services/chatService';
+import { BASE_HOST } from '../../services/api';
 
 // URL ve Türkçe telefon numaralarını tespit eder ([\s] yerine [ ] — newline yutmasın)
 const LINKIFY_PATTERN = /(https?:\/\/[^\s]+|(?:\+90|0)[5]\d{2}[ \-]?\d{3}[ \-]?\d{2}[ \-]?\d{2})/g;
@@ -17,22 +33,24 @@ const SUBSTRING_BAD_WORDS = [
   'şerefsiz', 'serefsiz', 'kaşar', 'kasar'
 ];
 
+function normalizeTurkishText(str: string): string {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .replace(/ç/g, 'c')
+    .replace(/ğ/g, 'g')
+    .replace(/ı/g, 'i')
+    .replace(/i̇/g, 'i')
+    .replace(/ö/g, 'o')
+    .replace(/ş/g, 's')
+    .replace(/ü/g, 'u')
+    .replace(/[^a-z0-9\s]/g, ' ');
+}
+
 function hasProfanity(inputText: string): boolean {
   if (!inputText) return false;
   
-  const normalizeText = (str: string) => {
-    return str
-      .toLowerCase()
-      .replace(/ç/g, 'c')
-      .replace(/ğ/g, 'g')
-      .replace(/ı/g, 'i')
-      .replace(/ö/g, 'o')
-      .replace(/ş/g, 's')
-      .replace(/ü/g, 'u')
-      .replace(/[^a-z0-9\s]/g, ' '); // Noktalama işaretlerini boşluk yap
-  };
-
-  const normalizedWithSpaces = normalizeText(inputText);
+  const normalizedWithSpaces = normalizeTurkishText(inputText);
   const words = normalizedWithSpaces.split(/\s+/).filter(Boolean);
 
   // 1. Kelime bazlı tam eşleşme kontrolü
@@ -55,20 +73,20 @@ function hasProfanity(inputText: string): boolean {
 
 function LinkifiedText({ text, style }: { text: string; style?: any }) {
   // \r\n ve \r → \n normalize et (Windows/eski sistemlerden gelen mesajlar için)
-  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const normalized = (text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const parts = normalized.split(LINKIFY_PATTERN);
   return (
     <Text style={style}>
       {parts.map((part, i) => {
         if (!IS_LINK_PATTERN.test(part)) {
-          return <Text key={i}>{part}</Text>;
+          return <Text key={i} style={style}>{part}</Text>;
         }
         const isUrl = part.startsWith('http');
         const href = isUrl ? part : `tel:${part.replace(/[ \-]/g, '')}`;
         return (
           <Text
             key={i}
-            style={styles.linkText}
+            style={[styles.linkText, style, { color: '#1A6FC4', textDecorationLine: 'underline' }]}
             onPress={() => Linking.openURL(href)}
           >
             {part}
@@ -78,24 +96,11 @@ function LinkifiedText({ text, style }: { text: string; style?: any }) {
     </Text>
   );
 }
-import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { launchImageLibrary } from 'react-native-image-picker';
-import { HubConnectionBuilder, HubConnection, LogLevel, HttpTransportType } from '@microsoft/signalr';
-import { useAppSelector } from '../../hooks';
-import { getUserById } from '../../services/userService';
-import {
-  getGroupMessages, sendMessage as sendMsgComp,
-  getGroupDetail, updateGroupSettings, uploadGroupImage,
-  deleteGroup as deleteChatGroup, getBlockedPhones,
-  addBlockedPhone, removeBlockedPhone,
-} from '../../services/chatService';
 
-const HUB_URL = 'https://api.hafriyapp.com/hubs/chat';
+const HUB_URL = `${BASE_HOST}/hubs/chat`;
 
 const YELLOW = '#FFD500';
-const IMAGE_BASE = 'https://api.hafriyapp.com';
+const IMAGE_BASE = BASE_HOST;
 const buildImgUrl = (path?: string | null): string => {
   if (!path) return '';
   if (path.startsWith('http')) return path;
@@ -122,6 +127,39 @@ export default function CompanyChat() {
   const connectionRef = useRef<HubConnection | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /* ─── FONT SETTINGS (AsyncStorage) ─── */
+  const [chatFontSize, setChatFontSize] = useState<number>(18);
+  const [chatFontBold, setChatFontBold] = useState<boolean>(true);
+  const [fontModalVisible, setFontModalVisible] = useState<boolean>(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('@hafriyapp_chat_fontSize').then(val => {
+      if (val) setChatFontSize(Number(val));
+    }).catch(() => {});
+    AsyncStorage.getItem('@hafriyapp_chat_fontBold').then(val => {
+      if (val !== null) setChatFontBold(val === 'true');
+    }).catch(() => {});
+  }, []);
+
+  const handleSaveFontSize = async (size: number) => {
+    setChatFontSize(size);
+    await AsyncStorage.setItem('@hafriyapp_chat_fontSize', String(size));
+  };
+
+  const handleSaveFontBold = async (bold: boolean) => {
+    setChatFontBold(bold);
+    await AsyncStorage.setItem('@hafriyapp_chat_fontBold', String(bold));
+  };
+
+  /* ─── DISTRICT FILTER ─── */
+  const selectedCity = useAppSelector(state => (state as any).ui?.selectedCity);
+  const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);
+
+  const availableDistricts = useMemo(() => {
+    if (selectedCity == null) return [];
+    return DISTRICTS[selectedCity] ?? [];
+  }, [selectedCity]);
 
   /* ─── SETTINGS ─── */
   const [isOwner, setIsOwner] = useState(false);
@@ -158,6 +196,18 @@ export default function CompanyChat() {
         .catch(() => {});
     }, [])
   );
+
+  const filteredMessages = useMemo(() => {
+    let list = messages.filter(m => !blockedUsers.some(bu => bu.id === m.senderId));
+    if (selectedDistrict) {
+      const normDistrict = normalizeTurkishText(selectedDistrict).trim();
+      list = list.filter(m => {
+        if (!m.content || m.deleted) return false;
+        return normalizeTurkishText(m.content).includes(normDistrict);
+      });
+    }
+    return list;
+  }, [messages, blockedUsers, selectedDistrict]);
 
   const handleBlockUserFromChat = (userId: string, name?: string | null) => {
     Alert.alert(
@@ -293,6 +343,9 @@ export default function CompanyChat() {
     fetchMessages();
     checkOwnership();
     connectSignalR();
+    if (token && groupId) {
+      markGroupAsRead(token, groupId);
+    }
     return () => { disconnectSignalR(); };
   }, [groupId]);
 
@@ -495,6 +548,34 @@ export default function CompanyChat() {
     setMessageOptionsVisible(false);
   };
 
+  const handleDeleteSelectedMessage = () => {
+    if (!selectedMessage || !token || !groupId) return;
+    const msgId = selectedMessage.id;
+    setMessageOptionsVisible(false);
+
+    Alert.alert(
+      'Mesajı Sil',
+      'Bu mesajı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteChatMessage(token, groupId, msgId);
+              setMessages(prev =>
+                prev.map(m => m.id === msgId ? { ...m, content: 'Bu mesaj silindi', deleted: true } : m)
+              );
+            } catch (err) {
+              Alert.alert('Hata', 'Mesaj silinirken bir sorun oluştu.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleOpenReportModal = async () => {
     if (!selectedMessage) return;
     setMessageOptionsVisible(false);
@@ -573,16 +654,80 @@ export default function CompanyChat() {
     }
   };
 
+  const handleOpenWhatsAppUser = (messageItem: any, senderDisplayName?: string) => {
+    let phone = messageItem.senderPhone || messageItem.senderPhoneNumber || messageItem.phone;
+
+    if (!phone && senderDisplayName) {
+      const match = senderDisplayName.match(/(?:0|\+90)?5\d{2}[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}/);
+      if (match) phone = match[0];
+    }
+
+    if (!phone && messageItem.content) {
+      const match = messageItem.content.match(/(?:0|\+90)?5\d{2}[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}/);
+      if (match) phone = match[0];
+    }
+
+    if (!phone) {
+      Alert.alert('Bilgi', 'Gönderene ait telefon numarası tespit edilemedi.');
+      return;
+    }
+
+    const digits = phone.replace(/\D/g, '');
+    let finalPhone = digits;
+    if (finalPhone.startsWith('90') && finalPhone.length === 12) {
+      finalPhone = '+' + finalPhone;
+    } else if (finalPhone.startsWith('05') && finalPhone.length === 11) {
+      finalPhone = '+9' + finalPhone;
+    } else if (finalPhone.startsWith('5') && finalPhone.length === 10) {
+      finalPhone = '+90' + finalPhone;
+    } else if (!finalPhone.startsWith('+')) {
+      finalPhone = '+' + finalPhone;
+    }
+
+    const appUrl = `whatsapp://send?phone=${finalPhone}`;
+    const webUrl = `https://wa.me/${finalPhone.replace(/\+/g, '')}`;
+
+    Linking.canOpenURL(appUrl)
+      .then(supported => {
+        if (supported) {
+          Linking.openURL(appUrl);
+        } else {
+          Linking.openURL(webUrl);
+        }
+      })
+      .catch(() => {
+        Linking.openURL(webUrl);
+      });
+  };
+
   const renderItem = ({ item }: any) => {
     const isMyMessage = item.isOwnMessage;
     const isDeleted = !!item.deleted;
     const isTemp = !!item.isTemp;
     const isCopied = copiedId === item.id;
+
+    const rawSender = item.senderName || '';
+    const isFromWhatsApp = !isMyMessage && (
+      rawSender.endsWith('.') ||
+      item.isWhatsAppOrigin ||
+      rawSender.toLowerCase().includes('whatsapp')
+    );
+    const cleanSenderName = rawSender.replace(/\(WhatsApp\)/gi, '').trim().replace(/\.+$/, '');
+
     return (
       <View style={[styles.bubbleContainer, isMyMessage ? styles.myContainer : styles.theirContainer]}>
-        {!isMyMessage && item.senderName && (
-          <Text style={styles.senderName}>{item.senderName}</Text>
-        )}
+        {!isMyMessage && cleanSenderName ? (
+          <TouchableOpacity
+            onPress={() => handleOpenWhatsAppUser(item, cleanSenderName)}
+            activeOpacity={0.7}
+            style={styles.senderHeaderRow}
+          >
+            <Text style={[styles.senderName, { fontSize: Math.max(13, chatFontSize - 3) }]}>
+              {cleanSenderName}
+            </Text>
+            {isFromWhatsApp && <Text style={styles.subtleWaIndicator}> •</Text>}
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity
           onLongPress={() => handleOpenMessageOptions(item)}
           activeOpacity={0.8}
@@ -595,13 +740,25 @@ export default function CompanyChat() {
             isTemp && styles.tempBubble,
           ]}>
             {isDeleted
-              ? <Text style={[styles.bubbleText, styles.deletedText]}>Bu mesaj silindi</Text>
-              : <LinkifiedText text={item.content} style={styles.bubbleText} />
+              ? <Text style={[styles.bubbleText, styles.deletedText, { fontSize: chatFontSize - 2 }]}>Bu mesaj silindi</Text>
+              : (
+                <LinkifiedText
+                  text={item.content}
+                  style={[
+                    styles.bubbleText,
+                    {
+                      fontSize: chatFontSize,
+                      fontWeight: chatFontBold ? '700' : '400',
+                      lineHeight: Math.round(chatFontSize * 1.35),
+                    },
+                  ]}
+                />
+              )
             }
             <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 4, gap: 4 }}>
               {isTemp && <Text style={styles.sendingDot}>⏳</Text>}
               {isCopied && <Text style={styles.copiedText}>Kopyalandı ✓</Text>}
-              <Text style={styles.timeText}>
+              <Text style={[styles.timeText, { fontSize: Math.max(9, chatFontSize - 6) }]}>
                 {new Date(item.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </Text>
             </View>
@@ -624,6 +781,9 @@ export default function CompanyChat() {
         </Text>
 
         <View style={styles.headerBtns}>
+          <TouchableOpacity onPress={() => setFontModalVisible(true)} style={styles.fontBtn} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+            <Text style={styles.fontBtnText}>A±</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => setDetailVisible(true)} style={styles.detailBtn}>
             <Text style={styles.detailBtnText}>Detay</Text>
           </TouchableOpacity>
@@ -635,13 +795,43 @@ export default function CompanyChat() {
         </View>
       </View>
 
+      {/* 🏷 İLÇE FİLTRELEME ÇUBUĞU */}
+      {availableDistricts.length > 0 && (
+        <View style={styles.districtBarContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.districtScroll}>
+            <TouchableOpacity
+              style={[styles.districtChip, !selectedDistrict && styles.districtChipActive]}
+              onPress={() => setSelectedDistrict(null)}
+            >
+              <Text style={[styles.districtChipText, !selectedDistrict && styles.districtChipTextActive]}>
+                Tümü
+              </Text>
+            </TouchableOpacity>
+            {availableDistricts.map(d => {
+              const isSel = selectedDistrict === d.value;
+              return (
+                <TouchableOpacity
+                  key={d.value}
+                  style={[styles.districtChip, isSel && styles.districtChipActive]}
+                  onPress={() => setSelectedDistrict(isSel ? null : d.value)}
+                >
+                  <Text style={[styles.districtChipText, isSel && styles.districtChipTextActive]}>
+                    {d.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         <FlatList
-          data={messages.filter(m => !blockedUsers.some(bu => bu.id === m.senderId))}
+          data={filteredMessages}
           keyExtractor={item => item.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingVertical: 10 }}
@@ -879,9 +1069,15 @@ export default function CompanyChat() {
           <View style={styles.optionsContent}>
             <Text style={styles.optionsTitle}>Mesaj İşlemleri</Text>
             
-            <TouchableOpacity style={[styles.optionBtn, (!selectedMessage || selectedMessage.isOwnMessage) && { borderBottomWidth: 0 }]} onPress={handleCopyFromOptions}>
+            <TouchableOpacity style={styles.optionBtn} onPress={handleCopyFromOptions}>
               <Text style={styles.optionText}>📋 Kopyala</Text>
             </TouchableOpacity>
+
+            {selectedMessage && selectedMessage.isOwnMessage && (
+              <TouchableOpacity style={styles.optionBtn} onPress={handleDeleteSelectedMessage}>
+                <Text style={[styles.optionText, { color: '#C62828' }]}>🗑 Mesajı Sil</Text>
+              </TouchableOpacity>
+            )}
 
             {selectedMessage && !selectedMessage.isOwnMessage && (
               <>
@@ -899,6 +1095,83 @@ export default function CompanyChat() {
 
             <TouchableOpacity style={styles.optionCancelBtn} onPress={() => setMessageOptionsVisible(false)}>
               <Text style={styles.optionCancelText}>İptal</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 🔠 YAZI TİPİ VE BOYUTU AYAR MODALI */}
+      <Modal
+        visible={fontModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setFontModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable 
+            style={StyleSheet.absoluteFillObject} 
+            onPress={() => setFontModalVisible(false)} 
+          />
+          <View style={styles.fontModalContent}>
+            <View style={styles.fontModalHeader}>
+              <Text style={styles.fontModalTitle}>Yazı Tipi & Boyutu</Text>
+              <TouchableOpacity onPress={() => setFontModalVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: '#666' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.fontSectionLabel}>Yazı Boyutu</Text>
+            <View style={styles.fontSizeRow}>
+              {[
+                { label: 'Standart', size: 15 },
+                { label: 'Büyük', size: 18 },
+                { label: 'Çok Büyük', size: 21 },
+              ].map(opt => {
+                const isSelected = chatFontSize === opt.size;
+                return (
+                  <TouchableOpacity
+                    key={opt.size}
+                    style={[styles.fontSizeBtn, isSelected && styles.fontSizeBtnActive]}
+                    onPress={() => handleSaveFontSize(opt.size)}
+                  >
+                    <Text style={[styles.fontSizeBtnText, isSelected && styles.fontSizeBtnTextActive]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.boldSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.boldSwitchTitle}>Kalın Yazı (Bold)</Text>
+                <Text style={styles.boldSwitchSubtitle}>Mesaj balonlarındaki yazıları kalınlaştırır</Text>
+              </View>
+              <Switch
+                value={chatFontBold}
+                onValueChange={handleSaveFontBold}
+                trackColor={{ false: '#ccc', true: YELLOW }}
+                thumbColor={chatFontBold ? '#000' : '#f4f3f4'}
+              />
+            </View>
+
+            {/* Canlı Önizleme */}
+            <Text style={styles.fontSectionLabel}>Önizleme</Text>
+            <View style={[styles.previewBubble, { backgroundColor: YELLOW }]}>
+              <Text
+                style={{
+                  fontSize: chatFontSize,
+                  fontWeight: chatFontBold ? '700' : '400',
+                  color: '#000',
+                  lineHeight: Math.round(chatFontSize * 1.35),
+                }}
+              >
+                HafriyApp: 34ABC123 damperli hafriyat seferi onaylandı.
+              </Text>
+            </View>
+
+            <TouchableOpacity style={styles.fontDoneBtn} onPress={() => setFontModalVisible(false)}>
+              <Text style={styles.fontDoneBtnText}>Tamam</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1008,11 +1281,52 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     alignItems: 'flex-start',
   },
-  senderName: {
-    fontSize: 11,
-    color: '#666',
+  senderHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginLeft: 4,
-    marginBottom: 2,
+    marginBottom: 3,
+  },
+  senderName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#333',
+  },
+  subtleWaIndicator: {
+    fontSize: 14,
+    color: '#27AE60',
+    fontWeight: '900',
+  },
+  districtBarContainer: {
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderColor: '#eee',
+    paddingVertical: 8,
+  },
+  districtScroll: {
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  districtChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  districtChipActive: {
+    backgroundColor: YELLOW,
+    borderColor: '#E6C200',
+  },
+  districtChipText: {
+    fontSize: 13,
+    color: '#555',
+    fontWeight: '500',
+  },
+  districtChipTextActive: {
+    color: '#000',
+    fontWeight: '700',
   },
   bubble: {
     padding: 10,
@@ -1129,6 +1443,112 @@ const styles = StyleSheet.create({
   settingsBtnText: {
     fontSize: 18,
     color: '#333',
+  },
+  fontBtn: {
+    backgroundColor: 'rgba(255,255,255,0.4)',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+  },
+  fontBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#333',
+  },
+  fontModalContent: {
+    width: '90%',
+    maxWidth: 340,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  fontModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  fontModalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#222',
+  },
+  fontSectionLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#888',
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    marginTop: 8,
+  },
+  fontSizeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  fontSizeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    alignItems: 'center',
+  },
+  fontSizeBtnActive: {
+    backgroundColor: YELLOW,
+    borderColor: '#E6C200',
+  },
+  fontSizeBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#555',
+  },
+  fontSizeBtnTextActive: {
+    color: '#000',
+    fontWeight: '700',
+  },
+  boldSwitchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#eee',
+    marginBottom: 16,
+  },
+  boldSwitchTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#333',
+  },
+  boldSwitchSubtitle: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
+  },
+  previewBubble: {
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  fontDoneBtn: {
+    backgroundColor: YELLOW,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  fontDoneBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#000',
   },
   /* DETAY MODAL */
   detailModal: {

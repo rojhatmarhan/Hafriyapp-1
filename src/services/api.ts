@@ -2,7 +2,9 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 import { getAuth } from '../utils/secureStore';
 
-export const BASE_HOST = 'https://api.hafriyapp.com';
+export const BASE_HOST = __DEV__
+  ? 'http://localhost:5062'
+  : 'https://api.hafriyapp.com';
 export const API_BASE_URL = `${BASE_HOST}/api`;
 
 export const api = axios.create({

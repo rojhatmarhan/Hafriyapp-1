@@ -107,3 +107,23 @@ export const removeBlockedPhone = async (token: string, id: string, phoneNumber:
     });
     return response.data;
 };
+
+export const markGroupAsRead = async (token: string, groupId: string) => {
+    try {
+        const response = await api.post(`/ChatGroup/${groupId}/read`, {}, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        return response.data;
+    } catch (error) {
+        console.warn('Error marking group as read:', error);
+        return null;
+    }
+};
+
+export const deleteMessage = async (token: string, groupId: string, messageId: string) => {
+    const response = await api.delete(`/ChatGroup/${groupId}/messages/${messageId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+};
+

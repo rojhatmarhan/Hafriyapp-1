@@ -10,6 +10,8 @@ import CompanyChat from '../screens/supplier/CompanyChat';
 import CompanyDetailsScreen from '../screens/supplier/CompanyDetailsScreen';
 import ProfileEditScreen from '../screens/ProfileEditScreen';
 import CompanyEditScreen from '../screens/supplier/CompanyEditScreen';
+import CompanyShowcase from '../screens/common/CompanyShowcase';
+import WebToolScreen from '../screens/common/WebToolScreen';
 
 const Drawer = createDrawerNavigator();
 
@@ -28,7 +30,14 @@ export default function AppNavigator() {
 
       <Drawer.Screen name="Profile" component={ProfileScreen} options={{ title: 'PROFİLİM' }} />
 
-      <Drawer.Screen name="MyAds" component={MyAds} options={{ title: 'İLANLAR' }} />
+      <Drawer.Screen
+        name="MyAds"
+        component={MyAds}
+        options={{
+          title: 'PAZAR',
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
 
       {/* 💬 CompanyChat is hoisted here to hide the global drawer header and bottom tabs */}
       <Drawer.Screen
@@ -58,6 +67,22 @@ export default function AppNavigator() {
       <Drawer.Screen
         name="ProfileEdit"
         component={ProfileEditScreen}
+        options={{
+          headerShown: false,
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
+      <Drawer.Screen
+        name="CompanyShowcase"
+        component={CompanyShowcase}
+        options={{
+          headerShown: false,
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
+      <Drawer.Screen
+        name="WebToolScreen"
+        component={WebToolScreen}
         options={{
           headerShown: false,
           drawerItemStyle: { display: 'none' },

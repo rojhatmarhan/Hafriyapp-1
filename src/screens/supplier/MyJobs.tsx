@@ -420,7 +420,33 @@ export default function MyJobs() {
           maxToRenderPerBatch={10}
           windowSize={5}
           ListEmptyComponent={
-            <Text style={styles.emptyText}>Sonuç bulunamadı</Text>
+            search.trim() ? (
+              <Text style={styles.emptyText}>Arama kriterine uygun iş bulunamadı</Text>
+            ) : (
+              <View style={styles.guideCard}>
+                <Text style={styles.guideCardEmoji}>🏗️</Text>
+                <Text style={styles.guideCardTitle}>Nasıl Yeni İş Kurulur? (Adım Adım Rehber)</Text>
+                <View style={styles.guideStepRow}>
+                  <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>1</Text></View>
+                  <Text style={styles.guideStepText}>Sağ alttaki sarı <Text style={{ fontWeight: '700' }}>"＋ Yeni İş Kur"</Text> butonuna dokunun.</Text>
+                </View>
+                <View style={styles.guideStepRow}>
+                  <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>2</Text></View>
+                  <Text style={styles.guideStepText}>İş türünüzü seçin (<Text style={{ fontWeight: '700' }}>Hafriyat / Döküm</Text> veya <Text style={{ fontWeight: '700' }}>Kum-Mıcır</Text>).</Text>
+                </View>
+                <View style={styles.guideStepRow}>
+                  <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>3</Text></View>
+                  <Text style={styles.guideStepText}>Şantiye adını, konumunu ve döküm yeri tekliflerini (Nakit ₺ ve Yakıt Lt) belirleyin.</Text>
+                </View>
+                <View style={styles.guideStepRow}>
+                  <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>4</Text></View>
+                  <Text style={styles.guideStepText}>İşinizi kurduktan sonra araç plakalarını tarayarak sefer girin, fiş yazdırın ve dilediğiniz zaman Excel raporu alın.</Text>
+                </View>
+                <TouchableOpacity style={styles.guideActionBtn} onPress={handleNewJob} activeOpacity={0.85}>
+                  <Text style={styles.guideActionBtnText}>＋ Hemen İlk İşini Kur</Text>
+                </TouchableOpacity>
+              </View>
+            )
           }
         />
       </View>
@@ -741,5 +767,76 @@ const styles = StyleSheet.create({
     marginTop: 40,
     color: '#999',
     fontSize: 14,
+  },
+
+  guideCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginTop: 20,
+    marginHorizontal: 4,
+    borderWidth: 1,
+    borderColor: '#FFE082',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  guideCardEmoji: {
+    fontSize: 44,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  guideCardTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#111',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  guideStepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    gap: 10,
+  },
+  guideStepNumberBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FFD500',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
+    flexShrink: 0,
+  },
+  guideStepNumber: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#000',
+  },
+  guideStepText: {
+    fontSize: 14,
+    color: '#333',
+    lineHeight: 20,
+    flex: 1,
+  },
+  guideActionBtn: {
+    backgroundColor: '#FFD500',
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  guideActionBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#000',
   },
 });

@@ -1026,7 +1026,37 @@ export default function SupplierVehicles() {
       </View>
 
       {/* ================= VEHICLES ================= */}
-      {activeTab === 'vehicles' && <SectionList sections={sections} keyExtractor={item => item[0].id} renderItem={renderVehicle} renderSectionHeader={renderSectionHeader} contentContainerStyle={{ paddingTop: 12, paddingBottom: 20, gap: 10, paddingHorizontal: 5 }} stickySectionHeadersEnabled={false} renderSectionFooter={() => <View style={{ height: 10 }} />} />}
+      {activeTab === 'vehicles' && (
+        vehicles.length === 0 ? (
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 30 }}>
+            <View style={styles.guideCard}>
+              <Text style={styles.guideCardEmoji}>🚚</Text>
+              <Text style={styles.guideCardTitle}>Nasıl Araç Eklenir? (Adım Adım Rehber)</Text>
+              <View style={styles.guideStepRow}>
+                <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>1</Text></View>
+                <Text style={styles.guideStepText}>Yukarıdaki sarı <Text style={{ fontWeight: '700' }}>"＋ Yeni Araç Ekle"</Text> butonuna dokunun.</Text>
+              </View>
+              <View style={styles.guideStepRow}>
+                <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>2</Text></View>
+                <Text style={styles.guideStepText}>Aracınızın <Text style={{ fontWeight: '700' }}>plakasını</Text> ve aracı kullanan şoförün <Text style={{ fontWeight: '700' }}>telefon numarasını</Text> girin.</Text>
+              </View>
+              <View style={styles.guideStepRow}>
+                <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>3</Text></View>
+                <Text style={styles.guideStepText}>Şoför uygulamaya girdiğinde araç ve şantiyeler şoförün ekranına otomatik bağlanır.</Text>
+              </View>
+              <View style={styles.guideStepRow}>
+                <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>4</Text></View>
+                <Text style={styles.guideStepText}>Sefer atıldığında aracın sefer geçmişi, nakit/yakıt durumu ve dökümleri bu sayfada listelenir.</Text>
+              </View>
+              <TouchableOpacity style={styles.guideActionBtn} onPress={() => setAddVehicleModal(true)} activeOpacity={0.85}>
+                <Text style={styles.guideActionBtnText}>＋ Hemen İlk Aracını Ekle</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        ) : (
+          <SectionList sections={sections} keyExtractor={item => item[0].id} renderItem={renderVehicle} renderSectionHeader={renderSectionHeader} contentContainerStyle={{ paddingTop: 12, paddingBottom: 20, gap: 10, paddingHorizontal: 5 }} stickySectionHeadersEnabled={false} renderSectionFooter={() => <View style={{ height: 10 }} />} />
+        )
+      )}
 
       {/* ================= TRIPS ================= */}
       {activeTab === 'trips' && (
@@ -2943,5 +2973,75 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#F5F5F5',
     marginHorizontal: 16,
+  },
+
+  guideCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: '#FFE082',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  guideCardEmoji: {
+    fontSize: 44,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  guideCardTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#111',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  guideStepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    gap: 10,
+  },
+  guideStepNumberBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FFD500',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
+    flexShrink: 0,
+  },
+  guideStepNumber: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#000',
+  },
+  guideStepText: {
+    fontSize: 14,
+    color: '#333',
+    lineHeight: 20,
+    flex: 1,
+  },
+  guideActionBtn: {
+    backgroundColor: '#FFD500',
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  guideActionBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#000',
   },
 });

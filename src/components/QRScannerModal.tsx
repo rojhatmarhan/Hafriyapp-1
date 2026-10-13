@@ -132,12 +132,21 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
           <Camera
             scanBarcode={true}
             onReadCode={handleReadCode}
-            showFrame={true}
-            laserColor="#2E7D32"
-            frameColor="#fff"
+            showFrame={false}
             torchMode={torchOn ? 'on' : 'off'}
             style={styles.camera}
           />
+          {/* Görsel Nişangah / Çerçeve */}
+          <View pointerEvents="none" style={styles.reticleOverlay}>
+            <View style={styles.targetFrame}>
+              <View style={[styles.corner, styles.cornerTL]} />
+              <View style={[styles.corner, styles.cornerTR]} />
+              <View style={[styles.corner, styles.cornerBL]} />
+              <View style={[styles.corner, styles.cornerBR]} />
+              <View style={styles.laserLine} />
+            </View>
+            <Text style={styles.guideBadge}>Kodu veya fişi kameraya tutun</Text>
+          </View>
         </View>
 
         {/* Alt Panel & Büyük Aksiyon Butonları */}
@@ -249,5 +258,64 @@ const styles = StyleSheet.create({
   bottomTorchBtnTextActive: {
     color: '#000',
     fontWeight: '900',
+  },
+  reticleOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  targetFrame: {
+    width: 250,
+    height: 250,
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  corner: {
+    position: 'absolute',
+    width: 26,
+    height: 26,
+    borderColor: '#4CAF50',
+  },
+  cornerTL: {
+    top: 0,
+    left: 0,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+  },
+  cornerTR: {
+    top: 0,
+    right: 0,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+  },
+  cornerBL: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
+  },
+  cornerBR: {
+    bottom: 0,
+    right: 0,
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
+  },
+  laserLine: {
+    width: '90%',
+    height: 2,
+    backgroundColor: '#4CAF50',
+    opacity: 0.8,
+  },
+  guideBadge: {
+    marginTop: 20,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    color: '#fff',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    fontSize: 13,
+    fontWeight: '600',
+    overflow: 'hidden',
   },
 });

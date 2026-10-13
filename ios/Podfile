@@ -41,6 +41,14 @@ target 'Hafriyapp' do
       :mac_catalyst_enabled => false
     )
 
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |c|
+        if c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].nil? || c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.1
+          c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+        end
+      end
+    end
+
     # Fix: fmt consteval is broken in Apple Clang — patch the header to disable it
     fmt_base_h = "#{installer.sandbox.root}/fmt/include/fmt/base.h"
     if File.exist?(fmt_base_h)

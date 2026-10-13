@@ -902,9 +902,14 @@ export default function MyAds() {
     return (
       <SafeAreaView style={styles.landingContainer} edges={['bottom']}>
         <View style={styles.landingHeader}>
-          <Text style={styles.landingIcon}>📢</Text>
-          <Text style={styles.landingTitle}>İlanlar</Text>
-          <Text style={styles.landingSubtitle}>Kategoriye tıklayarak ilanları görüntüleyin</Text>
+          <View style={styles.landingIconWrap}>
+            <Image
+              source={require('../../assets/icons/market-pazar-1.png')}
+              style={styles.landingIconImage}
+            />
+          </View>
+          <Text style={styles.landingTitle}>Pazar</Text>
+          <Text style={styles.landingSubtitle}>Kategoriye tıklayarak pazar ilanlarını görüntüleyin</Text>
         </View>
         <View style={styles.categoryGrid}>
           {CATEGORIES.map(c => (
@@ -1585,7 +1590,8 @@ const styles = StyleSheet.create({
   // ── Landing
   landingContainer:  { flex: 1, backgroundColor: '#FFFBF0' },
   landingHeader:     { alignItems: 'center', paddingTop: 40, paddingBottom: 28, paddingHorizontal: 24 },
-  landingIcon:       { fontSize: 40, marginBottom: 8 },
+  landingIconWrap:    { width: 90, height: 90, borderRadius: 45, backgroundColor: '#FFD500', alignItems: 'center', justifyContent: 'center', marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 6, elevation: 5 },
+  landingIconImage:   { width: 62, height: 62, resizeMode: 'contain' },
   landingTitle:      { fontSize: 28, fontWeight: '800', color: '#111', marginBottom: 8 },
   landingSubtitle:   { fontSize: 14, color: '#666', textAlign: 'center' },
   categoryGrid:      { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 16 },

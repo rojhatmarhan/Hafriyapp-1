@@ -117,3 +117,53 @@ export const getJobHauls = async (token: string, jobSiteId: string) => {
   });
   return res.data;
 };
+
+export interface JobSiteNoteItem {
+  id: string;
+  jobSiteId: string;
+  userId: string;
+  userName: string;
+  noteType: number; // 0 = General, 1 = FuelGiven, 2 = Expense
+  amount?: number;
+  description: string;
+  createdDate: string;
+  canManage: boolean;
+}
+
+export const getJobSiteNotes = async (token: string, jobSiteId: string): Promise<JobSiteNoteItem[]> => {
+  const res = await api.get(`/JobSite/${jobSiteId}/notes`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data;
+};
+
+export const createJobSiteNote = async (
+  token: string,
+  jobSiteId: string,
+  data: { noteType: number; amount?: number; description: string },
+) => {
+  const res = await api.post(`/JobSite/${jobSiteId}/notes`, data, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data;
+};
+
+export const updateJobSiteNote = async (
+  token: string,
+  jobSiteId: string,
+  noteId: string,
+  data: { amount?: number; description: string },
+) => {
+  const res = await api.put(`/JobSite/${jobSiteId}/notes/${noteId}`, data, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data;
+};
+
+export const deleteJobSiteNote = async (token: string, jobSiteId: string, noteId: string) => {
+  const res = await api.delete(`/JobSite/${jobSiteId}/notes/${noteId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data;
+};
+

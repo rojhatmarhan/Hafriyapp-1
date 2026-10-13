@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Image } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import Svg, { Path } from 'react-native-svg';
 import { useAppSelector } from '../hooks';
 
 // DRIVER Screens
@@ -13,9 +14,34 @@ import SupplierHome from '../screens/supplier/SupplierHome';
 import SupplierVehicles from '../screens/supplier/SupplierVehicles';
 import SupplierAllJobs from '../screens/supplier/AllJobs';
 import MyJobs from '../screens/supplier/MyJobs';
+import MyAds from '../screens/MyAds';
 import SupplierStack from './SupplierStack';
 import DriverStack from './DriverStack';
 import MyJobsStack from './MyJobsStack';
+
+function MarketIcon({ focused }: { focused: boolean }) {
+  return (
+    <View
+      style={{
+        paddingHorizontal: focused ? 18 : 0,
+        paddingVertical: focused ? 12 : 0,
+        backgroundColor: focused ? '#F7B500' : 'transparent',
+        borderRadius: 99,
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}>
+      <Image
+        source={require('../../assets/icons/market-pazar.png')}
+        style={{
+          width: 44,
+          height: 44,
+          resizeMode: 'contain',
+          tintColor: focused ? 'black' : '#444',
+        }}
+      />
+    </View>
+  );
+}
 
 const Tab = createBottomTabNavigator();
 
@@ -97,6 +123,16 @@ export default function BottomTabs() {
                   />
                 </View>
               ),
+            }}
+          />
+
+          {/* DRIVER MARKET / PAZAR */}
+          <Tab.Screen
+            name="MarketAds"
+            component={MyAds}
+            options={{
+              title: 'Pazar',
+              tabBarIcon: ({ focused }) => <MarketIcon focused={focused} />,
             }}
           />
 
@@ -187,6 +223,16 @@ export default function BottomTabs() {
                   />
                 </View>
               ),
+            }}
+          />
+
+          {/* SUPPLIER MARKET / PAZAR (TAM ORTADA) */}
+          <Tab.Screen
+            name="MarketAds"
+            component={MyAds}
+            options={{
+              title: 'Pazar',
+              tabBarIcon: ({ focused }) => <MarketIcon focused={focused} />,
             }}
           />
 

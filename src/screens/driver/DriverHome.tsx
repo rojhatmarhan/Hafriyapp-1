@@ -3,7 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, Platform, ActionSheetIOS, Alert, Modal, ScrollView, ActivityIndicator, FlatList } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
-const IMAGE_BASE = 'https://api.hafriyapp.com';
+import { BASE_HOST } from '../../services/api';
+
+const IMAGE_BASE = BASE_HOST;
 const buildLogoUrl = (path?: string | null): string => {
   if (!path) return '';
   if (path.startsWith('http')) return path;
@@ -204,9 +206,19 @@ export default function DriverHome() {
       : (item.description || item.lastMessagePreview || 'Henüz mesaj yok');
 
     const isPinned = pinnedIds.includes(item.id);
+    const hasUnread = typeof item.unreadCount === 'number' && item.unreadCount > 0;
 
     return (
-      <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('CompanyChat', { group: item })} activeOpacity={0.7}>
+      <TouchableOpacity 
+        style={styles.row} 
+        onPress={() => {
+          if (hasUnread) {
+            setChatGroups(prev => prev.map(g => g.id === item.id ? { ...g, unreadCount: 0 } : g));
+          }
+          navigation.navigate('CompanyChat', { group: item });
+        }} 
+        activeOpacity={0.7}
+      >
         <View style={styles.iconContainer}>
           {buildLogoUrl(item.imageUrl) ? (
             <Image
@@ -228,9 +240,13 @@ export default function DriverHome() {
         </View>
 
         <View style={styles.rightContent}>
-          <Text style={styles.time}>
-            {item.lastMessageAt ? new Date(item.lastMessageAt).toLocaleDateString("tr-TR", { day: '2-digit', month: '2-digit' }) : ''}
-          </Text>
+          {hasUnread && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadBadgeText}>
+                {item.unreadCount > 99 ? '99+' : item.unreadCount}
+              </Text>
+            </View>
+          )}
         </View>
 
         <TouchableOpacity
@@ -266,6 +282,28 @@ export default function DriverHome() {
           }
         </TouchableOpacity>
       </View>
+
+      {/* 🏢 Firma Tanıtımları & Rehber Kartı */}
+      <TouchableOpacity
+        style={styles.showcaseBanner}
+        onPress={() => navigation.navigate('CompanyShowcase')}
+        activeOpacity={0.85}>
+        <View style={styles.showcaseIconBox}>
+          <Text style={styles.showcaseIconText}>🏢</Text>
+        </View>
+        <View style={{ flex: 1, paddingVertical: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.showcaseTitle}>Firma Tanıtımları</Text>
+            <View style={styles.showcaseBadge}>
+              <Text style={styles.showcaseBadgeText}>YENİ</Text>
+            </View>
+          </View>
+          <Text style={styles.showcaseSub}>Sektör firmalarını ve profillerini inceleyin</Text>
+        </View>
+        <View style={styles.showcaseActionBtn}>
+          <Text style={styles.showcaseActionText}>İncele ›</Text>
+        </View>
+      </TouchableOpacity>
 
       {user?.warningMessage && (!user.warningExpireDate || new Date(user.warningExpireDate) > new Date()) ? (
         <View style={{
@@ -517,6 +555,68 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#111',
   },
+  showcaseBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#EFEFEF',
+    borderLeftWidth: 4,
+    borderLeftColor: '#FFD500',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
+    gap: 10,
+  },
+  showcaseIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FFF9DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  showcaseIconText: {
+    fontSize: 20,
+  },
+  showcaseTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#1E1E1C',
+  },
+  showcaseBadge: {
+    backgroundColor: '#FFD500',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  showcaseBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#1E1E1C',
+  },
+  showcaseSub: {
+    fontSize: 11.5,
+    color: '#777',
+    marginTop: 1,
+  },
+  showcaseActionBtn: {
+    backgroundColor: '#1E1E1C',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  showcaseActionText: {
+    color: '#FFD500',
+    fontSize: 11.5,
+    fontWeight: '800',
+  },
   refreshBtn: {
     width: 36,
     height: 36,
@@ -628,7 +728,22 @@ const styles = StyleSheet.create({
   },
   rightContent: {
     alignItems: 'flex-end',
+    justifyContent: 'center',
     marginLeft: 8,
+  },
+  unreadBadge: {
+    backgroundColor: '#27AE60',
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  unreadBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   time: {
     fontSize: 11,
