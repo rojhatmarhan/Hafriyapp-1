@@ -31,7 +31,7 @@ function MarketIcon({ focused }: { focused: boolean }) {
         alignItems: 'center',
       }}>
       <Image
-        source={require('../../assets/icons/market-pazar.png')}
+        source={require('../../assets/icons/market-pazar-1.png')}
         style={{
           width: 44,
           height: 44,

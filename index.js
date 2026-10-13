@@ -58,17 +58,21 @@ try {
 } catch (e) {}
 
 // 3. Fallback defaultProps
-if (Text.defaultProps == null) {
-  Text.defaultProps = {};
-}
-Text.defaultProps.allowFontScaling = false;
-Text.defaultProps.maxFontSizeMultiplier = 1;
+try {
+  if (Text.defaultProps == null) {
+    Text.defaultProps = {};
+  }
+  Text.defaultProps.allowFontScaling = false;
+  Text.defaultProps.maxFontSizeMultiplier = 1;
+} catch (e) {}
 
-if (TextInput.defaultProps == null) {
-  TextInput.defaultProps = {};
-}
-TextInput.defaultProps.allowFontScaling = false;
-TextInput.defaultProps.maxFontSizeMultiplier = 1;
+try {
+  if (TextInput.defaultProps == null) {
+    TextInput.defaultProps = {};
+  }
+  TextInput.defaultProps.allowFontScaling = false;
+  TextInput.defaultProps.maxFontSizeMultiplier = 1;
+} catch (e) {}
 
 import { getMessaging, setBackgroundMessageHandler } from '@react-native-firebase/messaging';
 
