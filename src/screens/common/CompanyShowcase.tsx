@@ -164,18 +164,15 @@ true;
 
 export default function CompanyShowcase() {
   const navigation = useNavigation<any>();
-  const insets = useSafeAreaInsets();
   const webViewRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
 
-  const topInset = Math.max(insets.top, Platform.OS === 'android' ? 12 : 0);
-
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#161616" translucent={false} />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFC20E" translucent={true} />
 
-      {/* ── Tam Satır Profesyonel Üst Bar (Geri & Yenile) ── */}
-      <View style={[styles.topBarWrapper, { paddingTop: topInset }]}>
+      {/* ── Kompakt Tam Satır Üst Bar (Sadece Buton Yüksekliğinde: Geri & Yenile) ── */}
+      <View style={styles.topBarWrapper}>
         <View style={styles.topBarRow}>
           <TouchableOpacity
             style={styles.navBtn}
@@ -276,28 +273,28 @@ const styles = StyleSheet.create({
   },
   topBarWrapper: {
     backgroundColor: '#161616',
-    borderBottomWidth: 2,
+    borderBottomWidth: 1.5,
     borderBottomColor: '#FFD500',
     width: '100%',
     zIndex: 20,
   },
   topBarRow: {
-    height: 46,
+    height: 38,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
   },
   navBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#262626',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: '#383838',
-    minWidth: 74,
+    minWidth: 68,
     justifyContent: 'center',
   },
   navBtnArrow: {
