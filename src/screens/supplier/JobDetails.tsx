@@ -1994,6 +1994,21 @@ export default function JobDetails() {
           onClose={() => setPlateScannerVisible(false)}
           onPlateDetected={handlePlateDetected}
         />
+        <QRScannerModal
+          visible={dumpQrScannerVisible}
+          inlineOverlay={true}
+          onClose={() => setDumpQrScannerVisible(false)}
+          onScan={data => {
+            let codeVal = data.raw?.trim() || '';
+            const aztecMatch = codeVal.match(/^(\d{5,})-/);
+            if (aztecMatch) {
+              codeVal = aztecMatch[1];
+            }
+            setFormNote(codeVal);
+            setDumpQrScannerVisible(false);
+          }}
+          title="Döküm Fişi Barkod/QR Okutun"
+        />
       </Modal>
 
       {/* ═══════════════ MANUEL EKLE MODAL ═══════════════ */}
@@ -3066,23 +3081,6 @@ export default function JobDetails() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-
-      {/* ── Döküm Fişi QR Scanner Modalı ── */}
-      <QRScannerModal
-        visible={dumpQrScannerVisible}
-        onClose={() => setDumpQrScannerVisible(false)}
-        onScan={data => {
-          let codeVal = data.raw?.trim() || '';
-          // Eğer İSTAÇ / belediye döküm fişi Aztec kodu ise: ilk kısım döküm fiş numarasıdır (örn: 968749)
-          const aztecMatch = codeVal.match(/^(\d{5,})-/);
-          if (aztecMatch) {
-            codeVal = aztecMatch[1];
-          }
-          setFormNote(codeVal);
-          setDumpQrScannerVisible(false);
-        }}
-        title="Döküm Fişi Barkod/QR Okutun"
-      />
 
       {/* ================= YIL SEÇİCİ ================= */}
       <Modal visible={yearPickerVisible} transparent animationType="slide">

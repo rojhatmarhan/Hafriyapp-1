@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   View,
@@ -29,6 +29,7 @@ interface QRScannerModalProps {
   onClose: () => void;
   onScan: (data: ScannedQRData) => void;
   title?: string;
+  inlineOverlay?: boolean;
 }
 
 export const parseQRCode = (codeString: string): ScannedQRData => {
@@ -71,23 +72,29 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
   onClose,
   onScan,
   title = 'Sefer QR Kodunu Okutun',
+  inlineOverlay = false,
 }) => {
   const [torchOn, setTorchOn] = useState(false);
   const [isScanning, setIsScanning] = useState(true);
+  const isScanningRef = useRef(true);
 
   const handleReadCode = (event: any) => {
-    if (!isScanning) return;
+    if (!isScanningRef.current || !isScanning) return;
     const code = event?.nativeEvent?.codeStringValue;
     if (!code) return;
 
+    isScanningRef.current = false;
     setIsScanning(false);
+    setTorchOn(false);
     const parsed = parseQRCode(code);
     onScan(parsed);
     onClose();
   };
 
   const handleShow = async () => {
+    isScanningRef.current = true;
     setIsScanning(true);
+    setTorchOn(false);
     if (Platform.OS === 'android') {
       try {
         const granted = await PermissionsAndroid.request(
@@ -109,6 +116,80 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (visible) {
+      handleShow();
+    } else {
+      isScanningRef.current = false;
+      setIsScanning(false);
+      setTorchOn(false);
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  const content = (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#000" />
+      
+      {/* Üst Başlık Barı (Sade & Temiz) */}
+      <View style={styles.header}>
+        <Text style={styles.title} numberOfLines={1}>
+          {title}
+        </Text>
+      </View>
+
+      {/* Kamera Vizörü */}
+      <View style={styles.cameraContainer}>
+        <Camera
+          scanBarcode={true}
+          onReadCode={handleReadCode}
+          showFrame={false}
+          torchMode={torchOn ? 'on' : 'off'}
+          style={styles.camera}
+        />
+        {/* Görsel Nişangah / Çerçeve */}
+        <View pointerEvents="none" style={styles.reticleOverlay}>
+          <View style={styles.targetFrame}>
+            <View style={[styles.corner, styles.cornerTL]} />
+            <View style={[styles.corner, styles.cornerTR]} />
+            <View style={[styles.corner, styles.cornerBL]} />
+            <View style={[styles.corner, styles.cornerBR]} />
+            <View style={styles.laserLine} />
+          </View>
+          <Text style={styles.guideBadge}>Kodu veya fişi kameraya tutun</Text>
+        </View>
+      </View>
+
+      {/* Alt Panel & Büyük Aksiyon Butonları */}
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>
+          Basılı fişin veya ekrandaki QR kodu çerçevenin içine hizalayın
+        </Text>
+
+        <View style={styles.actionButtonsRow}>
+          <TouchableOpacity style={styles.bottomCloseBtn} onPress={onClose} activeOpacity={0.8}>
+            <Text style={styles.bottomCloseBtnText}>✕ Kapat</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.bottomTorchBtn, torchOn && styles.bottomTorchBtnActive]}
+            onPress={() => setTorchOn(v => !v)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.bottomTorchBtnText, torchOn && styles.bottomTorchBtnTextActive]}>
+              {torchOn ? '🔦 Flaş Açık' : '💡 Flaş'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+
+  if (inlineOverlay) {
+    return <View style={styles.inlineOverlayContainer}>{content}</View>;
+  }
+
   return (
     <Modal
       visible={visible}
@@ -117,66 +198,22 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
       onShow={handleShow}
       statusBarTranslucent
     >
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#000" />
-        
-        {/* Üst Başlık Barı (Sade & Temiz) */}
-        <View style={styles.header}>
-          <Text style={styles.title} numberOfLines={1}>
-            {title}
-          </Text>
-        </View>
-
-        {/* Kamera Vizörü */}
-        <View style={styles.cameraContainer}>
-          <Camera
-            scanBarcode={true}
-            onReadCode={handleReadCode}
-            showFrame={false}
-            torchMode={torchOn ? 'on' : 'off'}
-            style={styles.camera}
-          />
-          {/* Görsel Nişangah / Çerçeve */}
-          <View pointerEvents="none" style={styles.reticleOverlay}>
-            <View style={styles.targetFrame}>
-              <View style={[styles.corner, styles.cornerTL]} />
-              <View style={[styles.corner, styles.cornerTR]} />
-              <View style={[styles.corner, styles.cornerBL]} />
-              <View style={[styles.corner, styles.cornerBR]} />
-              <View style={styles.laserLine} />
-            </View>
-            <Text style={styles.guideBadge}>Kodu veya fişi kameraya tutun</Text>
-          </View>
-        </View>
-
-        {/* Alt Panel & Büyük Aksiyon Butonları */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            Basılı fişin veya ekrandaki QR kodu çerçevenin içine hizalayın
-          </Text>
-
-          <View style={styles.actionButtonsRow}>
-            <TouchableOpacity style={styles.bottomCloseBtn} onPress={onClose} activeOpacity={0.8}>
-              <Text style={styles.bottomCloseBtnText}>✕ Kapat</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.bottomTorchBtn, torchOn && styles.bottomTorchBtnActive]}
-              onPress={() => setTorchOn(v => !v)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.bottomTorchBtnText, torchOn && styles.bottomTorchBtnTextActive]}>
-                {torchOn ? '🔦 Flaş Açık' : '💡 Flaş'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </SafeAreaView>
+      {content}
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
+  inlineOverlayContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 999999,
+    elevation: 999999,
+    backgroundColor: '#000',
+  },
   container: {
     flex: 1,
     backgroundColor: '#000',

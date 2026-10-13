@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Linking,
-  Share,
   Platform,
   StatusBar,
 } from 'react-native';
@@ -17,56 +16,148 @@ import { WebView } from 'react-native-webview';
 const SHOWCASE_URL = 'https://hafriyapp.com/firma-tanitimi';
 const WebViewComponent = WebView as any;
 
-// Dış site üst başlığını (header) ve alt bilgisini (footer) tamamen gizle
-const INJECTED_CSS = `
-  header.block-header,
-  .block-header,
-  div[data-qa="site-header"],
-  #zSiG-O,
-  section#zSiG-O,
-  footer,
-  .whats-app-bubble {
-    display: none !important;
-    visibility: hidden !important;
-    height: 0 !important;
-    max-height: 0 !important;
-    overflow: hidden !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-  body, html {
-    padding-top: 0 !important;
-    margin-top: 0 !important;
-  }
-`;
+// Dış site üst başlığını (header.block-header) ve alt bilgisini (section#zSiG-O) tamamen gizle,
+// ayrıca Zyro'nun yatay/dikey boşluklarını (--c27f45b8:360px, --v66d5c4a6, --v1984096a, --m-block-padding) sıfırla
+const INJECTED_CSS = [
+  'header.block-header',
+  'header[class*="block-header"]',
+  '.block-header',
+  '.block-header-layout-desktop',
+  '.block-header-layout-mobile',
+  'header[data-v-06cc56f8]',
+  'div[data-qa="site-header"]',
+  'section#zSiG-O',
+  '#zSiG-O',
+  'section.block[data-pagefind-ignore="all"]',
+  'footer',
+  '.whats-app-bubble',
+].join(', ') +
+  ' { display: none !important; visibility: hidden !important; opacity: 0 !important; height: 0px !important; min-height: 0px !important; max-height: 0px !important; overflow: hidden !important; margin: 0px !important; padding: 0px !important; pointer-events: none !important; position: absolute !important; z-index: -9999 !important; }' +
+  ' html, body, #app, .user-site, .page { margin: 0px !important; padding: 0px !important; width: 100% !important; max-width: 100% !important; overflow-x: hidden !important; }' +
+  ' section.block:not(#zSiG-O) { --m-block-padding: 0px !important; --block-padding: 0px !important; --block-padding-top: 0px !important; --block-padding-bottom: 0px !important; --block-padding-left: 0px !important; --block-padding-right: 0px !important; padding: 0px !important; margin: 0px !important; width: 100% !important; max-width: 100% !important; }' +
+  ' .block-layout, .block-layout--layout, div[class*="block-layout"] { --c27f45b8: 100% !important; --v3f3138e2: 100% !important; --v66d5c4a6: 0px !important; --v1984096a: 0px !important; --m-grid-template-columns: 100% !important; --grid-template-columns: 100% !important; padding: 0px !important; padding-left: 0px !important; padding-right: 0px !important; margin: 0px !important; width: 100% !important; max-width: 100% !important; grid-template-columns: 100% !important; }' +
+  ' .layout-element, .layout-element--layout, .grid-embed, .layout-element__component--GridEmbed, .grid-embed iframe { padding: 0px !important; margin: 0px !important; width: 100% !important; max-width: 100% !important; border: none !important; }';
 
 const INJECTED_JS = `
 (function() {
-  function removeHeaderFooter() {
-    var style = document.getElementById('hafriyapp-custom-style');
-    if (!style && document.head) {
+  var cssText = ${JSON.stringify(INJECTED_CSS)};
+
+  function injectStyle() {
+    var root = document.head || document.documentElement;
+    if (!root) return;
+    var style = document.getElementById('hafriyapp-hide-hf-style');
+    if (!style) {
       style = document.createElement('style');
-      style.id = 'hafriyapp-custom-style';
-      style.innerHTML = \`${INJECTED_CSS}\`;
-      document.head.appendChild(style);
-    }
-    var h = document.querySelector('header.block-header, .block-header, div[data-qa="site-header"]');
-    if (h) {
-      h.style.setProperty('display', 'none', 'important');
-      h.style.setProperty('height', '0px', 'important');
-    }
-    var f = document.querySelector('#zSiG-O, section#zSiG-O, footer');
-    if (f) {
-      f.style.setProperty('display', 'none', 'important');
-      f.style.setProperty('height', '0px', 'important');
+      style.id = 'hafriyapp-hide-hf-style';
+      style.type = 'text/css';
+      style.appendChild(document.createTextNode(cssText));
+      root.appendChild(style);
     }
   }
-  removeHeaderFooter();
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', removeHeaderFooter);
+
+  function hideAndRemove(el) {
+    if (!el) return;
+    try {
+      el.style.setProperty('display', 'none', 'important');
+      el.style.setProperty('visibility', 'hidden', 'important');
+      el.style.setProperty('height', '0px', 'important');
+      el.style.setProperty('min-height', '0px', 'important');
+      el.style.setProperty('max-height', '0px', 'important');
+      el.style.setProperty('margin', '0px', 'important');
+      el.style.setProperty('padding', '0px', 'important');
+      el.style.setProperty('overflow', 'hidden', 'important');
+      el.remove();
+    } catch (e) {}
   }
-  window.addEventListener('load', removeHeaderFooter);
-  setInterval(removeHeaderFooter, 250);
+
+  function cleanLayoutAndRemoveHeaderFooter() {
+    injectStyle();
+
+    var selectors = [
+      'header.block-header',
+      'header[class*="block-header"]',
+      '.block-header',
+      'header[data-v-06cc56f8]',
+      'div[data-qa="site-header"]',
+      'section#zSiG-O',
+      '#zSiG-O',
+      'section.block[data-pagefind-ignore="all"]',
+      'footer',
+      '.whats-app-bubble'
+    ];
+
+    var nodes = document.querySelectorAll(selectors.join(','));
+    for (var i = 0; i < nodes.length; i++) {
+      hideAndRemove(nodes[i]);
+    }
+
+    var sections = document.querySelectorAll('section.block');
+    for (var j = 0; j < sections.length; j++) {
+      var sec = sections[j];
+      if (
+        sec.id === 'zSiG-O' ||
+        sec.getAttribute('data-pagefind-ignore') === 'all' ||
+        sec.querySelector('#ai-A1ppsj, #ai-3PpAD6, #zo-hud, a[href*="kvkk-aydinlatma-metni"]')
+      ) {
+        hideAndRemove(sec);
+      } else {
+        sec.style.setProperty('--m-block-padding', '0px', 'important');
+        sec.style.setProperty('--block-padding', '0px', 'important');
+        sec.style.setProperty('padding', '0px', 'important');
+        sec.style.setProperty('margin', '0px', 'important');
+        sec.style.setProperty('width', '100%', 'important');
+        sec.style.setProperty('max-width', '100%', 'important');
+      }
+    }
+
+    var layouts = document.querySelectorAll('.block-layout, .block-layout--layout, div[class*="block-layout"]');
+    for (var k = 0; k < layouts.length; k++) {
+      var lay = layouts[k];
+      lay.style.setProperty('--c27f45b8', '100%', 'important');
+      lay.style.setProperty('--v3f3138e2', '100%', 'important');
+      lay.style.setProperty('--v66d5c4a6', '0px', 'important');
+      lay.style.setProperty('--v1984096a', '0px', 'important');
+      lay.style.setProperty('--m-grid-template-columns', '100%', 'important');
+      lay.style.setProperty('--grid-template-columns', '100%', 'important');
+      lay.style.setProperty('padding', '0px', 'important');
+      lay.style.setProperty('margin', '0px', 'important');
+      lay.style.setProperty('width', '100%', 'important');
+      lay.style.setProperty('max-width', '100%', 'important');
+      lay.style.setProperty('grid-template-columns', '100%', 'important');
+    }
+
+    var embeds = document.querySelectorAll('.layout-element, .grid-embed, .layout-element__component--GridEmbed, .grid-embed iframe');
+    for (var m = 0; m < embeds.length; m++) {
+      var emb = embeds[m];
+      emb.style.setProperty('padding', '0px', 'important');
+      emb.style.setProperty('margin', '0px', 'important');
+      emb.style.setProperty('width', '100%', 'important');
+      emb.style.setProperty('max-width', '100%', 'important');
+    }
+  }
+
+  cleanLayoutAndRemoveHeaderFooter();
+
+  if (typeof MutationObserver !== 'undefined') {
+    var observer = new MutationObserver(function() {
+      cleanLayoutAndRemoveHeaderFooter();
+    });
+    var target = document.documentElement || document.body;
+    if (target) {
+      observer.observe(target, { childList: true, subtree: true });
+    } else {
+      document.addEventListener('DOMContentLoaded', function() {
+        cleanLayoutAndRemoveHeaderFooter();
+        if (document.documentElement) {
+          observer.observe(document.documentElement, { childList: true, subtree: true });
+        }
+      });
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', cleanLayoutAndRemoveHeaderFooter);
+  window.addEventListener('load', cleanLayoutAndRemoveHeaderFooter);
+  setInterval(cleanLayoutAndRemoveHeaderFooter, 200);
 })();
 true;
 `;
@@ -77,23 +168,44 @@ export default function CompanyShowcase() {
   const webViewRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
 
-  const handleShare = async () => {
-    try {
-      await Share.share({
-        title: 'HafriyApp Firma Tanıtımları',
-        message: 'HafriyApp Firma Tanıtımlarını inceleyin: ' + SHOWCASE_URL,
-        url: SHOWCASE_URL,
-      });
-    } catch {}
-  };
-
-  const topInset = Math.max(insets.top, Platform.OS === 'android' ? 14 : 10);
+  const topInset = Math.max(insets.top, Platform.OS === 'android' ? 12 : 0);
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFC20E" translucent={true} />
+      <StatusBar barStyle="light-content" backgroundColor="#161616" translucent={false} />
 
-      {/* ── Tam Ekran WebView ── */}
+      {/* ── Tam Satır Profesyonel Üst Bar (Geri & Yenile) ── */}
+      <View style={[styles.topBarWrapper, { paddingTop: topInset }]}>
+        <View style={styles.topBarRow}>
+          <TouchableOpacity
+            style={styles.navBtn}
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.75}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.navBtnArrow}>‹</Text>
+            <Text style={styles.navBtnText}>Geri</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.topBarTitle} numberOfLines={1}>
+            FİRMA TANITIMLARI
+          </Text>
+
+          <TouchableOpacity
+            style={styles.navBtn}
+            onPress={() => webViewRef.current?.reload()}
+            activeOpacity={0.75}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            {loading ? (
+              <ActivityIndicator size="small" color="#FFD500" style={{ marginRight: 4 }} />
+            ) : (
+              <Text style={styles.refreshIcon}>↻</Text>
+            )}
+            <Text style={styles.navBtnText}>Yenile</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ── Tam Genişlik & Yükseklik WebView (Üst Bardaki Satırın Hemen Altından Başlar) ── */}
       <View style={styles.webViewContainer}>
         <WebViewComponent
           ref={webViewRef}
@@ -109,10 +221,28 @@ export default function CompanyShowcase() {
           sharedCookiesEnabled={true}
           thirdPartyCookiesEnabled={true}
           scalesPageToFit={Platform.OS === 'android'}
+          automaticallyAdjustContentInsets={false}
+          contentInset={{ top: 0, left: 0, bottom: 0, right: 0 }}
+          injectedJavaScriptBeforeContentLoaded={INJECTED_JS}
           injectedJavaScript={INJECTED_JS}
-          onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => setLoading(false)}
+          injectedJavaScriptBeforeContentLoadedForMainFrameOnly={false}
+          injectedJavaScriptForMainFrameOnly={false}
+          onLoadStart={() => {
+            setLoading(true);
+            webViewRef.current?.injectJavaScript(INJECTED_JS);
+          }}
+          onLoadProgress={() => {
+            webViewRef.current?.injectJavaScript(INJECTED_JS);
+          }}
+          onLoadEnd={() => {
+            setLoading(false);
+            webViewRef.current?.injectJavaScript(INJECTED_JS);
+          }}
+          onNavigationStateChange={() => {
+            webViewRef.current?.injectJavaScript(INJECTED_JS);
+          }}
           showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
           renderLoading={() => (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#FFC20E" />
@@ -134,41 +264,6 @@ export default function CompanyShowcase() {
             return true;
           }}
         />
-
-        {loading && (
-          <View style={[styles.topProgressBar, { top: topInset + 6 }]}>
-            <ActivityIndicator size="small" color="#FFC20E" />
-          </View>
-        )}
-      </View>
-
-      {/* ── Yüzen (Floating) Minimal Geri & Paylaş Barı ── */}
-      <View style={[styles.floatingBar, { top: topInset + 6 }]} pointerEvents="box-none">
-        <TouchableOpacity
-          style={styles.floatingBtn}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.8}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Text style={styles.floatingBtnArrow}>‹</Text>
-          <Text style={styles.floatingBtnText}>Geri</Text>
-        </TouchableOpacity>
-
-        <View style={styles.floatingRightGroup} pointerEvents="box-none">
-          <TouchableOpacity
-            style={styles.floatingCircleBtn}
-            onPress={() => webViewRef.current?.reload()}
-            activeOpacity={0.8}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.floatingIcon}>↻</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.floatingCircleBtn}
-            onPress={handleShare}
-            activeOpacity={0.8}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.floatingIcon}>↗</Text>
-          </TouchableOpacity>
-        </View>
       </View>
     </View>
   );
@@ -179,17 +274,73 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
+  topBarWrapper: {
+    backgroundColor: '#161616',
+    borderBottomWidth: 2,
+    borderBottomColor: '#FFD500',
+    width: '100%',
+    zIndex: 20,
+  },
+  topBarRow: {
+    height: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+  },
+  navBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#262626',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#383838',
+    minWidth: 74,
+    justifyContent: 'center',
+  },
+  navBtnArrow: {
+    color: '#FFD500',
+    fontSize: 19,
+    fontWeight: '900',
+    marginRight: 4,
+    lineHeight: 20,
+  },
+  refreshIcon: {
+    color: '#FFD500',
+    fontSize: 15,
+    fontWeight: '900',
+    marginRight: 5,
+    lineHeight: 18,
+  },
+  navBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  topBarTitle: {
+    flex: 1,
+    textAlign: 'center',
+    color: '#FFD500',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    marginHorizontal: 8,
+  },
   webViewContainer: {
     flex: 1,
     backgroundColor: '#FFFFFF',
     width: '100%',
-    height: '100%',
+    margin: 0,
+    padding: 0,
   },
   webView: {
     flex: 1,
     backgroundColor: '#FFFFFF',
     width: '100%',
-    height: '100%',
+    margin: 0,
+    padding: 0,
   },
   loadingContainer: {
     ...StyleSheet.absoluteFillObject,
@@ -203,70 +354,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B6A66',
     fontWeight: '600',
-  },
-  topProgressBar: {
-    position: 'absolute',
-    right: 20,
-    zIndex: 25,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 12,
-    padding: 4,
-  },
-  floatingBar: {
-    position: 'absolute',
-    left: 14,
-    right: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    zIndex: 30,
-  },
-  floatingBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(25, 25, 25, 0.88)',
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-    borderRadius: 22,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 6,
-  },
-  floatingBtnArrow: {
-    color: '#FFD500',
-    fontSize: 20,
-    fontWeight: '900',
-    marginRight: 4,
-    lineHeight: 22,
-  },
-  floatingBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  floatingRightGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  floatingCircleBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(25, 25, 25, 0.88)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 6,
-  },
-  floatingIcon: {
-    color: '#FFD500',
-    fontSize: 16,
-    fontWeight: '800',
   },
 });
