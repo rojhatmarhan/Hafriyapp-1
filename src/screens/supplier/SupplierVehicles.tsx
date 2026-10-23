@@ -5,6 +5,7 @@ import { useAppSelector } from '../../hooks';
 import BluetoothPrinterModal from '../../components/BluetoothPrinterModal';
 import { deleteVehicle, getVehicles, updateVehicle, createVehicle, assignDriver, getVehicleDriver, removeDriver } from '../../services/vehicleService';
 import { getHauls, updateHaulPayment, getHaulById, HaulApi } from '../../services/haulService';
+import { formatDumpLine } from '../../utils/dumpFormat';
 import { QRScannerModal, ScannedQRData } from '../../components/QRScannerModal';
 import { PlateScannerModal } from '../../components/PlateScannerModal';
 import { getCompanyById } from '../../services/userService';
@@ -903,6 +904,7 @@ export default function SupplierVehicles() {
   const renderTrip = ({ item }: { item: HaulApi }) => {
     const today = isToday(item.timeOfHaul);
     const paid = item.isPaid;
+    const dumpLine = formatDumpLine(item); // yeni API alanı yoksa null → bugünkü görünüm
 
     return (
       <View style={[styles.haulCard, paid ? styles.haulCardPaid : styles.haulCardUnpaid, today && styles.haulCardToday]}>
@@ -940,6 +942,16 @@ export default function SupplierVehicles() {
           <View style={{ flex: 1 }}>
             <Text style={styles.haulDateText}>{formatHaulDate(item.timeOfHaul)}</Text>
             <Text style={styles.haulPlateText}>{item.plateNumber}</Text>
+            {!!dumpLine && (
+              <Text style={[styles.haulDumpStatusText, dumpLine.status === 'plateMismatch' ? styles.haulDumpStatusMismatch : dumpLine.status === 'waiting' ? styles.haulDumpStatusWaiting : styles.haulDumpStatusMatched]} numberOfLines={1}>
+                {dumpLine.text}
+              </Text>
+            )}
+            {!!dumpLine?.amountsText && (
+              <Text style={[styles.haulDumpStatusText, styles.haulDumpStatusMatched]} numberOfLines={1}>
+                {dumpLine.amountsText}
+              </Text>
+            )}
           </View>
           <View style={{ alignItems: 'flex-end', gap: 4 }}>
             {item.tonage > 0 && (
@@ -2074,6 +2086,10 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
 
+  haulDumpStatusText: { fontSize: 10.5, fontWeight: '600', marginTop: 1 },
+  haulDumpStatusMatched: { color: '#5B7F5E' },
+  haulDumpStatusMismatch: { color: '#D32F2F' },
+  haulDumpStatusWaiting: { color: '#999', fontStyle: 'italic', fontWeight: '400' },
   haulPlateText: {
     fontSize: 17,
     fontWeight: '800',

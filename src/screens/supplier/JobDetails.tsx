@@ -4,7 +4,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useAppSelector, useAppDispatch } from '../../hooks';
-import { getJobHauls, getJobSite, deleteJobSite, forceDeleteJobSite, updateJobSite, getJobSiteNotes, createJobSiteNote, updateJobSiteNote, deleteJobSiteNote, JobSiteNoteItem } from '../../services/jobSiteNewService';
+import { getJobHauls, getJobSite, deleteJobSite, forceDeleteJobSite, updateJobSite } from '../../services/jobSiteNewService';
 import RNBlobUtil from 'react-native-blob-util';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NewJobModal from '../../components/NewJobModal';
@@ -14,6 +14,11 @@ import TimePickerInput from '../../components/TimePickerInput';
 import { createHaul, updateHaulPayment, updateHaul, deleteHaul, getHaulById, HaulApi } from '../../services/haulService';
 import { QRScannerModal, ScannedQRData } from '../../components/QRScannerModal';
 import { PlateScannerModal } from '../../components/PlateScannerModal';
+import JobNotesModal from '../../components/JobNotesModal';
+import DumpTicketInput, { extractDumpTicketNo } from '../../components/DumpTicketInput';
+import CalendarDateButton from '../../components/CalendarDateButton';
+import { formatDumpLine, formatDumpReceiptValue } from '../../utils/dumpFormat';
+import { CameraIcon, QrScanIcon } from '../../components/MiniIcons';
 import { getCompanyById } from '../../services/userService';
 import { addPendingHaul, removePendingHaul, updatePendingHaul, PendingHaul } from '../../store/slices/pendingHaulSlice';
 import { captureRef } from 'react-native-view-shot';
@@ -23,10 +28,6 @@ import { API_BASE_URL, BASE_HOST } from '../../services/api';
 
 const YELLOW = '#FFD500';
 const DARK = '#222';
-const TR_MONTHS = [
-  'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-  'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
-];
 
 // ── İnterneti test et (netinfo paketi olmadan)
 const nowTR = (): string => {
@@ -39,6 +40,31 @@ const todayDDMMYYYY = (): string => {
   const d = new Date(trMs);
   return `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()}`;
 };
+
+// ── Varsayılan tarih aralığı: bu ayın 1'i → ayın son günü (eski "bu yıl + bu ay" filtresiyle birebir aynı liste;
+// sahibin elle ileri tarihli girdiği seferler de görünür)
+const monthStartDDMMYYYY = (): string => `01.${todayDDMMYYYY().slice(3)}`;
+const monthEndDDMMYYYY = (): string => {
+  const now = new Date();
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return `${String(last).padStart(2, '0')}.${todayDDMMYYYY().slice(3)}`;
+};
+
+// "DD.MM.YYYY" → YYYYMMDD sayısı (karşılaştırma için); geçersizse null
+const ddmmyyyyToKey = (str: string): number | null => {
+  if (!/^\d{2}\.\d{2}\.\d{4}$/.test(str)) return null;
+  const [d, m, y] = str.split('.').map(Number);
+  return y * 10000 + m * 100 + d;
+};
+
+// "DD.MM.YYYY" → "YYYY-MM-DD" (Excel export query formatı)
+const ddmmyyyyToYMD = (str: string): string => {
+  const [d, m, y] = str.split('.');
+  return `${y}-${m}-${d}`;
+};
+
+// Date (cihaz yerel saati) → "DD.MM.YYYY"
+const dateToDDMMYYYY = (d: Date): string => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
 
 const getNowTimeStr = (): string => {
   const trMs = Date.now() + 3 * 60 * 60000;
@@ -178,7 +204,6 @@ export default function JobDetails() {
   const navigation = useNavigation();
   const route = useRoute<any>();
   const { job } = route.params || {};
-  console.log('[JobDetails] job from params:', JSON.stringify(job, null, 2));
   const dispatch = useAppDispatch();
 
   const token = useAppSelector(state => state.auth.token);
@@ -225,10 +250,14 @@ export default function JobDetails() {
   const [receiptVisible, setReceiptVisible] = useState(false);
   const [hauls, setHauls] = useState<HaulApi[]>([]);
   const [plateFilter, setPlateFilter] = useState('');
-  const [filterYear, setFilterYear] = useState<number | null>(new Date().getFullYear());
-  const [filterMonth, setFilterMonth] = useState<number | null>(new Date().getMonth() + 1);
-  const [yearPickerVisible, setYearPickerVisible] = useState(false);
-  const [monthPickerVisible, setMonthPickerVisible] = useState(false);
+  // Tarih aralığı filtresi (DD.MM.YYYY, dahil). Varsayılan: bu ayın 1'i → ayın son günü
+  const [rangeStart, setRangeStart] = useState<string>(monthStartDDMMYYYY());
+  const [rangeEnd, setRangeEnd] = useState<string>(monthEndDDMMYYYY());
+  const isDefaultRange = rangeStart === monthStartDDMMYYYY() && rangeEnd === monthEndDDMMYYYY();
+  const resetDateRange = () => {
+    setRangeStart(monthStartDDMMYYYY());
+    setRangeEnd(monthEndDDMMYYYY());
+  };
   const [cachedCompanyLogoPath, setCachedCompanyLogoPath] = useState<string | null>(null);
   const [showHaulsToOwners, setShowHaulsToOwners] = useState<boolean>(job?.isHaulVisibleToVehicleOwners ?? job?.showHaulsToVehicleOwners ?? true);
   const [loading, setLoading] = useState(true);
@@ -247,6 +276,7 @@ export default function JobDetails() {
   const [selectedOfferIdx, setSelectedOfferIdx] = useState<number | null>(null);
   const [formTonage, setFormTonage] = useState(''); // Kum/Mıcır: kg
   const [formNote, setFormNote] = useState('');
+  const [formDumpTicket, setFormDumpTicket] = useState('');
   const [formDate, setFormDate] = useState<string>(todayDDMMYYYY());
   const [formSaving, setFormSaving] = useState(false);
 
@@ -258,6 +288,7 @@ export default function JobDetails() {
   const [manualFuel, setManualFuel] = useState('');
   const [manualTonage, setManualTonage] = useState('');
   const [manualNote, setManualNote] = useState('');
+  const [manualDumpTicket, setManualDumpTicket] = useState('');
   // ── Manuel Ekle modal (Kum/Mıcır alanları)
   const [manualLoading, setManualLoading] = useState('');
   const [manualUnloading, setManualUnloading] = useState('');
@@ -276,6 +307,7 @@ export default function JobDetails() {
   const [editCash, setEditCash] = useState('');
   const [editFuel, setEditFuel] = useState('');
   const [editNote, setEditNote] = useState('');
+  const [editDumpTicket, setEditDumpTicket] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
   // ── Fiş Notu Düzenleme (Herkes ve Süresiz)
@@ -334,124 +366,18 @@ export default function JobDetails() {
   // ── QR Kod Tarayıcı Modal
   const [qrModalVisible, setQrModalVisible] = useState(false);
 
-  // ── Döküm Fişi QR Tarayıcı Modal
-  const [dumpQrScannerVisible, setDumpQrScannerVisible] = useState(false);
+  // ── Döküm Fişi QR Tarayıcı (her modalın içinde inlineOverlay; hangi alanı dolduracağı)
+  const [dumpQrTarget, setDumpQrTarget] = useState<'form' | 'manual' | 'edit' | null>(null);
 
-  // ── İş Notları & Giderler
-  const [jobNotes, setJobNotes] = useState<JobSiteNoteItem[]>([]);
-  const [jobNotesLoading, setJobNotesLoading] = useState(false);
+  const handleDumpTicketScanned = (data: ScannedQRData) => {
+    const codeVal = extractDumpTicketNo(data.raw);
+    if (dumpQrTarget === 'form') setFormDumpTicket(codeVal);
+    else if (dumpQrTarget === 'manual') setManualDumpTicket(codeVal);
+    else if (dumpQrTarget === 'edit') setEditDumpTicket(codeVal);
+    setDumpQrTarget(null);
+  };
+
   const [jobNotesModal, setJobNotesModal] = useState(false);
-  const [noteTab, setNoteTab] = useState<'fuel' | 'expense' | 'note'>('fuel');
-  const [noteAmount, setNoteAmount] = useState('');
-  const [noteDescription, setNoteDescription] = useState('');
-  const [noteSaving, setNoteSaving] = useState(false);
-  const [editingNote, setEditingNote] = useState<JobSiteNoteItem | null>(null);
-  const [editNoteModal, setEditNoteModal] = useState(false);
-  const [editNoteAmount, setEditNoteAmount] = useState('');
-  const [editNoteDescription, setEditNoteDescription] = useState('');
-  const [editNoteSaving, setEditNoteSaving] = useState(false);
-
-  const loadJobNotes = useCallback(async () => {
-    if (!token || !job?.id) return;
-    setJobNotesLoading(true);
-    try {
-      const data = await getJobSiteNotes(token, job.id);
-      setJobNotes(data || []);
-    } catch {
-      // sessizce geç
-    } finally {
-      setJobNotesLoading(false);
-    }
-  }, [token, job?.id]);
-
-  const handleCreateJobNote = async () => {
-    if (!token || !job?.id) return;
-    const typeInt = noteTab === 'fuel' ? 1 : noteTab === 'expense' ? 2 : 0;
-    const amt = parseFloat(noteAmount.replace(',', '.')) || undefined;
-
-    if (typeInt !== 0 && (!amt || amt <= 0)) {
-      Alert.alert('Eksik Bilgi', 'Lütfen geçerli bir miktar girin.');
-      return;
-    }
-    if (!noteDescription.trim()) {
-      Alert.alert('Eksik Bilgi', 'Lütfen bir açıklama girin.');
-      return;
-    }
-
-    setNoteSaving(true);
-    try {
-      const res = await createJobSiteNote(token, job.id, {
-        noteType: typeInt,
-        amount: amt,
-        description: noteDescription.trim(),
-      });
-      if (res?.fuelStock !== undefined) {
-        setFuelStock(res.fuelStock);
-      }
-      setNoteAmount('');
-      setNoteDescription('');
-      loadJobNotes();
-      Alert.alert('Başarılı', 'Kayıt başarıyla eklendi.');
-    } catch (err: any) {
-      Alert.alert('Hata', err?.response?.data?.message || 'Kayıt eklenirken bir hata oluştu.');
-    } finally {
-      setNoteSaving(false);
-    }
-  };
-
-  const handleUpdateJobNote = async () => {
-    if (!token || !job?.id || !editingNote) return;
-    const amt = parseFloat(editNoteAmount.replace(',', '.')) || undefined;
-    if (editingNote.noteType !== 0 && (!amt || amt <= 0)) {
-      Alert.alert('Eksik Bilgi', 'Lütfen geçerli bir miktar girin.');
-      return;
-    }
-    if (!editNoteDescription.trim()) {
-      Alert.alert('Eksik Bilgi', 'Lütfen bir açıklama girin.');
-      return;
-    }
-
-    setEditNoteSaving(true);
-    try {
-      const res = await updateJobSiteNote(token, job.id, editingNote.id, {
-        amount: amt,
-        description: editNoteDescription.trim(),
-      });
-      if (res?.fuelStock !== undefined) {
-        setFuelStock(res.fuelStock);
-      }
-      setEditNoteModal(false);
-      setEditingNote(null);
-      loadJobNotes();
-      Alert.alert('Başarılı', 'Not başarıyla güncellendi.');
-    } catch (err: any) {
-      Alert.alert('Hata', err?.response?.data?.message || 'Güncellenirken bir hata oluştu.');
-    } finally {
-      setEditNoteSaving(false);
-    }
-  };
-
-  const handleDeleteJobNote = (noteItem: JobSiteNoteItem) => {
-    Alert.alert('Notu Sil', 'Bu notu/gideri silmek istediğinizden emin misiniz?', [
-      { text: 'İptal', style: 'cancel' },
-      {
-        text: 'Sil',
-        style: 'destructive',
-        onPress: async () => {
-          if (!token || !job?.id) return;
-          try {
-            const res = await deleteJobSiteNote(token, job.id, noteItem.id);
-            if (res?.fuelStock !== undefined) {
-              setFuelStock(res.fuelStock);
-            }
-            loadJobNotes();
-          } catch (err: any) {
-            Alert.alert('Hata', err?.response?.data?.message || 'Silinirken bir hata oluştu.');
-          }
-        },
-      },
-    ]);
-  };
 
   // ── Kamera ile Plaka Okuma Modal
   const [plateScannerVisible, setPlateScannerVisible] = useState(false);
@@ -487,6 +413,18 @@ export default function JobDetails() {
       return;
     }
 
+    // 2b. Döküm fişi (Aztec "12345-..." → 12345): yeni kayıtlarda dumpTicketNo, eski kayıtlarda not alanında
+    const dumpCode = scanned.type === 'SERIAL_OR_RAW' ? extractDumpTicketNo(scanned.raw) : '';
+    if (dumpCode) {
+      const codeLc = dumpCode.toLowerCase();
+      const dumpMatched = hauls.find(h => (h.dumpTicketNo || '').trim().toLowerCase() === codeLc) || (dumpCode.length >= 5 ? hauls.find(h => (h.note || '').toLowerCase().includes(codeLc)) : undefined);
+      if (dumpMatched) {
+        setSelectedHaul(normalizeHaul(dumpMatched));
+        setReceiptVisible(true);
+        return;
+      }
+    }
+
     // 3. Listede yoksa API'den çek
     if (scanned.haulId && token) {
       try {
@@ -512,6 +450,9 @@ export default function JobDetails() {
     // 4. Plaka veya Seri Numarası ile arama kutusunu filtrele
     if (scanned.plateNumber) {
       setPlateFilter(scanned.plateNumber);
+    } else if (dumpCode && dumpCode !== (scanned.raw || '').trim()) {
+      // Aztec döküm fişi → ayıklanan numarayla ara
+      setPlateFilter(dumpCode);
     } else if (scanned.serialNumber) {
       setPlateFilter(scanned.serialNumber);
     } else {
@@ -593,6 +534,7 @@ export default function JobDetails() {
               fuelAmount: pending.fuelAmount,
               dumpLocation: pending.dumpLocation,
               note: pending.note,
+              dumpTicketNo: pending.dumpTicketNo || undefined, // eski kuyruk kayıtlarında yok
               timeOfHaul: pending.timeOfHaul,
               isPrintedReceipt: pending.isPrintedReceipt,
               clientUniqueId: pending.localId,
@@ -691,6 +633,7 @@ export default function JobDetails() {
             tonage: tonageKg,
             dumpLocation,
             note: formNote.trim(),
+            dumpTicketNo: formDumpTicket.trim() || undefined,
             timeOfHaul: timeNow,
             isPrintedReceipt: isPrinted,
             isVisibleToVehicleOwner: showHaulsToOwners,
@@ -726,6 +669,7 @@ export default function JobDetails() {
         fuelAmount,
         dumpLocation,
         note: formNote.trim(),
+        dumpTicketNo: formDumpTicket.trim() || undefined,
         isPrintedReceipt: isPrinted,
         timeOfHaul: timeNow,
         createdAt: timeNow,
@@ -800,6 +744,7 @@ export default function JobDetails() {
             tonage,
             dumpLocation: dumpLoc,
             note: manualNote.trim(),
+            dumpTicketNo: manualDumpTicket.trim() || undefined,
             timeOfHaul: timeNow,
             isPrintedReceipt: isPrinted,
             isVisibleToVehicleOwner: showHaulsToOwners,
@@ -835,6 +780,7 @@ export default function JobDetails() {
         fuelAmount: fuel,
         dumpLocation: dumpLoc,
         note: manualNote.trim(),
+        dumpTicketNo: manualDumpTicket.trim() || undefined,
         isPrintedReceipt: isPrinted,
         timeOfHaul: timeNow,
         createdAt: timeNow,
@@ -993,6 +939,7 @@ export default function JobDetails() {
       createdDate: item.createdAt, // autoSerial bu alanı kullanır
       isVisibleToVehicleOwner: false,
       note: item.note,
+      dumpTicketNo: item.dumpTicketNo, // eski kuyruk kayıtlarında undefined
     };
     setSelectedHaul(normalizeHaul(fakeHaul));
     setTimeout(() => {
@@ -1006,6 +953,8 @@ export default function JobDetails() {
     setSelectedOfferIdx(null);
     setFormTonage('');
     setFormNote('');
+    setFormDumpTicket('');
+    setDumpQrTarget(null);
     setFormDate(todayDDMMYYYY());
   };
 
@@ -1017,6 +966,8 @@ export default function JobDetails() {
     setManualFuel('');
     setManualTonage('');
     setManualNote('');
+    setManualDumpTicket('');
+    setDumpQrTarget(null);
     setManualLoading('');
     setManualUnloading('');
     setManualPricePerTon('');
@@ -1093,15 +1044,10 @@ export default function JobDetails() {
     setDeleteStep1Visible(false);
     try {
       let exportUrl = `https://api.hafriyapp.com/api/Haul/jobsite/${job.id}/export`;
-      if (filterYear !== null) {
-        const year = filterYear;
-        const month = filterMonth ?? 1;
-        const startDate = filterMonth !== null
-          ? `${year}-${String(month).padStart(2, '0')}-01`
-          : `${year}-01-01`;
-        const lastMonth = filterMonth ?? 12;
-        const lastDay = new Date(year, lastMonth, 0).getDate();
-        const endDate = `${year}-${String(lastMonth).padStart(2, '0')}-${lastDay}`;
+      if (ddmmyyyyToKey(rangeStart) !== null && ddmmyyyyToKey(rangeEnd) !== null) {
+        // Ekrandaki tarih aralığı (dahil) — aynı query formatı: YYYY-MM-DD
+        const startDate = ddmmyyyyToYMD(rangeStart);
+        const endDate = ddmmyyyyToYMD(rangeEnd);
         exportUrl = `https://api.hafriyapp.com/api/Haul/jobsite/${job.id}/filtered/export?startDate=${startDate}&endDate=${endDate}`;
       }
       const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' }).fetch('GET', exportUrl, {
@@ -1295,6 +1241,10 @@ export default function JobDetails() {
     const note = (h.note || '').toLowerCase();
     if (offer1.includes(q) || offer2.includes(q) || note.includes(q)) return true;
 
+    // 6b. Döküm Fişi No (yeni alan; eski kayıtlarda not içinde — yukarıda aranıyor)
+    const dumpTicket = String(h.dumpTicketNo || '').toLowerCase().replace(/\s/g, '');
+    if (dumpTicket && dumpTicket.includes(qClean)) return true;
+
     // 7. Tarih ve Saat Eşleşmeleri
     const timeDates = getHaulDateStrings(h.timeOfHaul);
     const createdDates = getHaulDateStrings(h.createdDate);
@@ -1306,44 +1256,67 @@ export default function JobDetails() {
     return false;
   };
 
-  const availableYears = useMemo(() => {
-    const currentYear = new Date().getFullYear();
-    const set = new Set<number>();
-    set.add(currentYear);
-    hauls.forEach(h => {
-      if (h.timeOfHaul) {
-        const y = new Date(h.timeOfHaul).getFullYear();
-        if (!isNaN(y) && y > 2000) set.add(y);
-      }
-    });
-    return Array.from(set).sort((a, b) => b - a);
-  }, [hauls]);
+  // ── Tarih aralığı kontrolü (dahil). Eski yıl/ay filtresiyle aynı şekilde new Date(timeOfHaul) yerel tarihi kullanılır
+  // (listede gösterilen tarih de bu; Türkiye'deki cihazda TR yerel tarihi).
+  const rangeStartKey = ddmmyyyyToKey(rangeStart);
+  const rangeEndKey = ddmmyyyyToKey(rangeEnd);
+  const isInDateRange = (timeOfHaul?: string): boolean => {
+    if (!timeOfHaul) return true;
+    const d = new Date(timeOfHaul);
+    if (isNaN(d.getTime())) return true;
+    const key = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+    if (rangeStartKey !== null && key < rangeStartKey) return false;
+    if (rangeEndKey !== null && key > rangeEndKey) return false;
+    return true;
+  };
 
   const filteredHauls = useMemo(() => {
     const q = plateFilter.trim();
     return hauls.filter(h => {
-      if (h.timeOfHaul) {
-        const d = new Date(h.timeOfHaul);
-        if (filterYear !== null && d.getFullYear() !== filterYear) return false;
-        if (filterMonth !== null && d.getMonth() + 1 !== filterMonth) return false;
-      }
+      if (!isInDateRange(h.timeOfHaul)) return false;
       if (q && !matchesHaulSearch(h, q)) return false;
       return true;
     });
-  }, [hauls, plateFilter, filterYear, filterMonth]);
+  }, [hauls, plateFilter, rangeStartKey, rangeEndKey]);
 
   const filteredPending = useMemo(() => {
     const q = plateFilter.trim();
     return pendingForThisJob.filter(h => {
-      if (h.timeOfHaul) {
-        const d = new Date(h.timeOfHaul);
-        if (filterYear !== null && d.getFullYear() !== filterYear) return false;
-        if (filterMonth !== null && d.getMonth() + 1 !== filterMonth) return false;
-      }
+      if (!isInDateRange(h.timeOfHaul)) return false;
       if (q && !matchesHaulSearch(h, q)) return false;
       return true;
     });
-  }, [pendingForThisJob, plateFilter, filterYear, filterMonth]);
+  }, [pendingForThisJob, plateFilter, rangeStartKey, rangeEndKey]);
+
+  // Tarih seçimi: başlangıç bitişten sonra olamaz (gerekirse diğer ucu eşitle)
+  const handleRangeStartChange = (v: string) => {
+    setRangeStart(v);
+    const s = ddmmyyyyToKey(v);
+    const e = ddmmyyyyToKey(rangeEnd);
+    if (s !== null && e !== null && s > e) setRangeEnd(v);
+  };
+  const handleRangeEndChange = (v: string) => {
+    setRangeEnd(v);
+    const s = ddmmyyyyToKey(rangeStart);
+    const e = ddmmyyyyToKey(v);
+    if (s !== null && e !== null && e < s) setRangeStart(v);
+  };
+
+  // Boş sonuçta "Tüm tarihler": en eski seferden en yeni sefere (veya bugüne) kadar
+  const showAllDates = () => {
+    const now = new Date();
+    let min = now;
+    let max = now;
+    for (const h of [...hauls, ...pendingForThisJob]) {
+      if (!h.timeOfHaul) continue;
+      const d = new Date(h.timeOfHaul);
+      if (isNaN(d.getTime())) continue;
+      if (d < min) min = d;
+      if (d > max) max = d;
+    }
+    setRangeStart(dateToDDMMYYYY(min));
+    setRangeEnd(dateToDDMMYYYY(max));
+  };
 
   // ── Özet çubuğu (filtrelenmiş sonuçlara göre dinamik hesaplanır)
   const renderSummaryCards = () => {
@@ -1442,6 +1415,9 @@ export default function JobDetails() {
     setEditCash(item.cashAmount > 0 ? String(item.cashAmount) : '');
     setEditFuel(item.fuelAmount > 0 ? String(item.fuelAmount) : '');
     setEditNote(item.note || '');
+    // Yeni API alanı; eski API'de yok → boş başlar, yine de yazılabilir
+    setEditDumpTicket(item.dumpTicketNo || '');
+    setDumpQrTarget(null);
     setEditHaulModalVisible(true);
   };
 
@@ -1451,9 +1427,13 @@ export default function JobDetails() {
     try {
       const isOfflineItem = pendingQueue.some(q => q.localId === editingHaul.id || `local_${q.localId}` === editingHaul.id);
       const isOnlyNoteEdit = editingHaul.isPaid || !isOwner;
+      // Döküm fişi: sadece değiştiyse gönderilir ('' = temizle); eski API bilinmeyen alanı yok sayar
+      const newDumpTicket = editDumpTicket.trim();
+      const dumpTicketChanged = newDumpTicket !== (editingHaul.dumpTicketNo || '').trim();
+      const dumpTicketParam = dumpTicketChanged ? newDumpTicket : undefined;
 
       if (isOfflineItem) {
-        dispatch(updatePendingHaul({ id: editingHaul.id, changes: { note: editNote.trim() || undefined } }));
+        dispatch(updatePendingHaul({ id: editingHaul.id, changes: { note: editNote.trim() || undefined, dumpTicketNo: newDumpTicket || undefined } }));
         setEditHaulModalVisible(false);
         Alert.alert('Başarılı', 'Çevrimdışı fiş notu güncellendi.');
         return;
@@ -1465,6 +1445,7 @@ export default function JobDetails() {
           editingHaul.id,
           {
             note: editNote.trim() || undefined,
+            dumpTicketNo: dumpTicketParam,
           },
           token!,
         );
@@ -1483,6 +1464,7 @@ export default function JobDetails() {
             cashAmount: parseFloat(editCash.replace(',', '.')) || 0,
             fuelAmount: parseFloat(editFuel.replace(',', '.')) || 0,
             note: editNote.trim() || undefined,
+            dumpTicketNo: dumpTicketParam,
           },
           token!,
         );
@@ -1563,6 +1545,7 @@ export default function JobDetails() {
   // ── Sefer kartı
   const renderHaulItem = (item: HaulApi) => {
     const material = getMaterialFromDumpLocation(item.dumpLocation || '');
+    const dumpLine = formatDumpLine(item); // yeni API alanı yoksa null → bugünkü görünüm
     return (
       <TouchableOpacity
         key={item.id}
@@ -1597,6 +1580,11 @@ export default function JobDetails() {
                 <Text style={styles.updatedBadgeText}>✏️ Düzenlendi</Text>
               </View>
             )}
+            {dumpLine?.status === 'plateMismatch' && (
+              <View style={styles.dumpMismatchBadge}>
+                <Text style={styles.dumpMismatchBadgeText}>⚠ Plaka</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -1611,6 +1599,21 @@ export default function JobDetails() {
                 </View>
               )}
             </View>
+            {!!item.dumpTicketNo && (
+              <Text style={styles.haulDumpTicketText} numberOfLines={1}>
+                Döküm Fişi: {item.dumpTicketNo}
+              </Text>
+            )}
+            {!!dumpLine && (
+              <Text style={[styles.haulDumpStatusText, dumpLine.status === 'plateMismatch' ? styles.haulDumpStatusMismatch : dumpLine.status === 'waiting' ? styles.haulDumpStatusWaiting : styles.haulDumpStatusMatched]} numberOfLines={1}>
+                {dumpLine.text}
+              </Text>
+            )}
+            {!!dumpLine?.amountsText && (
+              <Text style={[styles.haulDumpStatusText, styles.haulDumpStatusMatched]} numberOfLines={1}>
+                {dumpLine.amountsText}
+              </Text>
+            )}
           </View>
           <View style={{ alignItems: 'flex-end', gap: 4 }}>
             {item.tonage > 0 && <Text style={styles.haulTonage}>{isKum ? `${item.tonage.toLocaleString('tr-TR')} kg` : `${(item.tonage / 1000).toFixed(2)} t`}</Text>}
@@ -1682,22 +1685,11 @@ export default function JobDetails() {
               </TouchableOpacity>
             )}
 
-            {/* Liste başlığı + butonlar */}
+            {/* Liste başlığı + butonlar: solda İş Notları, sağda Manuel + Sefer Gir (yenileme: aşağı çek) */}
             <View style={styles.listHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
-                <TouchableOpacity
-                  style={styles.jobNotesBtn}
-                  onPress={() => {
-                    loadJobNotes();
-                    setJobNotesModal(true);
-                  }}
-                  activeOpacity={0.8}>
-                  <Text style={styles.jobNotesBtnText}>📝 İş Notları</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.refreshIconBtn} onPress={onRefresh} disabled={refreshing}>
-                  <Text style={styles.refreshIconText}>{refreshing ? '⏳' : '🔄'}</Text>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity style={styles.jobNotesBtn} onPress={() => setJobNotesModal(true)} activeOpacity={0.8}>
+                <Text style={styles.jobNotesBtnText}>📝 İş Notları</Text>
+              </TouchableOpacity>
               <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexShrink: 0 }}>
                 <TouchableOpacity
                   style={styles.manualBtn}
@@ -1727,82 +1719,33 @@ export default function JobDetails() {
               </View>
             )}
 
-            {/* Arama ve QR Satırı */}
-            {(hauls.length > 0 || plateFilter.length > 0 || filterYear !== null || filterMonth !== null) && (
-              <>
-                <View style={styles.searchRow}>
-                  <View style={styles.searchBox}>
-                    <Text style={styles.searchIcon}>🔍</Text>
-                    <TextInput
-                      style={styles.searchInput}
-                      placeholder="Plaka, seri no, döküm yeri, tarih..."
-                      placeholderTextColor="#aaa"
-                      value={plateFilter}
-                      onChangeText={setPlateFilter}
-                      autoCapitalize="none"
-                    />
-                    {plateFilter.length > 0 && (
-                      <TouchableOpacity onPress={() => setPlateFilter('')}>
-                        <Text style={styles.searchClear}>✕</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                  <TouchableOpacity style={styles.qrScanBtn} onPress={() => setQrModalVisible(true)} activeOpacity={0.8}>
-                    <Text style={styles.qrScanBtnText}>📷 QR</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Yıl / Ay filtresi */}
-                <View style={styles.dateFilterRow}>
-                  <TouchableOpacity
-                    style={[styles.dateFilterBtn, filterYear !== null && styles.dateFilterBtnActive]}
-                    onPress={() => setYearPickerVisible(true)}>
-                    <Text style={[styles.dateFilterBtnText, filterYear !== null && styles.dateFilterBtnTextActive]}>
-                      📅 {filterYear !== null ? String(filterYear) : 'Yıl'}
-                    </Text>
-                    {filterYear !== null && (
-                      <TouchableOpacity
-                        onPress={() => {
-                          setFilterYear(null);
-                          setFilterMonth(null);
-                        }}
-                        style={styles.dateFilterClear}>
-                        <Text style={styles.dateFilterClearText}>✕</Text>
-                      </TouchableOpacity>
-                    )}
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.dateFilterBtn, filterMonth !== null && styles.dateFilterBtnActive]}
-                    onPress={() => {
-                      setMonthPickerVisible(true);
-                    }}>
-                    <Text style={[styles.dateFilterBtnText, filterMonth !== null && styles.dateFilterBtnTextActive]}>
-                      🗓 {filterMonth !== null ? TR_MONTHS[filterMonth - 1] : 'Ay'}
-                    </Text>
-                    {filterMonth !== null && (
-                      <TouchableOpacity
-                        onPress={() => setFilterMonth(null)}
-                        style={styles.dateFilterClear}>
-                        <Text style={styles.dateFilterClearText}>✕</Text>
-                      </TouchableOpacity>
-                    )}
-                  </TouchableOpacity>
-
-                  {(plateFilter.length > 0 || filterYear !== null || filterMonth !== null) ? (
-                    <TouchableOpacity
-                      style={styles.dateFilterResetBtn}
-                      onPress={() => {
-                        setFilterYear(null);
-                        setFilterMonth(null);
-                        setPlateFilter('');
-                      }}>
-                      <Text style={styles.dateFilterResetText}>Temizle</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              </>
-            )}
+            {/* Arama çubuğu: QR tara + arama + tarih aralığı (başlangıç ▸ bitiş). Her zaman görünür (eskiden de varsayılan yıl/ay filtresiyle hep görünüyordu) */}
+            <View style={styles.searchBar}>
+              <TouchableOpacity style={styles.searchBarQrBtn} onPress={() => setQrModalVisible(true)} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityLabel="Fiş QR tara">
+                <QrScanIcon size={20} color="#333" />
+              </TouchableOpacity>
+              <TextInput style={styles.searchBarInput} placeholder="Plaka, döküm, seri no…" placeholderTextColor="#aaa" value={plateFilter} onChangeText={setPlateFilter} autoCapitalize="none" autoCorrect={false} />
+              {plateFilter.length > 0 && (
+                <TouchableOpacity onPress={() => setPlateFilter('')} hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}>
+                  <Text style={styles.searchClear}>✕</Text>
+                </TouchableOpacity>
+              )}
+              <View style={styles.searchBarDates}>
+                <CalendarDateButton value={rangeStart} onChange={handleRangeStartChange} title="Başlangıç Tarihi" active={!isDefaultRange} />
+                <Text style={styles.searchBarDateArrow}>▸</Text>
+                <CalendarDateButton value={rangeEnd} onChange={handleRangeEndChange} title="Bitiş Tarihi" active={!isDefaultRange} />
+              </View>
+            </View>
+            <View style={styles.dateRangeInfoRow}>
+              <Text style={[styles.dateRangeInfoText, !isDefaultRange && styles.dateRangeInfoTextActive]}>
+                {rangeStart} – {rangeEnd}
+              </Text>
+              {!isDefaultRange && (
+                <TouchableOpacity onPress={resetDateRange} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Tarih aralığını sıfırla">
+                  <Text style={styles.dateRangeInfoClear}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
             {loading && <ActivityIndicator size="large" color={YELLOW} style={{ marginTop: 20 }} />}
           </View>
@@ -1818,22 +1761,15 @@ export default function JobDetails() {
               ) : filteredHauls.length === 0 && filteredPending.length === 0 ? (
                 <View style={styles.emptyBox}>
                   <Text style={{ fontSize: 32 }}>🔍</Text>
-                  <Text style={styles.emptyText}>
-                    {filterYear !== null || filterMonth !== null
-                      ? 'Seçili tarih aralığında sefer bulunamadı.'
-                      : `"${plateFilter}" için sonuç bulunamadı.`}
-                  </Text>
-                  {(filterYear !== null || filterMonth !== null || plateFilter.length > 0) && (
-                    <TouchableOpacity
-                      style={[styles.dateFilterResetBtn, { marginTop: 12, alignSelf: 'center' }]}
-                      onPress={() => {
-                        setFilterYear(null);
-                        setFilterMonth(null);
-                        setPlateFilter('');
-                      }}>
-                      <Text style={styles.dateFilterResetText}>Filtreleri Temizle (Tümünü Göster)</Text>
-                    </TouchableOpacity>
-                  )}
+                  <Text style={styles.emptyText}>{plateFilter.trim() ? `"${plateFilter}" için seçili tarih aralığında sonuç bulunamadı.` : 'Seçili tarih aralığında sefer bulunamadı.'}</Text>
+                  <TouchableOpacity
+                    style={[styles.dateFilterResetBtn, { marginTop: 12, alignSelf: 'center' }]}
+                    onPress={() => {
+                      showAllDates();
+                      setPlateFilter('');
+                    }}>
+                    <Text style={styles.dateFilterResetText}>Filtreleri Temizle (Tümünü Göster)</Text>
+                  </TouchableOpacity>
                 </View>
               ) : null}
             </View>
@@ -1862,17 +1798,21 @@ export default function JobDetails() {
                       <Text style={styles.fieldLabel}>
                         Plaka Numarası <Text style={styles.req}>*</Text>
                       </Text>
+                    </View>
+                    <View style={styles.plateInputWrap}>
+                      <TextInput value={formPlate} onChangeText={t => setFormPlate(t.toUpperCase())} style={[styles.plateInput, styles.plateInputWithIcon]} placeholder="34 ABC 123" autoCapitalize="characters" maxLength={14} />
                       <TouchableOpacity
-                        style={styles.plateScanBtn}
+                        style={styles.plateInputCamBtn}
                         onPress={() => {
                           setPlateTarget('form');
                           setPlateScannerVisible(true);
                         }}
-                        activeOpacity={0.8}>
-                        <Text style={styles.plateScanBtnText}>📷 Plaka Tara</Text>
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        accessibilityLabel="Plaka tara">
+                        <CameraIcon size={22} color="#333" />
                       </TouchableOpacity>
                     </View>
-                    <TextInput value={formPlate} onChangeText={t => setFormPlate(t.toUpperCase())} style={styles.plateInput} placeholder="34 ABC 123" autoCapitalize="characters" maxLength={14} />
                     {recentPlates.length > 0 &&
                       (() => {
                         const filtered = formPlate.trim() ? recentPlates.filter(p => p.includes(formPlate.trim().toUpperCase())) : recentPlates;
@@ -1950,26 +1890,12 @@ export default function JobDetails() {
                       </>
                     )}
 
-                    {/* Not & Döküm Fişi */}
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 4 }}>
-                      <Text style={styles.fieldLabel}>
-                        Opsiyonel <Text style={styles.optional}>(Döküm Fişi / Not)</Text>
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.dumpScanBtn}
-                        onPress={() => setDumpQrScannerVisible(true)}
-                        activeOpacity={0.8}>
-                        <Text style={styles.dumpScanBtnText}>📷 Fiş QR Tara</Text>
-                      </TouchableOpacity>
+                    {/* Not + Döküm Fişi (sağda kompakt alan + tarama) */}
+                    <View style={styles.noteLabelRow}>
+                      <Text style={styles.fieldLabel}>Opsiyonel Not</Text>
+                      <DumpTicketInput value={formDumpTicket} onChangeText={setFormDumpTicket} onScanPress={() => setDumpQrTarget('form')} />
                     </View>
-                    <TextInput
-                      value={formNote}
-                      onChangeText={setFormNote}
-                      style={styles.noteInput}
-                      placeholder="Örn: Döküm Fişi No / QR, Not"
-                      maxLength={250}
-                      multiline
-                    />
+                    <TextInput value={formNote} onChangeText={setFormNote} style={styles.noteInput} placeholder="Örn: Not" maxLength={250} multiline />
                   </View>
 
                   {/* Footer butonları */}
@@ -1994,21 +1920,7 @@ export default function JobDetails() {
           onClose={() => setPlateScannerVisible(false)}
           onPlateDetected={handlePlateDetected}
         />
-        <QRScannerModal
-          visible={dumpQrScannerVisible}
-          inlineOverlay={true}
-          onClose={() => setDumpQrScannerVisible(false)}
-          onScan={data => {
-            let codeVal = data.raw?.trim() || '';
-            const aztecMatch = codeVal.match(/^(\d{5,})-/);
-            if (aztecMatch) {
-              codeVal = aztecMatch[1];
-            }
-            setFormNote(codeVal);
-            setDumpQrScannerVisible(false);
-          }}
-          title="Döküm Fişi Barkod/QR Okutun"
-        />
+        <QRScannerModal visible={dumpQrTarget === 'form'} inlineOverlay={true} onClose={() => setDumpQrTarget(null)} onScan={handleDumpTicketScanned} title="Döküm Fişi Barkod/QR Okutun" />
       </Modal>
 
       {/* ═══════════════ MANUEL EKLE MODAL ═══════════════ */}
@@ -2032,17 +1944,21 @@ export default function JobDetails() {
                       <Text style={styles.fieldLabel}>
                         Plaka Numarası <Text style={styles.req}>*</Text>
                       </Text>
+                    </View>
+                    <View style={styles.plateInputWrap}>
+                      <TextInput value={manualPlate} onChangeText={t => setManualPlate(t.toUpperCase())} style={[styles.plateInput, styles.plateInputWithIcon]} placeholder="34 ABC 123" autoCapitalize="characters" maxLength={14} />
                       <TouchableOpacity
-                        style={styles.plateScanBtn}
+                        style={styles.plateInputCamBtn}
                         onPress={() => {
                           setPlateTarget('manual');
                           setPlateScannerVisible(true);
                         }}
-                        activeOpacity={0.8}>
-                        <Text style={styles.plateScanBtnText}>📷 Plaka Tara</Text>
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        accessibilityLabel="Plaka tara">
+                        <CameraIcon size={22} color="#333" />
                       </TouchableOpacity>
                     </View>
-                    <TextInput value={manualPlate} onChangeText={t => setManualPlate(t.toUpperCase())} style={styles.plateInput} placeholder="34 ABC 123" autoCapitalize="characters" maxLength={14} />
 
                     {/* Tarih ve Saat Seçimi (Yalnızca Firma Sahibi) */}
                     {isOwner && (
@@ -2121,10 +2037,11 @@ export default function JobDetails() {
                       </>
                     )}
 
-                    {/* Not */}
-                    <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
-                      Not <Text style={styles.optional}>(Opsiyonel)</Text>
-                    </Text>
+                    {/* Not + Döküm Fişi */}
+                    <View style={[styles.noteLabelRow, { marginTop: 14 }]}>
+                      <Text style={styles.fieldLabel}>Opsiyonel Not</Text>
+                      <DumpTicketInput value={manualDumpTicket} onChangeText={setManualDumpTicket} onScanPress={() => setDumpQrTarget('manual')} />
+                    </View>
                     <TextInput value={manualNote} onChangeText={setManualNote} style={styles.noteInput} placeholder="Örn: İrsaliye No, Açıklama" maxLength={250} multiline />
                   </View>
 
@@ -2155,6 +2072,7 @@ export default function JobDetails() {
           onClose={() => setPlateScannerVisible(false)}
           onPlateDetected={handlePlateDetected}
         />
+        <QRScannerModal visible={dumpQrTarget === 'manual'} inlineOverlay={true} onClose={() => setDumpQrTarget(null)} onScan={handleDumpTicketScanned} title="Döküm Fişi Barkod/QR Okutun" />
       </Modal>
 
       {/* ═══════════════ SEFER DÜZENLE MODAL ═══════════════ */}
@@ -2198,27 +2116,31 @@ export default function JobDetails() {
                       <Text style={styles.fieldLabel}>
                         Plaka Numarası <Text style={styles.req}>*</Text>
                       </Text>
+                    </View>
+                    <View style={styles.plateInputWrap}>
+                      <TextInput
+                        value={editPlate}
+                        onChangeText={t => setEditPlate(t.toUpperCase())}
+                        style={[styles.plateInput, !editingHaul?.isPaid && isOwner && styles.plateInputWithIcon, (editingHaul?.isPaid || !isOwner) && { opacity: 0.5, backgroundColor: '#f0f0f0' }]}
+                        placeholder="34 ABC 123"
+                        autoCapitalize="characters"
+                        maxLength={14}
+                        editable={!editingHaul?.isPaid && isOwner}
+                      />
                       {!editingHaul?.isPaid && isOwner && (
                         <TouchableOpacity
-                          style={styles.plateScanBtn}
+                          style={styles.plateInputCamBtn}
                           onPress={() => {
                             setPlateTarget('edit');
                             setPlateScannerVisible(true);
                           }}
-                          activeOpacity={0.8}>
-                          <Text style={styles.plateScanBtnText}>📷 Plaka Tara</Text>
+                          activeOpacity={0.7}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          accessibilityLabel="Plaka tara">
+                          <CameraIcon size={22} color="#333" />
                         </TouchableOpacity>
                       )}
                     </View>
-                    <TextInput
-                      value={editPlate}
-                      onChangeText={t => setEditPlate(t.toUpperCase())}
-                      style={[styles.plateInput, (editingHaul?.isPaid || !isOwner) && { opacity: 0.5, backgroundColor: '#f0f0f0' }]}
-                      placeholder="34 ABC 123"
-                      autoCapitalize="characters"
-                      maxLength={14}
-                      editable={!editingHaul?.isPaid && isOwner}
-                    />
 
                     {/* Rota / Döküm Yeri */}
                     <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
@@ -2260,10 +2182,13 @@ export default function JobDetails() {
                       </View>
                     )}
 
-                    {/* Not */}
-                    <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
-                      Not <Text style={styles.optional}>(Opsiyonel)</Text>
-                    </Text>
+                    {/* Not + Döküm Fişi (not gibi her durumda düzenlenebilir) */}
+                    <View style={[styles.noteLabelRow, { marginTop: 14 }]}>
+                      <Text style={styles.fieldLabel}>
+                        Not <Text style={styles.optional}>(Opsiyonel)</Text>
+                      </Text>
+                      <DumpTicketInput value={editDumpTicket} onChangeText={setEditDumpTicket} onScanPress={() => setDumpQrTarget('edit')} />
+                    </View>
                     <TextInput
                       value={editNote}
                       onChangeText={setEditNote}
@@ -2304,6 +2229,7 @@ export default function JobDetails() {
           onClose={() => setPlateScannerVisible(false)}
           onPlateDetected={handlePlateDetected}
         />
+        <QRScannerModal visible={dumpQrTarget === 'edit'} inlineOverlay={true} onClose={() => setDumpQrTarget(null)} onScan={handleDumpTicketScanned} title="Döküm Fişi Barkod/QR Okutun" />
       </Modal>
 
       {/* ═══════════════ DÜZENLE MODAL ═══════════════ */}
@@ -2503,6 +2429,23 @@ export default function JobDetails() {
                         <Text style={styles.receiptRowValue}>{selectedHaul.dumpLocation || '-'}</Text>
                       </View>
 
+                      {!!selectedHaul.dumpTicketNo && (
+                        <View style={styles.receiptRow}>
+                          <Text style={styles.receiptRowLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                            Döküm Fişi :
+                          </Text>
+                          <Text style={styles.receiptRowValue}>{selectedHaul.dumpTicketNo}</Text>
+                        </View>
+                      )}
+
+                      {/* Döküm sahası Excel eşleşmesi — sadece ekrandaki fiş (yazdırılan fiş sabit boyutlu, eklenmez) */}
+                      {!!formatDumpReceiptValue(selectedHaul) && (
+                        <View style={styles.receiptRow}>
+                          <Text style={styles.receiptRowLabel}>Kantar :</Text>
+                          <Text style={[styles.receiptRowValue, selectedHaul.dumpStatus === 'plateMismatch' && styles.receiptDumpMismatchValue]}>{formatDumpReceiptValue(selectedHaul)}</Text>
+                        </View>
+                      )}
+
                       {selectedHaul.tonage > 0 && (
                         <View style={styles.receiptRow}>
                           <Text style={styles.receiptRowLabel}>Tonaj :</Text>
@@ -2601,6 +2544,7 @@ export default function JobDetails() {
             { label: 'Plaka :', value: ph.plateNumber },
             { label: 'Şoför :', value: ph.driverName && ph.driverPhone && ph.driverName !== ph.driverPhone ? `${ph.driverName} - ${ph.driverPhone}` : ph.driverName || ph.driverPhone || '-' },
             { label: 'Döküm :', value: ph.dumpLocation || '-' },
+            ...(ph.dumpTicketNo ? [{ label: 'Döküm Fişi :', value: ph.dumpTicketNo }] : []),
             { label: 'Ücret :', value: ucretStr },
             { label: 'Yetkili :', value: getAuthorizedContact(ph) },
           ];
@@ -2699,7 +2643,7 @@ export default function JobDetails() {
                         <View
                           key={label}
                           style={{
-                            minHeight: 36,
+                            minHeight: rows.length > 7 ? 32 : 36, // döküm fişi satırı eklenince sığması için
                             flexDirection: 'row',
                             alignItems: 'flex-end',
                             borderBottomWidth: 1.2,
@@ -2707,7 +2651,7 @@ export default function JobDetails() {
                             borderColor: '#000',
                             paddingBottom: 2,
                           }}>
-                          <Text style={{ color: '#222', fontWeight: '700', width: 108, fontSize: 18 }}>{label}</Text>
+                          <Text style={{ color: '#222', fontWeight: '700', width: rows.length > 7 ? 124 : 108, fontSize: rows.length > 7 ? 17 : 18 }}>{label}</Text>
                           <Text numberOfLines={1} style={{ fontWeight: '700', color: '#000', fontSize: 18, flex: 1 }}>
                             {value}
                           </Text>
@@ -2880,310 +2824,8 @@ export default function JobDetails() {
         title="Şantiye Sefer Fişi Okutun"
       />
 
-      {/* ── İş Notları & Giderler Modalı ── */}
-      <Modal visible={jobNotesModal} animationType="slide" transparent onRequestClose={() => setJobNotesModal(false)}>
-        <SafeAreaView style={styles.notesModalOverlay}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-            <View style={styles.notesModalContainer}>
-              {/* Header */}
-              <View style={styles.notesModalHeader}>
-                <View>
-                  <Text style={styles.notesModalTitle}>📝 İş Notları & Giderler</Text>
-                  <Text style={styles.notesModalSubTitle}>{job?.name || 'Şantiye'}</Text>
-                </View>
-                <TouchableOpacity style={styles.notesModalCloseBtn} onPress={() => setJobNotesModal(false)}>
-                  <Text style={styles.notesModalCloseText}>✕</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Tanker & Stok Bilgi Çubuğu */}
-              <View style={styles.notesSummaryBar}>
-                <View style={styles.notesSummaryItem}>
-                  <Text style={styles.notesSummaryLabel}>⛽ Tanker Stok</Text>
-                  <Text style={[styles.notesSummaryVal, { color: '#E65100' }]}>{fuelStock.toLocaleString('tr-TR')} Lt</Text>
-                </View>
-                <View style={styles.notesSummaryItem}>
-                  <Text style={styles.notesSummaryLabel}>📋 Toplam Kayıt</Text>
-                  <Text style={styles.notesSummaryVal}>{jobNotes.length} adet</Text>
-                </View>
-              </View>
-
-              {/* Tab Seçimi: Mazot Ver | Gider Ekle | Not Ekle */}
-              <View style={styles.notesTabRow}>
-                <TouchableOpacity
-                  style={[styles.notesTabBtn, noteTab === 'fuel' && styles.notesTabBtnActiveFuel]}
-                  onPress={() => setNoteTab('fuel')}>
-                  <Text style={[styles.notesTabBtnText, noteTab === 'fuel' && styles.notesTabBtnTextActive]}>⛽ Mazot Ver</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.notesTabBtn, noteTab === 'expense' && styles.notesTabBtnActiveExpense]}
-                  onPress={() => setNoteTab('expense')}>
-                  <Text style={[styles.notesTabBtnText, noteTab === 'expense' && styles.notesTabBtnTextActive]}>💵 Gider Ekle</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.notesTabBtn, noteTab === 'note' && styles.notesTabBtnActiveNote]}
-                  onPress={() => setNoteTab('note')}>
-                  <Text style={[styles.notesTabBtnText, noteTab === 'note' && styles.notesTabBtnTextActive]}>📝 Not Ekle</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Form Alanı */}
-              <View style={styles.noteFormBox}>
-                {noteTab !== 'note' && (
-                  <View style={{ marginBottom: 8 }}>
-                    <Text style={styles.noteInputLabel}>{noteTab === 'fuel' ? 'Verilen Mazot Miktarı (Litre) *' : 'Gider Tutarı (TL) *'}</Text>
-                    <TextInput
-                      value={noteAmount}
-                      onChangeText={setNoteAmount}
-                      keyboardType="numeric"
-                      placeholder={noteTab === 'fuel' ? 'Örn: 150' : 'Örn: 2500'}
-                      style={styles.noteAmountInput}
-                    />
-                  </View>
-                )}
-                <Text style={styles.noteInputLabel}>
-                  {noteTab === 'fuel' ? 'Açıklama / Kime / Hangi Araca Verildi *' : noteTab === 'expense' ? 'Gider Açıklaması / Detay *' : 'İşe Dair Not *'}
-                </Text>
-                <TextInput
-                  value={noteDescription}
-                  onChangeText={setNoteDescription}
-                  placeholder={noteTab === 'fuel' ? 'Örn: 34 ABC 123 plakalı ekskavatöre verildi' : noteTab === 'expense' ? 'Örn: Şantiye yemek/su masrafı' : 'Örn: Yarın sabah 08:00 kepçe gelecek'}
-                  multiline
-                  style={styles.noteDescInput}
-                />
-                <TouchableOpacity
-                  style={[styles.noteSaveBtn, noteSaving && { opacity: 0.6 }]}
-                  onPress={handleCreateJobNote}
-                  disabled={noteSaving}>
-                  <Text style={styles.noteSaveBtnText}>{noteSaving ? 'Kaydediliyor...' : '💾 Kaydet'}</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Kayıtlar Listesi */}
-              <Text style={styles.notesListHeader}>Geçmiş Kayıtlar</Text>
-              {jobNotesLoading ? (
-                <View style={{ padding: 20, alignItems: 'center' }}>
-                  <ActivityIndicator size="small" color="#1A237E" />
-                </View>
-              ) : jobNotes.length === 0 ? (
-                <View style={styles.notesEmptyBox}>
-                  <Text style={styles.notesEmptyText}>Henüz eklenmiş not veya gider bulunmuyor.</Text>
-                </View>
-              ) : (
-                <FlatList
-                  data={jobNotes}
-                  keyExtractor={item => item.id}
-                  keyboardShouldPersistTaps="handled"
-                  contentContainerStyle={{ paddingBottom: 24 }}
-                  renderItem={({ item }) => (
-                    <View style={styles.noteCard}>
-                      <View style={styles.noteCardTop}>
-                        <View
-                          style={[
-                            styles.noteBadge,
-                            item.noteType === 1
-                              ? { backgroundColor: '#FFF3E0' }
-                              : item.noteType === 2
-                              ? { backgroundColor: '#E8F5E9' }
-                              : { backgroundColor: '#E3F2FD' },
-                          ]}>
-                          <Text
-                            style={[
-                              styles.noteBadgeText,
-                              item.noteType === 1
-                                ? { color: '#E65100' }
-                                : item.noteType === 2
-                                ? { color: '#2E7D32' }
-                                : { color: '#1565C0' },
-                            ]}>
-                            {item.noteType === 1
-                              ? `⛽ Mazot: ${item.amount ?? 0} Lt`
-                              : item.noteType === 2
-                              ? `💵 Gider: ${(item.amount ?? 0).toLocaleString('tr-TR')} ₺`
-                              : '📝 Not'}
-                          </Text>
-                        </View>
-                        <Text style={styles.noteDateText}>
-                          {item.createdDate ? new Date(item.createdDate).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
-                        </Text>
-                      </View>
-                      <Text style={styles.noteDescText}>{item.description}</Text>
-                      <View style={styles.noteCardBottom}>
-                        <Text style={styles.noteUserText}>👤 {item.userName || 'Bilinmiyor'}</Text>
-                        {isOwner && (
-                          <View style={{ flexDirection: 'row', gap: 10 }}>
-                            <TouchableOpacity
-                              onPress={() => {
-                                setEditingNote(item);
-                                setEditNoteAmount(item.amount ? String(item.amount) : '');
-                                setEditNoteDescription(item.description || '');
-                                setEditNoteModal(true);
-                              }}>
-                              <Text style={styles.noteActionEdit}>✏️ Düzenle</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => handleDeleteJobNote(item)}>
-                              <Text style={styles.noteActionDelete}>🗑️ Sil</Text>
-                            </TouchableOpacity>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                  )}
-                />
-              )}
-            </View>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
-
-      {/* ── Not Düzenleme Modalı (Sadece Sahip) ── */}
-      <Modal visible={editNoteModal} animationType="fade" transparent onRequestClose={() => setEditNoteModal(false)}>
-        <TouchableWithoutFeedback onPress={() => setEditNoteModal(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={[styles.addCard, { maxWidth: 360 }]}>
-                <View style={[styles.addCardHeader, { backgroundColor: '#1A237E' }]}>
-                  <Text style={styles.addCardHeaderText}>✏️ Kaydı Düzenle</Text>
-                </View>
-                <View style={styles.addCardBody}>
-                  {editingNote?.noteType !== 0 && (
-                    <>
-                      <Text style={styles.fieldLabel}>Miktar / Tutar</Text>
-                      <TextInput
-                        value={editNoteAmount}
-                        onChangeText={setEditNoteAmount}
-                        keyboardType="numeric"
-                        style={styles.textInput}
-                      />
-                    </>
-                  )}
-                  <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Açıklama</Text>
-                  <TextInput
-                    value={editNoteDescription}
-                    onChangeText={setEditNoteDescription}
-                    multiline
-                    style={[styles.textInput, { minHeight: 70, textAlignVertical: 'top' }]}
-                  />
-                  <View style={[styles.addCardFooter, { marginTop: 14 }]}>
-                    <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditNoteModal(false)}>
-                      <Text style={styles.cancelBtnText}>İptal</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.manualSaveBtn, { backgroundColor: '#1A237E' }, editNoteSaving && { opacity: 0.5 }]}
-                      onPress={handleUpdateJobNote}
-                      disabled={editNoteSaving}>
-                      <Text style={styles.manualSaveBtnText}>{editNoteSaving ? 'Kaydediliyor...' : 'Kaydet'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      {/* ================= YIL SEÇİCİ ================= */}
-      <Modal visible={yearPickerVisible} transparent animationType="slide">
-        <TouchableWithoutFeedback onPress={() => setYearPickerVisible(false)}>
-          <View style={styles.pickerOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.pickerContainer}>
-                <View style={styles.pickerHeader}>
-                  <Text style={styles.pickerHeaderText}>Yıl Seçin</Text>
-                  <TouchableOpacity onPress={() => setYearPickerVisible(false)}>
-                    <Text style={styles.pickerHeaderClose}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-                <TouchableOpacity
-                  style={[styles.pickerItem, filterYear === null && styles.pickerItemActive]}
-                  onPress={() => {
-                    setFilterYear(null);
-                    setFilterMonth(null);
-                    setYearPickerVisible(false);
-                  }}>
-                  <Text style={[styles.pickerItemText, filterYear === null && styles.pickerItemTextActive]}>
-                    Tüm Yıllar
-                  </Text>
-                  {filterYear === null && <Text style={{ color: '#1976D2', fontWeight: '800' }}>✔</Text>}
-                </TouchableOpacity>
-                <View style={styles.pickerSeparator} />
-                <FlatList
-                  data={availableYears}
-                  keyExtractor={y => String(y)}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={[styles.pickerItem, filterYear === item && styles.pickerItemActive]}
-                      onPress={() => {
-                        setFilterYear(item);
-                        setFilterMonth(null);
-                        setYearPickerVisible(false);
-                      }}>
-                      <Text style={[styles.pickerItemText, filterYear === item && styles.pickerItemTextActive]}>
-                        {item}
-                      </Text>
-                      {filterYear === item && <Text style={{ color: '#1976D2', fontWeight: '800' }}>✔</Text>}
-                    </TouchableOpacity>
-                  )}
-                  ItemSeparatorComponent={() => <View style={styles.pickerSeparator} />}
-                />
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      {/* ================= AY SEÇİCİ ================= */}
-      <Modal visible={monthPickerVisible} transparent animationType="slide">
-        <TouchableWithoutFeedback onPress={() => setMonthPickerVisible(false)}>
-          <View style={styles.pickerOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.pickerContainer}>
-                <View style={styles.pickerHeader}>
-                  <Text style={styles.pickerHeaderText}>
-                    Ay Seçin {filterYear !== null ? `— ${filterYear}` : ''}
-                  </Text>
-                  <TouchableOpacity onPress={() => setMonthPickerVisible(false)}>
-                    <Text style={styles.pickerHeaderClose}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-                <TouchableOpacity
-                  style={[styles.pickerItem, filterMonth === null && styles.pickerItemActive]}
-                  onPress={() => {
-                    setFilterMonth(null);
-                    setMonthPickerVisible(false);
-                  }}>
-                  <Text style={[styles.pickerItemText, filterMonth === null && styles.pickerItemTextActive]}>
-                    Tüm Aylar
-                  </Text>
-                  {filterMonth === null && <Text style={{ color: '#1976D2', fontWeight: '800' }}>✔</Text>}
-                </TouchableOpacity>
-                <View style={styles.pickerSeparator} />
-                <FlatList
-                  data={TR_MONTHS.map((name, i) => ({ name, month: i + 1 }))}
-                  keyExtractor={m => String(m.month)}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={[styles.pickerItem, filterMonth === item.month && styles.pickerItemActive]}
-                      onPress={() => {
-                        if (filterYear === null) {
-                          setFilterYear(new Date().getFullYear());
-                        }
-                        setFilterMonth(item.month);
-                        setMonthPickerVisible(false);
-                      }}>
-                      <Text style={[styles.pickerItemText, filterMonth === item.month && styles.pickerItemTextActive]}>
-                        {item.name}
-                      </Text>
-                      {filterMonth === item.month && <Text style={{ color: '#1976D2', fontWeight: '800' }}>✔</Text>}
-                    </TouchableOpacity>
-                  )}
-                  ItemSeparatorComponent={() => <View style={styles.pickerSeparator} />}
-                />
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+      {/* ── İş Notları & Giderler (tek modal; düzenleme de bu modalın içinde) ── */}
+      <JobNotesModal visible={jobNotesModal} onClose={() => setJobNotesModal(false)} jobSiteId={job?.id} token={token} jobName={job?.name} fallbackCanManage={isOwner} onFuelStockChange={setFuelStock} />
     </SafeAreaView>
   );
 }
@@ -3259,8 +2901,6 @@ const styles = StyleSheet.create({
     rowGap: 8,
   },
   listTitle: { fontSize: 15, fontWeight: '800', color: DARK },
-  refreshIconBtn: { padding: 4 },
-  refreshIconText: { fontSize: 16 },
   addHaulBtn: {
     backgroundColor: '#1976D2',
     paddingVertical: 8,
@@ -3949,13 +3589,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 
-  searchBox: {
+  // ── Tek arama çubuğu: QR | arama | takvim ▸ takvim
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 24,
+    paddingLeft: 6,
+    paddingRight: 6,
+    minHeight: 46,
     borderWidth: 1,
     borderColor: '#E8E8E8',
     shadowColor: '#000',
@@ -3963,39 +3605,69 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 2,
     elevation: 1,
-    flex: 1,
-    marginBottom: 0,
   },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: 8,
-    marginBottom: 10,
-  },
-  qrScanBtn: {
-    backgroundColor: '#2E7D32',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    flexDirection: 'row',
+  searchBarQrBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    marginRight: 4,
   },
-  qrScanBtnText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 14,
-  },
-  searchIcon: { fontSize: 14, marginRight: 8 },
-  searchInput: {
+  searchBarInput: {
     flex: 1,
     fontSize: 14,
     color: '#1a1a1a',
+    paddingVertical: 8,
   },
+  searchBarDates: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginLeft: 4,
+  },
+  searchBarDateArrow: { fontSize: 12, color: '#888', marginHorizontal: 1 },
+  dateRangeInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 10,
+    paddingHorizontal: 10,
+  },
+  dateRangeInfoText: { fontSize: 12, color: '#888', fontWeight: '600' },
+  dateRangeInfoTextActive: { color: '#1976D2', fontWeight: '800' },
+  dateRangeInfoClear: { fontSize: 13, color: '#1976D2', fontWeight: '800', paddingHorizontal: 2 },
+  // ── Plaka alanı içinde kamera butonu
+  plateInputWrap: { position: 'relative', justifyContent: 'center' },
+  plateInputWithIcon: { paddingRight: 52 },
+  plateInputCamBtn: {
+    position: 'absolute',
+    right: 6,
+    top: 0,
+    bottom: 0,
+    width: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // ── "Opsiyonel Not" satırı (sağda döküm fişi alanı)
+  noteLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  haulDumpTicketText: { fontSize: 11.5, color: '#666', fontWeight: '600', marginTop: 2 },
+  haulDumpStatusText: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  haulDumpStatusMatched: { color: '#5B7F5E' },
+  haulDumpStatusMismatch: { color: '#D32F2F' },
+  haulDumpStatusWaiting: { color: '#999', fontStyle: 'italic', fontWeight: '400' },
+  dumpMismatchBadge: { backgroundColor: '#FFEBEE', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: '#FFCDD2' },
+  dumpMismatchBadgeText: { fontSize: 10, fontWeight: '700', color: '#D32F2F' },
+  receiptDumpMismatchValue: { color: '#D32F2F' },
   searchClear: {
     fontSize: 14,
     color: '#aaa',
@@ -4006,21 +3678,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 6,
-  },
-  plateScanBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E8F5E9',
-    borderWidth: 1,
-    borderColor: '#2E7D32',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  plateScanBtnText: {
-    color: '#2E7D32',
-    fontSize: 12,
-    fontWeight: '700',
   },
   // İş Notları Butonu
   jobNotesBtn: {
@@ -4050,290 +3707,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
   },
-  // Döküm Fişi QR Tara Butonu
-  dumpScanBtn: {
-    backgroundColor: '#EDE7F6',
-    borderWidth: 1,
-    borderColor: '#673AB7',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  dumpScanBtnText: {
-    color: '#512DA8',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  // İş Notları Modalı Stilleri
-  notesModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  notesModalContainer: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
-  notesModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    paddingBottom: 12,
-  },
-  notesModalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1A237E',
-  },
-  notesModalSubTitle: {
-    fontSize: 12,
-    color: '#777',
-    marginTop: 2,
-  },
-  notesModalCloseBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F5F5F5',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  notesModalCloseText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#555',
-  },
-  notesSummaryBar: {
-    flexDirection: 'row',
-    backgroundColor: '#F8F9FA',
-    borderRadius: 12,
-    padding: 10,
-    marginVertical: 12,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#EFEFEF',
-  },
-  notesSummaryItem: {
-    flex: 1,
-  },
-  notesSummaryLabel: {
-    fontSize: 11,
-    color: '#666',
-    fontWeight: '600',
-  },
-  notesSummaryVal: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#212121',
-    marginTop: 2,
-  },
-  notesTabRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
-  notesTabBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: '#F5F5F5',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  notesTabBtnActiveFuel: {
-    backgroundColor: '#FFE0B2',
-    borderColor: '#FB8C00',
-  },
-  notesTabBtnActiveExpense: {
-    backgroundColor: '#C8E6C9',
-    borderColor: '#43A047',
-  },
-  notesTabBtnActiveNote: {
-    backgroundColor: '#BBDEFB',
-    borderColor: '#1E88E5',
-  },
-  notesTabBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#666',
-  },
-  notesTabBtnTextActive: {
-    color: '#111',
-    fontWeight: '900',
-  },
-  noteFormBox: {
-    backgroundColor: '#FAFAFA',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#ECEFF1',
-    marginBottom: 14,
-  },
-  noteInputLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#455A64',
-    marginBottom: 4,
-  },
-  noteAmountInput: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#CFD8DC',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#263238',
-  },
-  noteDescInput: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#CFD8DC',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 14,
-    color: '#263238',
-    minHeight: 50,
-  },
-  noteSaveBtn: {
-    backgroundColor: '#1A237E',
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  noteSaveBtnText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 14,
-  },
-  notesListHeader: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#37474F',
-    marginBottom: 8,
-  },
-  notesEmptyBox: {
-    padding: 20,
-    alignItems: 'center',
-    backgroundColor: '#F9F9F9',
-    borderRadius: 12,
-  },
-  notesEmptyText: {
-    fontSize: 13,
-    color: '#888',
-  },
-  noteCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#EEEEEE',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  noteCardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  noteBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  noteBadgeText: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  noteDateText: {
-    fontSize: 11,
-    color: '#9E9E9E',
-  },
-  noteDescText: {
-    fontSize: 13,
-    color: '#212121',
-    lineHeight: 18,
-    marginBottom: 8,
-  },
-  noteCardBottom: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#F5F5F5',
-    paddingTop: 6,
-  },
-  noteUserText: {
-    fontSize: 11,
-    color: '#757575',
-  },
-  noteActionEdit: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#1565C0',
-  },
-  noteActionDelete: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#C62828',
-  },
-
-  // ── Yıl/Ay filtre satırı
-  dateFilterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-    flexWrap: 'wrap',
-  },
-  dateFilterBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-    borderWidth: 1.5,
-    borderColor: '#E0E0E0',
-    gap: 6,
-  },
-  dateFilterBtnActive: {
-    borderColor: '#1976D2',
-    backgroundColor: '#E3F2FD',
-  },
-  dateFilterBtnText: {
-    fontSize: 13,
-    color: '#888',
-    fontWeight: '600',
-  },
-  dateFilterBtnTextActive: {
-    color: '#1976D2',
-    fontWeight: '800',
-  },
-  dateFilterClear: {
-    marginLeft: 4,
-    padding: 2,
-  },
-  dateFilterClearText: {
-    fontSize: 12,
-    color: '#1976D2',
-    fontWeight: '700',
-  },
+  // ── Tarih filtresi sıfırlama (boş sonuç)
   dateFilterResetBtn: {
     paddingVertical: 9,
     paddingHorizontal: 12,
@@ -4346,61 +3720,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#E65100',
     fontWeight: '700',
-  },
-
-  // ── Picker modal (yıl/ay)
-  pickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  pickerContainer: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '60%',
-    paddingBottom: 20,
-  },
-  pickerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  pickerHeaderText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: DARK,
-  },
-  pickerHeaderClose: {
-    fontSize: 20,
-    color: '#888',
-    fontWeight: '700',
-    padding: 4,
-  },
-  pickerItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-  },
-  pickerItemActive: {
-    backgroundColor: '#E3F2FD',
-  },
-  pickerItemText: {
-    fontSize: 16,
-    color: DARK,
-    fontWeight: '600',
-  },
-  pickerItemTextActive: {
-    color: '#1976D2',
-    fontWeight: '800',
-  },
-  pickerSeparator: {
-    height: 1,
-    backgroundColor: '#F5F5F5',
   },
 });

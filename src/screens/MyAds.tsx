@@ -14,6 +14,7 @@ import {
   Listing, CreateListingParams, UpdateListingParams,
 } from '../services/listingService';
 import { DISTRICTS } from '../constants/districts';
+import TagIcon from '../components/TagIcon';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const CARD_W = (SW - 48) / 2;
@@ -903,10 +904,7 @@ export default function MyAds() {
       <SafeAreaView style={styles.landingContainer} edges={['bottom']}>
         <View style={styles.landingHeader}>
           <View style={styles.landingIconWrap}>
-            <Image
-              source={require('../../assets/icons/market-pazar-1.png')}
-              style={styles.landingIconImage}
-            />
+            <TagIcon size={52} color="#000" />
           </View>
           <Text style={styles.landingTitle}>Pazar</Text>
           <Text style={styles.landingSubtitle}>Kategoriye tıklayarak pazar ilanlarını görüntüleyin</Text>

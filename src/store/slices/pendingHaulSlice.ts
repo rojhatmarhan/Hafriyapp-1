@@ -10,6 +10,7 @@ export type PendingHaul = {
   fuelAmount: number;
   dumpLocation: string;
   note: string;
+  dumpTicketNo?: string;     // Döküm fişi no — eski kuyruk kayıtlarında yok (undefined)
   isPrintedReceipt: boolean;
   serialNumber?: string;     // Çevrimdışı kesilen fişin sıralı/benzersiz seri no'su
   timeOfHaul: string;        // ISO string — sefer anı

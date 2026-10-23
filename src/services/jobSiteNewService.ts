@@ -167,3 +167,15 @@ export const deleteJobSiteNote = async (token: string, jobSiteId: string, noteId
   return res.data;
 };
 
+
+// İşi başa tutturma (kullanıcıya özel). Uç her çağrıda durumu tersine çevirir.
+// Cevap: { isPinned: boolean, message: string } — eski API'de uç yoksa 404 fırlatır (ekran pin özelliğini zaten gizler).
+export const toggleJobSitePin = async (token: string, id: string): Promise<{ isPinned?: boolean; message?: string }> => {
+  const res = await api.post(`/JobSite/${id}/pin`, {}, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      accept: '*/*',
+    },
+  });
+  return res.data;
+};

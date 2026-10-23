@@ -11,6 +11,12 @@ export type HaulApi = {
   plateNumber: string;
   serialNumber?: string;
   note?: string;
+  dumpTicketNo?: string | null; // Döküm fişi no — yeni API alanı (eski API döndürmez)
+  // Döküm sahası Excel eşleşmesi — yeni API alanları (null ise API göndermez; eski API hiç döndürmez)
+  dumpStatus?: 'matched' | 'plateMismatch' | 'waiting' | null; // yoksa: döküm fişi no yok
+  dumpNetKg?: number | null; // kg (döküm Excel'inden)
+  dumpFee?: number | null; // TL
+  dumpPlate?: string | null; // Excel'deki plaka, normalize ("34ABC123")
   driverName?: string;
   driverPhone?: string;
   timeOfHaul: string;
@@ -84,6 +90,7 @@ export type CreateHaulParams = {
   fuelAmount?: number;
   dumpLocation?: string;
   note?: string;
+  dumpTicketNo?: string; // Döküm fişi no (opsiyonel; boşsa gönderilmez)
   timeOfHaul?: string; // ISO, yoksa şu an
   isPrintedReceipt?: boolean;
   isVisibleToVehicleOwner?: boolean;
@@ -107,6 +114,7 @@ export const createHaul = async (params: CreateHaulParams, token: string): Promi
       fuelAmount: params.fuelAmount ?? 0,
       dumpLocation: params.dumpLocation ?? '',
       note: params.note ?? '',
+      ...(params.dumpTicketNo && params.dumpTicketNo.trim() ? { dumpTicketNo: params.dumpTicketNo.trim().slice(0, 50) } : {}),
       timeOfHaul: params.timeOfHaul ?? new Date().toISOString(),
       isPaid: false,
       isPrintedReceipt: params.isPrintedReceipt ?? false,
@@ -173,6 +181,7 @@ export type UpdateHaulParams = {
   fuelAmount?: number;
   note?: string;
   serialNumber?: string;
+  dumpTicketNo?: string | null; // Döküm fişi no (opsiyonel; undefined = gönderilmez/değişmez)
 };
 
 // Seferi düzenle (Sadece Owner)

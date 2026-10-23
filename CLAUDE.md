@@ -1,393 +1,109 @@
-# Hafriyapp — React Native Mobile
+# HafriyApp Mobil — React Native
 
-## Proje Özeti
-Hafriyat (toprak taşıma) sektörü için dijital platform. Araç sahipleri şantiye oluşturur, sürücüler seferleri kaydeder. Sefer takibi, ödeme durumu, offline kuyruk ve pazar yeri içerir.
+Hafriyat (toprak taşıma) sektörü uygulaması. Firma/araç sahipleri şantiye açar, sefer (fiş) keser, araç ve şoför yönetir;
+şoförler iş ilanlarını görür ve kendi seferlerini takip eder. Pazar (iş/araç ilanları) ve grup sohbeti içerir.
+UI metinleri, hata mesajları ve kod yorumları **Türkçe**.
 
-**Platform:** iOS + Android | **Dil:** TypeScript + React Native 0.82.1
+- **Platform:** iOS + Android — React Native 0.82.1, React 19.1, TypeScript
+- **Paket:** Android `com.hafriyapp` · iOS `com.Hafriyapp`
+- **Backend:** ayrı repo — `C:\Users\MARHAN\source\repos\rojhatmarhan\HafriyApp` (.NET 8 API + Razor Web). API davranışı için oradaki `CLAUDE.md`'ye bak.
+- Kurulum, çalıştırma ve yayın adımları: [README.md](README.md)
 
----
+## ⚠️ Altın kural: yayındaki hiçbir şey bozulmaz
+Değişiklik yapmadan önce [docs/UYUMLULUK.md](docs/UYUMLULUK.md) oku, yaptıktan sonra [CHANGELOG.md](CHANGELOG.md)'ye yaz.
+Plan ve iş durumu backend reposundaki `docs/YOL-HARITASI.md`'de. Kısaca:
+- Mağazadaki eski sürümler aylarca kalır → API değişiklikleri sadece **ekleme**; yeni mobil, yeni API alanlarını **opsiyonel** okur.
+- Yeni uç/alan yoksa ekran çökmez, özellik gizlenir.
+- Yerel veri biçimi değişirse eski kayıt dönüştürülür, silinmez.
+- Native değişiklik = yeni mağaza sürümü (`versionCode` / `CURRENT_PROJECT_VERSION` +1).
+- Kullanıcı istemedikçe commit atılmaz.
 
 ## Stack
+| Alan | Kütüphane |
+|------|-----------|
+| Navigasyon | React Navigation 7 (native-stack + drawer + bottom-tabs) |
+| State | Redux Toolkit + redux-persist (AsyncStorage) |
+| HTTP | Axios (`src/services/api.ts`) |
+| Token | react-native-keychain (`src/utils/secureStore.ts`) |
+| Real-time | @microsoft/signalr (`CompanyChat.tsx`) |
+| Push | @react-native-firebase/messaging |
+| Yazıcı | react-native-bluetooth-escpos-printer (patch'li) |
+| Plaka okuma | @react-native-ml-kit/text-recognition + react-native-camera-kit (patch'li) |
+| QR | react-native-qrcode-svg, react-native-camera-kit |
+| Fiş görüntüsü | react-native-view-shot |
+| Mağaza güncellemesi | sp-react-native-in-app-updates |
 
-| Kategori | Kütüphane | Versiyon |
-|----------|-----------|----------|
-| UI Framework | React Native | 0.82.1 |
-| Navigation | React Navigation (stack + drawer + bottom tabs) | 7.x |
-| State | Redux Toolkit + redux-persist | 2.11 / 6.0 |
-| HTTP | Axios | 1.13 |
-| Güvenli Depolama | react-native-keychain | 10.0 |
-| Lokal Depolama | AsyncStorage | 2.2 |
-| OTP Input | react-native-confirmation-code-field | 8.0 |
-| Resim | react-native-image-picker | 8.2 |
-| Animasyon | react-native-reanimated | 4.2 |
-| Real-time | @microsoft/signalr | 10.0 (kurulu, henüz bağlanmamış) |
+`patches/` klasöründeki yamalar `npm install` sonrası `patch-package` ile otomatik uygulanır — bu kütüphaneleri güncellerken yamayı da güncelle.
 
----
-
-## API
-
-- **Base URL:** `https://api.hafriyapp.com/api`
-- **Auth:** JWT Bearer Token
-- **Referans Docs:** `/Users/anadoluefes/Desktop/Harfiyapp/Web/HafriyApp-main/MOBILE_API_DOCS.md`
-
-> **ÖNEMLİ:** `MOBILE_API_DOCS.md` Production base URL olarak `https://217.195.207.24` gösteriyor.
-> Mevcut `src/services/api.ts` `https://api.hafriyapp.com/api` kullanıyor — uyum sağlanmalı.
-
----
-
-## Navigasyon Hiyerarşisi
-
+## Klasör yapısı (`src/`)
 ```
-RootNavigator
-├── isLoggedIn = false  →  AuthNavigator
-│   ├── SelectRoleScreen   (Şoför / Firma&Araç Sahibi seçimi)
-│   ├── LoginScreen        (Telefon girişi → SMS gönder)
-│   └── OtpScreen          (6 haneli kod doğrula → token al)
-│
-└── isLoggedIn = true   →  AppNavigator (Drawer)
-    ├── CustomHeader       (Sarı başlık + hamburger)
-    ├── CustomDrawerContent (Logo, Anasayfa, Profilim, İlanlarım, Çıkış)
-    │
-    └── BottomTabs (role'e göre)
-        ├── [driver]   DriverStack / AllJobs / DriverJobs
-        └── [supplier] SupplierStack / AllJobs / MyJobsStack / SupplierVehicles
-
-Drawer'da gizli (hoisted):
-  CompanyChat, CompanyDetails, CompanyEdit, ProfileEdit
+services/     API çağrıları (her alan için bir dosya) — api.ts axios instance
+screens/      Auth/, driver/, supplier/, common/ (WebView ekranları) + Profile, MyAds
+navigation/   RootNavigator → AuthNavigator | AppNavigator(Drawer) → BottomTabs (role göre)
+components/   Modal'lar (NewJobModal, JobNotesModal, BluetoothPrinterModal, PlateScannerModal, QRScannerModal...), ProvinceMultiSelect, TagIcon, CustomHeader
+store/        authSlice, pendingHaulSlice (offline sefer kuyruğu), uiSlice, counterSlice (kullanılmıyor)
+hooks/        useAuthBootstrap (keychain → redux), useAppDispatch/Selector
+utils/        secureStore, jobMapper (pazar ilanı mapping), jobSiteMapper
+constants/    cities (81 il; İstanbul 340 Avrupa / 341 Anadolu), districts
+api/authApi.ts  ESKİ sahte OTP — kullanılmıyor, gerçek akış services/authService.ts
 ```
 
----
+## API bağlantısı
+- `src/services/api.ts`: `__DEV__` ise `http://localhost:5062`, değilse `https://api.hafriyapp.com`; `API_BASE_URL = BASE_HOST + '/api'`.
+- İstek interceptor'ı token'ı keychain'den okuyup `Authorization: Bearer` ekler. Bazı servisler token'ı ayrıca parametre olarak da alır (eski stil).
+- Cevap formatı backend `Result<T>`: `{ isSuccess, data, errors: string[] }`. Ekranlar hata mesajını `e.response.data.errors[0]` ile gösterir — **backend'den gelen Türkçe mesajlar doğrudan kullanıcıya gösterilir**, yeni hata durumlarında mesajı backend'de yaz.
+- JSON casing: backend camelCase döner ama bazı eski kodlar iki casing'i de kontrol eder (`h.IsVisibleToVehicleOwner ?? h.isVisibleToVehicleOwner`).
+- Resim URL'leri: `IMAGE_BASE` birkaç ekranda ayrı tanımlı (bazıları `BASE_HOST`, bazıları sabit `https://api.hafriyapp.com`).
+- SignalR: `CompanyChat.tsx` → `${BASE_HOST}/hubs/chat`. (Backend'de mobil için ayrı `/hubs/mobile-chat` da var, token query string ile.)
+- WebView ekranları: `WebToolScreen` (`https://hafriyapp.com`, drawer'dan), `CompanyShowcase` (`https://hafriyapp.com/firma-tanitimi` — backend'in Razor Web projesinde bu sayfa yok, ayrı bir siteden geliyor olabilir).
 
-## Ekranlar
+## Giriş akışı
+1. `SelectRoleScreen` → rol: `driver` (UserType 0) / `supplier` (UserType 1)
+2. `LoginScreen` → `POST /Auth/login` `{ phoneNumber: '+9' + '05XXXXXXXXX' }` (= `+905...`, doğru) veya `POST /Auth/register`
+3. `OtpScreen` → 6 haneli kod, 120 sn tekrar gönder sayacı → `POST /Auth/verify-sms` → token + userType + companyId
+4. Token keychain'e (`hafriyapp.auth`) ve Redux'a yazılır. `RootNavigator` 3 dakikada bir profili çeker: `accessMode === 1` (Blocked) → çıkış; `2` (Limited) → uyarı bandı. 401 → çıkış.
+- Kod SMS ile gelir; uygulama API cevabındaki `verificationCode` alanını **kullanmaz** (backend yayında bu alanı boş döner).
+- Backend SMS sınırları: aynı numaraya 60 sn'de bir, günde 5 kod, 5 hatalı denemede kod iptal → HTTP 429 + Türkçe mesaj (Alert'te gösterilir).
 
-### Auth
-| Ekran | Dosya | Açıklama |
-|-------|-------|----------|
-| SelectRoleScreen | `screens/Auth/SelectRoleScreen.tsx` | Rol seçimi |
-| LoginScreen | `screens/Auth/LoginScreen.tsx` | Telefon girişi (format: 0XXXXXXXXXX) |
-| OtpScreen | `screens/Auth/OtpScreen.tsx` | 6 haneli kod, 120s sayaç |
+## Roller ve ekranlar
+- **driver** tabs: DriverHome, DriverAllJobs, MarketAds, DriverJobs
+- **supplier** tabs: SupplierHome (sohbet grupları), SupplierAllJobs, MarketAds, MyJobs (şantiyeler → JobDetails)
+- Drawer: Anasayfa, Profil, İlanlarım, WebTool, CompanyChat/CompanyDetails/CompanyEdit/ProfileEdit (gizli rotalar)
+- En büyük dosyalar (dikkatli düzenle): `JobDetails.tsx` (~4400 satır — şantiye detayı, sefer kesme, fiş, yazdırma, offline kuyruk), `SupplierVehicles.tsx` (~3000), `CompanyChat.tsx` (~1850), `MyAds.tsx`, `AllJobs.tsx` (driver ve supplier'da neredeyse aynı kopya), `NewJobModal.tsx` (~1100).
 
-### Sürücü
-| Ekran | Dosya |
-|-------|-------|
-| DriverHome | `screens/driver/DriverHome.tsx` |
-| AllJobs | `screens/driver/AllJobs.tsx` |
-| DriverJobs | `screens/driver/DriverJobs.tsx` |
+## Önemli iş kuralları
+- **Sefer (Haul):** `POST /Haul` — `paymentType` 0 Nakit / 1 Yakıt / 2 İkisi, `timeOfHaul` ISO UTC. Hafriyat modunda tonaj alanı yok (0 gönderilir). İki buton: "Sanal Fiş Kes" (`isPrintedReceipt=false`) ve "Fiş Kes ve Yazdır" (`true`). Şantiyede görünürlük kapalıysa backend sanal fişe izin vermez.
+- **Offline kuyruk:** Sefer gönderilemezse `pendingHaulSlice`'a (persist) yazılır. `JobDetails.syncPending` ekran açılınca, uygulama ön plana gelince (AppState `active`) ve senkron bandına basınca kuyruğu gönderir. `clientUniqueId` gönderiliyor ama backend kullanmıyor; mükerrer kaydı backend aynı şantiye+plaka+tonaj+±5 sn kuralıyla engeller — tekrar gönderim güvenli.
+- **Seri No:** API'den `serialNumber` geldiyse onu göster; yoksa `yyMMdd + id'nin ilk 4 karakteri`. Tıklayınca kopyalanır.
+- **İş notları:** `JobNotesModal` (tek Modal; düzenleme aynı ekranda — iOS'ta Modal üstüne Modal açılmaz, açmayın). Yetki: not bazında `canManage`.
+- **Sohbet:** grup listesi sayfalı (20'şer, kaydırdıkça), mesajlar `before` cursor ile geriye yüklenir, yazı boyutu sabit (16/kalın). Sabitleme sunucuda (`isPinned`, `POST /ChatGroup/{id}/pin`); eski yerel `pinned_chat_groups` bir kez taşınır.
+- **Döküm fişi:** seferde `dumpTicketNo` (ayrı alan, QR ile). Eski kayıtlarda numara `note` içinde olabilir — arama ve QR eşleştirme ikisine de bakar.
+- **İş detayı filtresi:** tarih aralığı (`rangeStart`/`rangeEnd`, DD.MM.YYYY, varsayılan bu ayın tamamı) + arama; filtreleme istemcide.
+- **İş sabitleme:** `GET /JobSite` → `isPinned`, `POST /JobSite/{id}/pin`; sıralamayı mobil yapar (sunucu sırası değişmez).
+- **Fiş tasarımı** web ile aynı olmalı (`JobDetails` + `SupplierVehicles`): logo, firma/şantiye adı, Tarih/Seri No/Plaka/Şoför/Döküm/Ücret/Yetkili satırları, sağda QR.
+- **Yazdırma:** `printService.ts` — fiş `view-shot` ile görüntü alınır, 384 px genişlikte ESC/POS Bluetooth yazıcıya basılır. Backend'de yazıcı MAC adresi `AuthorizedPrinter` ile yetkilendirilir.
+- **Şantiye payload'ı:** CREATE PascalCase, UPDATE camelCase gönderiliyor (backend iki türlü de kabul ediyor) — `NewJobModal.tsx`. `JobType` 0 Hafriyat / 1 Kum-Mıcır; teklifler `ExtraOffersJson` (3 legacy format var, `jobMapper.ts` hepsini parse eder). Pazar listesinde `isVisible:false` teklifler gizlenir, şantiye sahibinin `JobDetails` görünümünde gösterilir (kasıtlı).
+- **İlan tipleri:** 0 Araç Kiralama, 1 Tır Pazarı, 2 Şoför İlanı.
+- **Plaka:** TR formatı `^(01-81)([A-Z]{1,3})([0-9]{2,4})$` (`PlateScannerModal`).
 
-### Araç Sahibi / Firma
-| Ekran | Dosya | Açıklama |
-|-------|-------|----------|
-| SupplierHome | `screens/supplier/SupplierHome.tsx` | Chat grupları listesi |
-| AllJobs | `screens/supplier/AllJobs.tsx` | Pazar iş ilanları |
-| MyJobs | `screens/supplier/MyJobs.tsx` | Kendi şantiyeleri |
-| JobDetails | `screens/supplier/JobDetails.tsx` | Şantiye detay + seferler |
-| SupplierVehicles | `screens/supplier/SupplierVehicles.tsx` | Araç yönetimi |
-| CompanyChat | `screens/supplier/CompanyChat.tsx` | Grup chat |
-| CompanyDetails | `screens/supplier/CompanyDetailsScreen.tsx` | Firma bilgileri |
-| CompanyEdit | `screens/supplier/CompanyEditScreen.tsx` | Firma düzenleme |
+## Stil
+Sarı `#FFD500`, siyah `#000`, arka plan `#F3F2F3`, kenarlık `#CFCFCF`, yazı gri `#555/#AAA`; buton radius 12-14, tab bar 80 px.
+Prettier: tek tırnak, `printWidth: 999` (satır bölme yok), trailing comma, 2 boşluk.
 
-### Ortak
-- `screens/ProfileScreen.tsx`
-- `screens/ProfileEditScreen.tsx`
-- `screens/MyAds.tsx`
-
----
-
-## Redux Store
-
-```
-store/
-├── index.ts              # redux-persist ile AsyncStorage'a persist
-└── slices/
-    ├── authSlice.ts      # ✅ Persist edilir
-    ├── pendingHaulSlice.ts # ✅ Persist edilir (offline kuyruk)
-    └── counterSlice.ts   # ⚠️ Kullanılmıyor — temizlenmeli
-```
-
-### AuthState
-```typescript
-{
-  role: 'driver' | 'supplier' | null
-  phone: string
-  token: string | null
-  isLoggedIn: boolean
-  companyId: string | null
-  user: {
-    id, phoneNumber, firstName, lastName,
-    companyId, companyName, role, userType,
-    phoneNumberConfirmed, createdDate
-  } | null
-}
-```
-
-### PendingHaulState (offline kuyruk)
-```typescript
-// Offline kaydedilen seferler — internet gelince yüklenecek (henüz implemente değil)
-{
-  hauls: Array<{
-    localId, jobSiteId, plateNumber, paymentType,
-    tonage, cashAmount, fuelAmount, dumpLocation,
-    note, isPrintedReceipt, timeOfHaul, createdAt
-  }>
-}
-```
-
----
-
-## Servisler ve Endpoint'ler
-
-### `services/api.ts` — Axios instance
-- `baseURL: 'https://api.hafriyapp.com/api'`
-- Interceptor: keychain'den token okur → `Authorization: Bearer` ekler
-
-### `services/authService.ts`
-| Fonksiyon | Method | Endpoint |
-|-----------|--------|----------|
-| `login(phone)` | POST | `/Auth/login` → `{ phoneNumber: '+9' + phone }` |
-| `verifySms(phone, code)` | POST | `/Auth/verify-sms` → token + userId + userType + companyId |
-| `register(payload)` | POST | `/Auth/register` |
-
-> **⚠️ Bug:** `'+9' + phone` — phone zaten '0' ile başlıyor → "+905..." yerine "+95..." oluyor.
-
-### `services/userService.ts`
-| Fonksiyon | Endpoint |
-|-----------|----------|
-| `getUserById(userId, token)` | GET `/User/{userId}` |
-| `updateUserProfile(payload, token)` | PUT `/User/profile` |
-| `deleteAccount(token)` | DELETE `/User/account` |
-| `deactivateAccount(token)` | POST `/User/account/deactivate` |
-| `getMyCompanies(token)` | GET `/company` |
-| `getCompanyById(id, token)` | GET `/company/{id}` |
-| `addAuthorizedUser(...)` | POST `/company/{id}/authorized-user` |
-| `removeAuthorizedUser(...)` | DELETE `/company/{id}/users/{userId}` |
-| `updateCompanyDetails(...)` | PUT `/company/{id}` |
-
-### `services/vehicleService.ts`
-| Fonksiyon | Endpoint |
-|-----------|----------|
-| `getVehicles(token)` | GET `/Vehicle` |
-| `createVehicle(plate, companyId, driverPhone, token)` | POST `/Vehicle` |
-| `updateVehicle(id, plate, companyId, token)` | PUT `/Vehicle/{id}` |
-| `deleteVehicle(id, token)` | DELETE `/Vehicle/{id}` |
-| `assignDriver(vehicleId, phone, token)` | POST `/Vehicle/{id}/assign-driver` |
-| `getVehicleDriver(vehicleId, token)` | GET `/Vehicle/{id}/drivers` |
-| `removeDriver(vehicleId, driverUserId, token)` | DELETE `/Vehicle/{id}/remove-driver/{uid}` |
-| `driverAddVehicle(plate)` | POST `/Vehicle/driver-add` |
-| `driverLeaveVehicle(vehicleId)` | DELETE `/Vehicle/driver-leave/{id}` |
-
-### `services/haulService.ts` — Sefer Yönetimi
-| Fonksiyon | Endpoint |
-|-----------|----------|
-| `getHauls(token)` | GET `/Haul/my` |
-| `getHaulsFiltered(token, start, end)` | GET `/Haul/my/filtered` |
-| `getHaulsByVehicle(vehicleId, token)` | GET `/Haul/vehicle/{id}` |
-| `createHaul(params, token)` | POST `/Haul` |
-| `updateHaulPayment(params, token)` | PATCH `/Haul/{id}/payment` |
-| `deleteHaul(id, token)` | DELETE `/Haul/{id}` |
-
-**HaulApi tipi:** `vehicleId?, jobSiteId, plateNumber, paymentType (0=Nakit/1=Yakıt/2=Her ikisi), tonage, cashAmount, fuelAmount, dumpLocation, note, isPaid, isPrintedReceipt, timeOfHaul (ISO UTC), createdDate, isVisibleToVehicleOwner`
-
-### `services/jobSiteNewService.ts` — Şantiye Yönetimi
-| Fonksiyon | Endpoint |
-|-----------|----------|
-| `getJobSites(token)` | GET `/JobSite` |
-| `getJobSite(token, id)` | GET `/JobSite/{id}` |
-| `createJobSite(token, data)` | POST `/JobSite` |
-| `updateJobSite(token, id, data)` | PUT `/JobSite/{id}` |
-| `toggleJobSiteActive(token, id, isActive)` | PUT `/JobSite/{id}/toggle-active` |
-| `deleteJobSite(token, id)` | DELETE `/JobSite/{id}` |
-| `getJobHauls(token, jobSiteId)` | GET `/Haul/jobsite/{id}` |
-
-> `saveHaulsVisibility` / `getHaulsVisibility` → AsyncStorage'da `jobsite_hauls_visibility` key'i.
-
-**JobSite Payload (CREATE PascalCase, UPDATE camelCase — backend tutarsızlığı):**
-`CompanyId, Name, ProvinceCode, DistrictName, LocationUrl, ContactPhone, Description, SignDescription, JobType (0=Hafriyat/1=Kum-Mıcır), ExtraOffersJson (JSON string), HasCash, HasFuel, HasSand, FuelStock, LoadingStartTime (HH:MM), LoadingEndTime, IsActive, ShowHaulsToVehicleOwners`
-
-### `services/jobSiteService.ts` — Pazar
-| Fonksiyon | Endpoint |
-|-----------|----------|
-| `getMarketJobs(token, provinceCode?, districtName?)` | GET `/JobSite/market` |
-
-### `services/listingService.ts` — İlanlar
-| Fonksiyon | Endpoint |
-|-----------|----------|
-| `getListings(params)` | GET `/Listing` |
-| `getMyListings()` | GET `/Listing/my` |
-| `getListingById(id)` | GET `/Listing/{id}` |
-| `createListing(data)` | POST `/Listing` |
-| `updateListing(id, data)` | PUT `/Listing/{id}` |
-| `deleteListing(id)` | DELETE `/Listing/{id}` |
-
-**Listing Types:** `0=Araç Kiralama, 1=Tır Pazarı, 2=Şoför İlanı`
-
-### `services/chatService.ts` — Grup Chat
-- `getChatGroups`, `createChatGroup`, `getGroupMessages`, `sendMessage`
-- `getGroupDetail`, `updateGroupSettings`, `uploadGroupImage`, `deleteGroup`
-- `getBlockedPhones`, `addBlockedPhone`, `removeBlockedPhone`
-
----
-
-## Bileşenler
-
-### `CustomHeader.tsx`
-Sarı (#FFD500) global başlık. Logo + başlık + hamburger menü. `DrawerActions.openDrawer()` tetikler.
-
-### `NewJobModal.tsx` (~1200 satır — çok büyük, bölünmeli)
-Şantiye oluştur/düzenle modal'ı.
-- **Hafriyat Modu:** Çoklu teklif (döküm yeri + nakit ₺ + yakıt lt), görünürlük toggle
-- **Kum/Mıcır Modu:** Rotalar (yükleme → boşaltma + ton fiyatı + malzeme cinsi)
-- Ortak: İl/İlçe seçici, çalışma saatleri, dirty check, form validasyon
-- ⚠️ "Yükleme Açık" toggle JSX'te yorum satırına alındı — değer her zaman `true` olarak servise gönderiliyor
-- ⚠️ Gizlenen teklifler (`isVisible: false`) pazar listesinde (`jobMapper.ts`) filtreleniyor; `JobDetails.tsx` (şantiye sahibi görünümü) filtrelemiyor — her iki yerde farklı davranış kasıtlı
-
----
-
-## Utils
-
-### `utils/secureStore.ts`
-```typescript
-saveAuth({ token, phone, role, companyId? })  // Keychain'e yazar
-getAuth()   // → { phone, token, role, companyId }
-clearAuth() // Keychain'i siler
-```
-Service: `hafriyapp.auth` | Erişim: `ACCESSIBLE.WHEN_UNLOCKED`
-
-### `utils/jobMapper.ts` — `mapJobFromApi(item)`
-API response → UI formatı dönüşümü. `extraOffersJson` parse eder (3 farklı format var — legacy uyumluluk).
-
-### `utils/jobSiteMapper.ts` — `mapJobSiteFromApi(item)`
-Minimal mapping: name, fuelStock, edit izni.
-
----
-
-## Constants
-
-- `constants/cities.ts` — 81 il (kod + label). İstanbul ayrımı: Avrupa=340, Anadolu=341.
-- `constants/districts.ts` — İl kodu → ilçe listesi. NewJobModal'da kullanılır.
-
----
-
-## Hooks
-
-- `useAuthBootstrap` — Uygulama başlangıcında keychain'den token restore eder. `HAS_LAUNCHED` ile temiz kurulum detection.
-- `useAppDispatch` — Typed Redux dispatch
-- `useAppSelector` — Typed Redux selector
-
----
-
-## Bilinen Sorunlar
-
-| # | Sorun | Dosya | Öncelik |
-|---|-------|-------|---------|
-| 1 | Phone format bug: `'+9' + phone` → "+95..." | `authService.ts:24` | 🔴 Kritik |
-| 2 | API URL: `api.hafriyapp.com` vs `217.195.207.24` | `api.ts:5` | 🔴 Kritik |
-| 3 | JobSite payload: CREATE PascalCase, UPDATE camelCase tutarsız | `NewJobModal.tsx` | 🟡 Yüksek |
-| 4 | `counterSlice.ts` kullanılmıyor | `store/slices/` | 🟢 Düşük |
-| 5 | `pendingHaulSlice` tanımlı ama hiçbir ekran kullanmıyor | `slices/pendingHaulSlice.ts` | 🟡 Yüksek |
-| 6 | `@microsoft/signalr` kurulu ama bağlanmıyor (real-time chat yok) | `services/chatService.ts` | 🟡 Yüksek |
-| 7 | `useNavigation<any>()` — navigation params typed olmalı | Tüm ekranlar | 🟢 Düşük |
-| 8 | `NewJobModal.tsx` ~1200 satır — küçük componente bölünmeli | `components/` | 🟢 Düşük |
-| 9 | `IMAGE_BASE` URL hard-coded (SupplierHome + jobMapper) | DRY ihlali | 🟢 Düşük |
-| 10 | Listing image upload UI'da yok (service hazır) | `screens/MyAds.tsx` | 🟡 Orta |
-| 11 | API JSON casing belirsiz — `HaulApi` tipi camelCase ama API PascalCase dönüyor olabilir; `isHaulVisible()` her iki casing'i kontrol ediyor | `SupplierVehicles.tsx` | 🟡 Yüksek |
-
----
-
-## Uygulanan Değişiklikler
-
-### Fiş (Receipt) Tasarımı — `JobDetails.tsx` + `SupplierVehicles.tsx`
-Her iki ekranda fiş modalı yeniden tasarlandı (web versiyonu ile eşleştirildi):
-- **Yapı:** Koyu overlay → beyaz `receiptWrapper` (kart + butonları sarar) → `receiptCard` (sol şerit + içerik)
-- **Başlık:** Logo kutusu (`companyLogoPath` varsa uzak URL, yoksa `assets/icons/truck.png`) + firma adı + şantiye adı + saat (sağ üst, küçük font)
-- **Gövde:** Satırlar (sol, `flex:1`) + QR kodu (sağ, 76×76px) yan yana
-- **Satır formatı:** `"Tarih :"`, `"Seri No :"`, `"Plaka :"`, `"Şoför :"`, `"Döküm :"`, `"Ücret :"`, `"Yetkili :"` — etiket solda gri, değer bold siyah
-- **Footer:** Kart dışında — `"Kapat"` (outline) + `"Yazdır"` / `"Onayla"` (koyu)
-- Firma adı fallback: `SupplierVehicles`'da `selectedTrip.companyName || user?.companyName`
-
-### Seri No (`autoSerial`) — `JobDetails.tsx` + `SupplierVehicles.tsx`
-Web ile aynı format:
-```typescript
-// 1. API'den serialNumber geldiyse direkt kullan (örn. "26042100010")
-// 2. Yoksa: yyMMdd + id'nin ilk 4 karakteri (büyük harf)
-if (haul.serialNumber) return haul.serialNumber;
-const datePart = `${yy}${mm}${dd}`;
-const idPart = haul.id.substring(0, 4).toUpperCase();
-return `${datePart}${idPart}`;
-```
-Sefer kartında tek seri no kutucuğu, tıklayınca kopyalanır (`@react-native-clipboard/clipboard`).
-
-### Manuel Sefer Modal — `JobDetails.tsx`
-- Hafriyat modunda **Tonaj alanı kaldırıldı** (değer `0` olarak gönderilir)
-- Tek "Kaydet" butonu → iki buton:
-  - **"Sanal Fiş Kes"** — `handleManualHaul(false)` → sadece sefer kaydeder, fiş gösterir
-  - **"Fiş Kes ve Yazdır"** — `handleManualHaul(true)` → kaydeder + fiş + Share
-
-### Araç Yönetimi Sefer Filtresi — `SupplierVehicles.tsx`
-Web'deki `IsVisibleToVehicleOwner` filtresi ile eşleştirildi:
-```typescript
-const isHaulVisible = (h: any): boolean => {
-  const v = h.IsVisibleToVehicleOwner ?? h.isVisibleToVehicleOwner;
-  return v !== false; // undefined → görünür (default true)
-};
-```
-Eski yaklaşım (job site bazlı `getHiddenJobSiteIds`) kaldırıldı — per-haul stamp kullanılıyor.
-
-### Chat Geliştirmeleri — `CompanyChat.tsx`
-- Mesaja uzun basınca kopyalama (`Clipboard`, 2s geri bildirim)
-- `LinkifiedText` bileşeni: URL ve Türkçe telefon numaraları tıklanabilir link
-- `TextInput` çok satırlı yapıldı (min 40px, max 120px)
-
-### Offer Görünürlük Mantığı
-- `jobMapper.ts` (pazar listesi) — `isVisible: false` teklifler filtrelenir ✅
-- `JobDetails.tsx` (şantiye sahibi görünümü) — `isVisible: false` teklifler gösterilir ✅ (kasıtlı fark)
-
----
-
-## Renkler & Stil Kılavuzu
-
-```
-Primary Yellow:  #FFD500
-Primary Black:   #000000
-Background:      #F3F2F3 / #F3F3F3
-Border:          #CFCFCF
-Text Muted:      #AAA / #555 / #444
-Tab Bar Height:  80px
-Border Radius:   12-14px (butonlar), 12px (inputlar)
-```
-
----
-
-## Çalıştırma
-
+## Kontrol komutları
 ```bash
-# Metro başlat
-npm start
-
-# iOS
-bundle exec pod install   # ilk kurulumda
-npm run ios
-
-# Android
-npm run android
-
-# Test
-npm test
+npx tsc --noEmit     # tip kontrolü
+npm run lint
+npm test             # __tests__: App, OtpScreen, printService
 ```
 
----
+## Bilinen borçlar
+- `src/services/api.ts` interceptor'ı token'ı `console.log` ile yazıyor — release'de log'a düşmemeli.
+- Android `closedRelease` build type'ı `signingConfigs.release` kullanıyor, tanımlı `closedRelease` imzası kullanılmıyor. Keystore bulunamazsa release **debug keystore ile sessizce imzalanır** — mağazaya yüklemeden önce kontrol et.
+- Debug'da `localhost:5062`: Android cihaz/emülatörde `adb reverse tcp:5062 tcp:5062` gerekir.
+- `counterSlice` kullanılmıyor ama persist ediliyor; `api/authApi.ts`, `screens/HomeScreen.tsx`, `screens/supplier/MyJobs2.tsx` eski/yedek.
+- `driver/AllJobs.tsx` ve `supplier/AllJobs.tsx` birebir kopya; `IMAGE_BASE` tekrarları.
+- `useNavigation<any>()` yaygın; navigation param tipleri `types/navigation.d.ts`'de eksik.
 
-## Slash Command'lar (Bu Projede)
-
-```
-/plan             → Yeni özellik planla (implement etmeden önce onayla)
-/gsd:do           → Hızlı görev yürüt
-/gsd:debug        → Hata ayıkla
-/gsd:ui-review    → UI kalite denetimi
-/code-review      → Kod inceleme (typescript-reviewer agent)
-/verify           → Build + typecheck + lint kontrolü
-/brainstorm       → Çözüm alternatifleri üret
-/write-plan       → Detaylı implementation planı yaz
-
-# UI/UX arama (react-native stack):
-python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<query>" --stack react-native
-```
+## Bu repodaki Claude komutları
+`.claude/commands` ve `.claude/agents` altında: `/plan`, `/write-plan`, `/execute-plan`, `/verify`, `/code-review`, `/build-fix`, `/brainstorm`, `/tdd`, `/gsd:*`. UI araması: `python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<sorgu>" --stack react-native`.

@@ -1,10 +1,11 @@
 import axios from 'axios';
 import { api } from './api';
 
-export const getChatGroups = async (token: string, provinceCode?: number, page: number = 1, pageSize: number = 20) => {
+export const getChatGroups = async (token: string, provinceCode?: number, page: number = 1, pageSize: number = 20, search?: string) => {
     try {
         const params: Record<string, any> = { page, pageSize };
         if (provinceCode != null) params.provinceCode = provinceCode;
+        if (search && search.trim()) params.search = search.trim();
 
         const response = await api.get(`/ChatGroup`, {
             params,
@@ -33,10 +34,14 @@ export const createChatGroup = async (token: string, payload: any) => {
     }
 };
 
-export const getGroupMessages = async (token: string, groupId: string, page: number = 1, pageSize: number = 50) => {
+// API cevabı: { data: { messages: [eskiden → yeniye], hasMore, nextCursor (sayfadaki en eski mesajın id'si) } }
+// before verilirse o mesajdan daha eski mesajlar döner (cursor tabanlı sayfalama).
+export const getGroupMessages = async (token: string, groupId: string, before?: string | null, pageSize: number = 50) => {
     try {
+        const params: Record<string, any> = { pageSize };
+        if (before) params.before = before;
         const response = await api.get(`/ChatGroup/${groupId}/messages`, {
-            params: { page, pageSize },
+            params,
             headers: { Authorization: `Bearer ${token}` },
         });
         return response.data;
@@ -65,7 +70,7 @@ export const getGroupDetail = async (token: string, id: string) => {
     return response.data;
 };
 
-export const updateGroupSettings = async (token: string, id: string, data: { name?: string; description?: string }) => {
+export const updateGroupSettings = async (token: string, id: string, data: { name?: string; description?: string; provinceCode?: number; provinceCodes?: number[] }) => {
     const response = await api.put(`/ChatGroup/${id}`, data, {
         headers: { Authorization: `Bearer ${token}` },
     });
@@ -127,3 +132,12 @@ export const deleteMessage = async (token: string, groupId: string, messageId: s
     return response.data;
 };
 
+
+// Grubu üstte sabitle / sabitlemeyi kaldır (sunucuda, kullanıcıya özel). Uç durumu tersine çevirir.
+// Cevap Result<bool>: { isSuccess, data: yeni isPinned }. Üye değilse sunucu kullanıcıyı üye yapıp sabitler.
+export const toggleChatGroupPin = async (token: string, groupId: string) => {
+    const response = await api.post(`/ChatGroup/${groupId}/pin`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+};

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Modal, ScrollView, Image, Linking, Pressable, Switch } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Modal, ScrollView, Image, Linking, Pressable } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +17,7 @@ import {
   markGroupAsRead, deleteMessage as deleteChatMessage,
 } from '../../services/chatService';
 import { BASE_HOST } from '../../services/api';
+import ProvinceMultiSelect from '../../components/ProvinceMultiSelect';
 
 // URL ve Türkçe telefon numaralarını tespit eder ([\s] yerine [ ] — newline yutmasın)
 const LINKIFY_PATTERN = /(https?:\/\/[^\s]+|(?:\+90|0)[5]\d{2}[ \-]?\d{3}[ \-]?\d{2}[ \-]?\d{2})/g;
@@ -128,29 +129,17 @@ export default function CompanyChat() {
   const seenIdsRef = useRef<Set<string>>(new Set());
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  /* ─── FONT SETTINGS (AsyncStorage) ─── */
-  const [chatFontSize, setChatFontSize] = useState<number>(18);
-  const [chatFontBold, setChatFontBold] = useState<boolean>(true);
-  const [fontModalVisible, setFontModalVisible] = useState<boolean>(false);
+  /* ─── ESKİ MESAJLAR (cursor sayfalama) ─── */
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const hasMoreRef = useRef(false);
+  const nextCursorRef = useRef<string | null>(null);
+  const loadingOlderRef = useRef(false);
+  const loadGenRef = useRef(0); // grup değişince/yeniden yüklenince eski cevapları yok saymak için
 
+  // Eski sürümlerdeki kullanıcı yazı boyutu ayarı kaldırıldı; kalan anahtarları bir kez temizle (zararsız)
   useEffect(() => {
-    AsyncStorage.getItem('@hafriyapp_chat_fontSize').then(val => {
-      if (val) setChatFontSize(Number(val));
-    }).catch(() => {});
-    AsyncStorage.getItem('@hafriyapp_chat_fontBold').then(val => {
-      if (val !== null) setChatFontBold(val === 'true');
-    }).catch(() => {});
+    AsyncStorage.multiRemove(['@hafriyapp_chat_fontSize', '@hafriyapp_chat_fontBold']).catch(() => {});
   }, []);
-
-  const handleSaveFontSize = async (size: number) => {
-    setChatFontSize(size);
-    await AsyncStorage.setItem('@hafriyapp_chat_fontSize', String(size));
-  };
-
-  const handleSaveFontBold = async (bold: boolean) => {
-    setChatFontBold(bold);
-    await AsyncStorage.setItem('@hafriyapp_chat_fontBold', String(bold));
-  };
 
   /* ─── DISTRICT FILTER ─── */
   const selectedCity = useAppSelector(state => (state as any).ui?.selectedCity);
@@ -169,6 +158,8 @@ export default function CompanyChat() {
   const [settingsName, setSettingsName] = useState('');
   const [settingsDesc, setSettingsDesc] = useState('');
   const [settingsNewImage, setSettingsNewImage] = useState<string | null>(null);
+  const [settingsProvinces, setSettingsProvinces] = useState<number[]>([]);
+  const [settingsInitialProvinces, setSettingsInitialProvinces] = useState<number[]>([]);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [blockedPhones, setBlockedPhones] = useState<string[]>([]);
   const [blockInputPhone, setBlockInputPhone] = useState('');
@@ -338,6 +329,11 @@ export default function CompanyChat() {
   // groupId değişince mesajları temizle ve yeniden yükle (farklı gruba geçişte eski mesajlar görünmesin)
   useEffect(() => {
     setMessages([]);
+    loadGenRef.current += 1;
+    hasMoreRef.current = false;
+    nextCursorRef.current = null;
+    loadingOlderRef.current = false;
+    setLoadingOlder(false);
     setIsOwner(false);
     seenIdsRef.current = new Set();
     fetchMessages();
@@ -371,6 +367,14 @@ export default function CompanyChat() {
       setSettingsGroup(detail);
       setSettingsName(detail.name || '');
       setSettingsDesc(detail.description || '');
+      // Ana il (provinceCode) önce, sonra ek iller (provinceCodes) — tekrarsız
+      const provinceList: number[] = [];
+      [detail.provinceCode, ...(Array.isArray(detail.provinceCodes) ? detail.provinceCodes : [])].forEach((c: any) => {
+        const code = Number(c);
+        if (Number.isFinite(code) && code > 0 && !provinceList.includes(code)) provinceList.push(code);
+      });
+      setSettingsProvinces(provinceList);
+      setSettingsInitialProvinces(provinceList);
       const bpRes = await getBlockedPhones(token!, groupId);
       setBlockedPhones(bpRes?.data || []);
     } catch {
@@ -395,15 +399,28 @@ export default function CompanyChat() {
 
   const saveSettings = async () => {
     if (!settingsGroup || !token) return;
+    // Sıra önemli: ilk il ana il olarak gönderilir
+    const provincesChanged = settingsProvinces.length !== settingsInitialProvinces.length || settingsProvinces.some((c, i) => c !== settingsInitialProvinces[i]);
+    if (provincesChanged && settingsProvinces.length === 0) {
+      Alert.alert('Hata', 'Lütfen en az bir il seçiniz.');
+      return;
+    }
     setSettingsSaving(true);
     try {
       if (settingsNewImage) {
         await uploadGroupImage(token, settingsGroup.id, settingsNewImage);
       }
-      await updateGroupSettings(token, settingsGroup.id, {
+      const payload: { name?: string; description?: string; provinceCode?: number; provinceCodes?: number[] } = {
         name: settingsName,
         description: settingsDesc,
-      });
+      };
+      // İller sadece değiştiyse gönderilir (eski API bu alanları yok sayar)
+      if (provincesChanged) {
+        payload.provinceCode = settingsProvinces[0];
+        payload.provinceCodes = settingsProvinces;
+      }
+      await updateGroupSettings(token, settingsGroup.id, payload);
+      if (provincesChanged) setSettingsInitialProvinces(settingsProvinces);
       Alert.alert('Başarılı', 'Grup bilgileri güncellendi.');
     } catch {
       Alert.alert('Hata', 'Grup güncellenemedi.');
@@ -467,18 +484,63 @@ export default function CompanyChat() {
 
   const fetchMessages = async () => {
     if (!token || !groupId) return;
+    const gen = ++loadGenRef.current;
+    loadingOlderRef.current = false;
+    setLoadingOlder(false);
     setLoading(true);
     try {
       const res = await getGroupMessages(token, groupId);
+      if (gen !== loadGenRef.current) return;
       if (res?.data?.messages) {
+        // API eskiden → yeniye döner; liste inverted olduğu için yeniden → eskiye çevrilir
         const msgs: any[] = res.data.messages.reverse();
         msgs.forEach(m => seenIdsRef.current.add(String(m.id)));
         setMessages(msgs);
+        // hasMore/nextCursor yoksa (eski API) eski mesaj yükleme kapalı kalır
+        hasMoreRef.current = res.data.hasMore === true && msgs.length > 0;
+        nextCursorRef.current = res.data.nextCursor ?? (msgs.length ? msgs[msgs.length - 1].id : null);
       }
     } catch (error) {
       console.log('Error fetching messages', error);
     } finally {
-      setLoading(false);
+      if (gen === loadGenRef.current) setLoading(false);
+    }
+  };
+
+  // Listenin en eski ucuna gelince bir önceki sayfayı getirir (inverted listede dizinin sonuna eklenir → kaydırma konumu korunur)
+  const loadOlderMessages = async () => {
+    if (!token || !groupId || loading) return;
+    if (loadingOlderRef.current || !hasMoreRef.current || !nextCursorRef.current) return;
+    const gen = loadGenRef.current;
+    const cursor = nextCursorRef.current;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const res = await getGroupMessages(token, groupId, cursor);
+      if (gen !== loadGenRef.current) return;
+      const data = res?.data;
+      if (data && Array.isArray(data.messages)) {
+        const older: any[] = [...data.messages].reverse(); // yeniden → eskiye
+        older.forEach(m => seenIdsRef.current.add(String(m.id)));
+        setMessages(prev => {
+          const existingIds = new Set(prev.map(m => m.id));
+          const toAdd = older.filter(m => !existingIds.has(m.id));
+          return toAdd.length ? [...prev, ...toAdd] : prev;
+        });
+        const newCursor = data.nextCursor ?? (older.length ? older[older.length - 1].id : null);
+        // İmleç ilerlemediyse döngüye girmemek için dur
+        hasMoreRef.current = data.hasMore === true && older.length > 0 && !!newCursor && newCursor !== cursor;
+        nextCursorRef.current = newCursor;
+      } else {
+        hasMoreRef.current = false;
+      }
+    } catch (error) {
+      console.log('Error fetching older messages', error);
+    } finally {
+      if (gen === loadGenRef.current) {
+        loadingOlderRef.current = false;
+        setLoadingOlder(false);
+      }
     }
   };
 
@@ -722,7 +784,7 @@ export default function CompanyChat() {
             activeOpacity={0.7}
             style={styles.senderHeaderRow}
           >
-            <Text style={[styles.senderName, { fontSize: Math.max(13, chatFontSize - 3) }]}>
+            <Text style={styles.senderName}>
               {cleanSenderName}
             </Text>
             {isFromWhatsApp && <Text style={styles.subtleWaIndicator}> •</Text>}
@@ -740,25 +802,18 @@ export default function CompanyChat() {
             isTemp && styles.tempBubble,
           ]}>
             {isDeleted
-              ? <Text style={[styles.bubbleText, styles.deletedText, { fontSize: chatFontSize - 2 }]}>Bu mesaj silindi</Text>
+              ? <Text style={[styles.bubbleText, styles.deletedText]}>Bu mesaj silindi</Text>
               : (
                 <LinkifiedText
                   text={item.content}
-                  style={[
-                    styles.bubbleText,
-                    {
-                      fontSize: chatFontSize,
-                      fontWeight: chatFontBold ? '700' : '400',
-                      lineHeight: Math.round(chatFontSize * 1.35),
-                    },
-                  ]}
+                  style={styles.bubbleText}
                 />
               )
             }
             <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 4, gap: 4 }}>
               {isTemp && <Text style={styles.sendingDot}>⏳</Text>}
               {isCopied && <Text style={styles.copiedText}>Kopyalandı ✓</Text>}
-              <Text style={[styles.timeText, { fontSize: Math.max(9, chatFontSize - 6) }]}>
+              <Text style={styles.timeText}>
                 {new Date(item.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </Text>
             </View>
@@ -781,9 +836,6 @@ export default function CompanyChat() {
         </Text>
 
         <View style={styles.headerBtns}>
-          <TouchableOpacity onPress={() => setFontModalVisible(true)} style={styles.fontBtn} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
-            <Text style={styles.fontBtnText}>A±</Text>
-          </TouchableOpacity>
           <TouchableOpacity onPress={() => setDetailVisible(true)} style={styles.detailBtn}>
             <Text style={styles.detailBtnText}>Detay</Text>
           </TouchableOpacity>
@@ -837,6 +889,9 @@ export default function CompanyChat() {
           contentContainerStyle={{ paddingVertical: 10 }}
           inverted
           keyboardShouldPersistTaps="handled"
+          onEndReached={loadOlderMessages}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={loadingOlder ? <ActivityIndicator size="small" color="#999" style={styles.olderLoader} /> : null}
         />
 
         <View style={[styles.inputRow, { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 12) : 12 }]}>
@@ -992,6 +1047,10 @@ export default function CompanyChat() {
                 textAlignVertical="top"
               />
 
+              {/* İller */}
+              <Text style={ss.label}>Görünmek İstediğiniz İller *</Text>
+              <ProvinceMultiSelect selected={settingsProvinces} onChange={setSettingsProvinces} />
+
               {/* Kaydet */}
               <TouchableOpacity style={ss.saveBtn} onPress={saveSettings} disabled={settingsSaving}>
                 {settingsSaving
@@ -1095,83 +1154,6 @@ export default function CompanyChat() {
 
             <TouchableOpacity style={styles.optionCancelBtn} onPress={() => setMessageOptionsVisible(false)}>
               <Text style={styles.optionCancelText}>İptal</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* 🔠 YAZI TİPİ VE BOYUTU AYAR MODALI */}
-      <Modal
-        visible={fontModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setFontModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <Pressable 
-            style={StyleSheet.absoluteFillObject} 
-            onPress={() => setFontModalVisible(false)} 
-          />
-          <View style={styles.fontModalContent}>
-            <View style={styles.fontModalHeader}>
-              <Text style={styles.fontModalTitle}>Yazı Tipi & Boyutu</Text>
-              <TouchableOpacity onPress={() => setFontModalVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Text style={{ fontSize: 18, fontWeight: '700', color: '#666' }}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.fontSectionLabel}>Yazı Boyutu</Text>
-            <View style={styles.fontSizeRow}>
-              {[
-                { label: 'Standart', size: 15 },
-                { label: 'Büyük', size: 18 },
-                { label: 'Çok Büyük', size: 21 },
-              ].map(opt => {
-                const isSelected = chatFontSize === opt.size;
-                return (
-                  <TouchableOpacity
-                    key={opt.size}
-                    style={[styles.fontSizeBtn, isSelected && styles.fontSizeBtnActive]}
-                    onPress={() => handleSaveFontSize(opt.size)}
-                  >
-                    <Text style={[styles.fontSizeBtnText, isSelected && styles.fontSizeBtnTextActive]}>
-                      {opt.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <View style={styles.boldSwitchRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.boldSwitchTitle}>Kalın Yazı (Bold)</Text>
-                <Text style={styles.boldSwitchSubtitle}>Mesaj balonlarındaki yazıları kalınlaştırır</Text>
-              </View>
-              <Switch
-                value={chatFontBold}
-                onValueChange={handleSaveFontBold}
-                trackColor={{ false: '#ccc', true: YELLOW }}
-                thumbColor={chatFontBold ? '#000' : '#f4f3f4'}
-              />
-            </View>
-
-            {/* Canlı Önizleme */}
-            <Text style={styles.fontSectionLabel}>Önizleme</Text>
-            <View style={[styles.previewBubble, { backgroundColor: YELLOW }]}>
-              <Text
-                style={{
-                  fontSize: chatFontSize,
-                  fontWeight: chatFontBold ? '700' : '400',
-                  color: '#000',
-                  lineHeight: Math.round(chatFontSize * 1.35),
-                }}
-              >
-                HafriyApp: 34ABC123 damperli hafriyat seferi onaylandı.
-              </Text>
-            </View>
-
-            <TouchableOpacity style={styles.fontDoneBtn} onPress={() => setFontModalVisible(false)}>
-              <Text style={styles.fontDoneBtnText}>Tamam</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1339,11 +1321,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   bubbleText: {
-    fontSize: 15,
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 22,
     color: '#000',
   },
   timeText: {
-    fontSize: 10,
+    fontSize: 11,
     color: '#555',
   },
   deletedBubble: {
@@ -1352,11 +1336,16 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
   },
   deletedText: {
+    fontSize: 15,
+    fontWeight: '400',
     color: '#aaa',
     fontStyle: 'italic',
   },
   tempBubble: {
     opacity: 0.7,
+  },
+  olderLoader: {
+    marginVertical: 12,
   },
   sendingDot: {
     fontSize: 9,
@@ -1443,112 +1432,6 @@ const styles = StyleSheet.create({
   settingsBtnText: {
     fontSize: 18,
     color: '#333',
-  },
-  fontBtn: {
-    backgroundColor: 'rgba(255,255,255,0.4)',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
-  },
-  fontBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#333',
-  },
-  fontModalContent: {
-    width: '90%',
-    maxWidth: 340,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  fontModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  fontModalTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#222',
-  },
-  fontSectionLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#888',
-    textTransform: 'uppercase',
-    marginBottom: 8,
-    marginTop: 8,
-  },
-  fontSizeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  fontSizeBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#f5f5f5',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    alignItems: 'center',
-  },
-  fontSizeBtnActive: {
-    backgroundColor: YELLOW,
-    borderColor: '#E6C200',
-  },
-  fontSizeBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#555',
-  },
-  fontSizeBtnTextActive: {
-    color: '#000',
-    fontWeight: '700',
-  },
-  boldSwitchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#eee',
-    marginBottom: 16,
-  },
-  boldSwitchTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#333',
-  },
-  boldSwitchSubtitle: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 2,
-  },
-  previewBubble: {
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 20,
-  },
-  fontDoneBtn: {
-    backgroundColor: YELLOW,
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  fontDoneBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#000',
   },
   /* DETAY MODAL */
   detailModal: {

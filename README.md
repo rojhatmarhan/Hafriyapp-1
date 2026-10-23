@@ -1,97 +1,81 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# HafriyApp Mobil
 
-# Getting Started
+Hafriyat (toprak taşıma) sektörü için iOS + Android uygulaması. Firma/araç sahipleri şantiye açar, sefer fişi keser ve
+Bluetooth yazıcıdan basar; şoförler iş ilanlarını ve kendi seferlerini görür. React Native 0.82 + TypeScript.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+- **Backend (API + Web):** ayrı repo, `.NET 8` — canlı API `https://api.hafriyapp.com`, web `https://hafriyapp.com`
+- **Mimari, iş kuralları, bilinen sorunlar:** [CLAUDE.md](CLAUDE.md) (hem Claude hem geliştiriciler için proje rehberi)
 
-## Step 1: Start Metro
+## Gereksinimler
+- Node.js ≥ 20, npm
+- Android: Android Studio, JDK 17, Android SDK
+- iOS (sadece macOS): Xcode, Ruby + Bundler, CocoaPods
+- React Native ortam kurulumu: https://reactnative.dev/docs/set-up-your-environment
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
-
-To start the Metro dev server, run the following command from the root of your React Native project:
-
-```sh
-# Using npm
-npm start
-
-# OR using Yarn
-yarn start
+## Kurulum
+```bash
+npm install          # postinstall: patch-package, patches/ altındaki yamaları uygular
+```
+iOS için (macOS):
+```bash
+bundle install
+cd ios && bundle exec pod install && cd ..
 ```
 
-## Step 2: Build and run your app
+## Çalıştırma
+```bash
+npm start            # Metro
+npm run android
+npm run ios
+```
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+### Hangi API'ye bağlanır?
+`src/services/api.ts`:
+- **Debug (`__DEV__`)** → `http://localhost:5062` (local backend). Backend'i `dotnet run --project HafriyApp.API` ile başlat.
+  - Android cihaz/emülatörde localhost için: `adb reverse tcp:5062 tcp:5062`
+  - iOS simülatörde ek ayar gerekmez; gerçek iPhone'da bilgisayarın IP'sini kullanman gerekir.
+- **Release** → `https://api.hafriyapp.com` (canlı)
+
+Local backend yoksa debug'da canlı API'yi denemek için `BASE_HOST`'u geçici olarak değiştir, **commit etme**.
+
+### Giriş
+Telefon + SMS kodu. Local backend Development modunda SMS göndermez; kod backend konsoluna yazılır ve API cevabında döner.
+SMS sınırları (canlıda): aynı numaraya 60 sn'de bir, günde 5 kod.
+
+## Kontrol
+```bash
+npx tsc --noEmit     # tip kontrolü
+npm run lint
+npm test
+```
+
+## Yayın (release)
+Sürüm numaraları:
+- Android: `android/app/build.gradle` → `versionCode` (her yüklemede +1), `versionName`
+- iOS: Xcode → `MARKETING_VERSION`, `CURRENT_PROJECT_VERSION` (build numarası)
 
 ### Android
-
-```sh
-# Using npm
-npm run android
-
-# OR using Yarn
-yarn android
+İmza bilgileri repoda **yok**: `android/keystore.properties` (gitignore'da) ve `.keystore` dosyası proje sahibinden alınır.
+`keystore.properties` anahtarları: `MYAPP_RELEASE_STORE_FILE`, `MYAPP_RELEASE_KEY_ALIAS`, `MYAPP_RELEASE_STORE_PASSWORD`, `MYAPP_RELEASE_KEY_PASSWORD`
+(+ `MYAPP_CLOSED_*` kapalı test için).
+```bash
+cd android
+./gradlew bundleRelease      # Play Store için .aab → android/app/build/outputs/bundle/release/
+./gradlew assembleRelease    # .apk
 ```
+> ⚠️ Keystore bulunamazsa build **debug anahtarıyla** imzalanır ve Play Store reddeder. Yüklemeden önce imzayı kontrol et.
 
 ### iOS
+Xcode'da `ios/Hafriyapp.xcworkspace` → Product → Archive → App Store Connect'e yükle.
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+Çıktılar `builds/` (gitignore) ve `build_releases/` altında tarih klasörlerinde tutulur.
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+## Firebase
+Push bildirimi için `android/app/google-services.json` ve `ios/Hafriyapp/GoogleService-Info.plist` repoda. Giriş sonrası FCM token'ı
+`POST /api/Notification/device-token` ile backend'e kaydedilir.
 
-```sh
-bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
-npm run ios
-
-# OR using Yarn
-yarn ios
-```
-
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
-
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
-
-## Step 3: Modify your app
-
-Now that you have successfully run the app, let's make changes!
-
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+## Kurallar
+- UI metinleri ve hata mesajları Türkçe. Kullanıcıya gösterilen hata mesajı mümkünse backend'den gelir (`errors[0]`).
+- Kod stili Prettier'a göre (`.prettierrc.js`): tek tırnak, satır bölme yok.
+- `patches/` altındaki yamalı kütüphaneleri (bluetooth yazıcı, camera-kit) güncellerken yamayı yeniden üret: `npx patch-package <paket>`.
+- Fiş tasarımı web ile birebir aynı tutulur (`JobDetails.tsx`, `SupplierVehicles.tsx`).

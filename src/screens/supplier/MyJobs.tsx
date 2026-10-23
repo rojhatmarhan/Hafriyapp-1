@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import {
   deleteJobSite,
   toggleJobSiteActive,
   getJobSites,
+  toggleJobSitePin,
 } from '../../services/jobSiteNewService';
 import { useAppSelector } from '../../hooks';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -65,6 +66,8 @@ type JobUI = {
   totalTonage: number;
   canEdit: boolean;
   isActive: boolean;
+  // Başa tutturma (kullanıcıya özel). Eski API'de alan yok → undefined, pin özelliği gizlenir.
+  isPinned?: boolean;
   raw: Job;
 };
 
@@ -111,6 +114,7 @@ export default function MyJobs() {
           totalTonage,
           canEdit: item.canEdit,
           isActive: item.isActive,
+          isPinned: typeof item.isPinned === 'boolean' ? item.isPinned : undefined,
           raw: item,
         };
       });
@@ -270,9 +274,35 @@ export default function MyJobs() {
     );
   };
 
+  // API pin desteği: en az bir işte boolean isPinned geldiyse pin butonları gösterilir
+  const pinSupported = useMemo(() => jobs.some(j => typeof j.isPinned === 'boolean'), [jobs]);
+  const pinInFlightRef = useRef<Set<string>>(new Set());
+
+  const handleTogglePin = async (job: JobUI) => {
+    if (!token || pinInFlightRef.current.has(job.id)) return;
+    const prevPinned = job.isPinned === true;
+    const nextPinned = !prevPinned;
+    pinInFlightRef.current.add(job.id);
+    // İyimser güncelleme
+    setJobs(prev => prev.map(j => (j.id === job.id ? { ...j, isPinned: nextPinned } : j)));
+    try {
+      const res = await toggleJobSitePin(token, job.id);
+      if (typeof res?.isPinned === 'boolean' && res.isPinned !== nextPinned) {
+        setJobs(prev => prev.map(j => (j.id === job.id ? { ...j, isPinned: res.isPinned } : j)));
+      }
+    } catch (e: any) {
+      // Geri al
+      setJobs(prev => prev.map(j => (j.id === job.id ? { ...j, isPinned: prevPinned } : j)));
+      const msg = e?.response?.data?.message || e?.response?.data?.errors?.[0] || (nextPinned ? 'İş başa tutturulamadı. Lütfen tekrar deneyin.' : 'İşin tutturması kaldırılamadı. Lütfen tekrar deneyin.');
+      Alert.alert('Hata', msg);
+    } finally {
+      pinInFlightRef.current.delete(job.id);
+    }
+  };
+
   const filteredJobs = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return jobs.filter(item => {
+    const list = jobs.filter(item => {
       const matchesType =
         filterType === 'ALL' ||
         (filterType === 'KUM' && item.raw.jobType === 1) ||
@@ -280,7 +310,18 @@ export default function MyJobs() {
       const matchesSearch = !q || item.site.toLowerCase().includes(q);
       return matchesType && matchesSearch;
     });
-  }, [jobs, search, filterType]);
+    if (!pinSupported) return list;
+    // Başa tutturulanlar üstte; kendi aralarında sunucunun sırası (CreatedDate desc) korunur
+    return list
+      .map((item, index) => ({ item, index }))
+      .sort((a, b) => {
+        const ap = a.item.isPinned === true ? 1 : 0;
+        const bp = b.item.isPinned === true ? 1 : 0;
+        if (ap !== bp) return bp - ap;
+        return a.index - b.index;
+      })
+      .map(x => x.item);
+  }, [jobs, search, filterType, pinSupported]);
 
   const renderItem = ({ item }: { item: JobUI }) => {
     const isKum = item.raw.jobType === 1;
@@ -292,7 +333,22 @@ export default function MyJobs() {
         activeOpacity={0.85}
       >
         <View style={{ flex: 1 }}>
-          <Text style={styles.site}>{item.site}</Text>
+          {pinSupported ? (
+            <View style={styles.siteRow}>
+              <Text style={[styles.site, styles.siteInRow]}>{item.site}</Text>
+              {item.isPinned === true && <Text style={styles.pinnedIndicator}>📌</Text>}
+              <TouchableOpacity
+                style={[styles.pinBtn, item.isPinned === true && styles.pinBtnActive]}
+                onPress={() => handleTogglePin(item)}
+                hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                accessibilityLabel={item.isPinned === true ? 'Tutturmayı kaldır' : 'Başa tuttur'}
+              >
+                <Text style={styles.pinIcon}>📌</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={styles.site}>{item.site}</Text>
+          )}
           {/* <Text style={styles.jobType}>
             {isKum ? 'Kum & Mıcır' : 'Hafriyat Döküm'}
           </Text> */}
@@ -499,6 +555,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 8,
     color: '#111',
+  },
+
+  siteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 8,
+  },
+
+  siteInRow: {
+    flexShrink: 1,
+    marginBottom: 0,
+  },
+
+  pinnedIndicator: {
+    fontSize: 11,
+  },
+
+  pinBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginLeft: 'auto',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F2',
+  },
+
+  pinBtnActive: {
+    backgroundColor: '#FFF3C4',
+  },
+
+  pinIcon: {
+    fontSize: 15,
   },
 
   jobType: {

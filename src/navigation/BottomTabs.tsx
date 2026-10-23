@@ -18,6 +18,7 @@ import MyAds from '../screens/MyAds';
 import SupplierStack from './SupplierStack';
 import DriverStack from './DriverStack';
 import MyJobsStack from './MyJobsStack';
+import TagIcon from '../components/TagIcon';
 
 function MarketIcon({ focused }: { focused: boolean }) {
   return (
@@ -30,15 +31,7 @@ function MarketIcon({ focused }: { focused: boolean }) {
         justifyContent: 'center',
         alignItems: 'center',
       }}>
-      <Image
-        source={require('../../assets/icons/market-pazar-1.png')}
-        style={{
-          width: 44,
-          height: 44,
-          resizeMode: 'contain',
-          tintColor: focused ? 'black' : '#444',
-        }}
-      />
+      <TagIcon size={34} color={focused ? 'black' : '#444'} />
     </View>
   );
 }

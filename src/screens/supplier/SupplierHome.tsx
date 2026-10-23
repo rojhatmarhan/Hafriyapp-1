@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, Platform, ActionSheetIOS, Alert, Modal, ScrollView, ActivityIndicator, FlatList } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -15,20 +15,36 @@ import { CITIES } from '../../constants/cities';
 import { useAppSelector, useAppDispatch } from '../../hooks';
 import { setSelectedCity } from '../../store/slices/uiSlice';
 import CityPickerModal from '../../components/CityPickerModal';
+import ProvinceMultiSelect from '../../components/ProvinceMultiSelect';
 import { useActiveUserCount } from '../../hooks/useActiveUserCount';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { getChatGroups, createChatGroup, uploadGroupImage } from '../../services/chatService';
+import { getChatGroups, createChatGroup, uploadGroupImage, toggleChatGroupPin, getGroupDetail } from '../../services/chatService';
 import { getProfile } from '../../services/userService';
 import { clearAuth } from '../../utils/secureStore';
 import { logout, setUser } from '../../store/slices/authSlice';
+
+const GROUP_PAGE_SIZE = 20;
+// Eski (yerel) sabitleme kaydı: grup id dizisi. Sunucuya taşındıktan sonra da SİLİNMEZ (uyumluluk kuralı).
+const PINNED_KEY = 'pinned_chat_groups';
+const PINNED_MIGRATED_KEY = 'pinned_chat_groups_migrated';
 
 export default function SupplierHome() {
   const navigation = useNavigation<any>();
   const activeUsers = useActiveUserCount();
   const [searchText, setSearchText] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [chatGroups, setChatGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+
+  /* SAYFALAMA (sonsuz kaydırma) */
+  const pageRef = useRef(1);
+  const totalPagesRef = useRef(1);
+  const requestIdRef = useRef(0); // il/arama/yenileme değişince eski cevapları yok saymak için
+  const firstPageLoadingRef = useRef(false);
+  const loadingMoreRef = useRef(false);
+  const hasGroupsRef = useRef(false);
   const [cityPickerModalVisible, setCityPickerModalVisible] = useState(false);
   const selectedCity = useAppSelector(state => state.ui.selectedCity);
   const dispatch = useAppDispatch();
@@ -40,30 +56,210 @@ export default function SupplierHome() {
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDesc, setNewGroupDesc] = useState('');
   const [selectedProvinces, setSelectedProvinces] = useState<number[]>([]);
-  const [citySearch, setCitySearch] = useState('');
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newGroupImage, setNewGroupImage] = useState<string | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem('pinned_chat_groups').then(val => {
-      if (val) setPinnedIds(JSON.parse(val));
-    });
+    AsyncStorage.getItem(PINNED_KEY).then(val => {
+      if (!val) return;
+      try {
+        const parsed = JSON.parse(val);
+        if (Array.isArray(parsed)) setPinnedIds(parsed);
+      } catch { }
+    }).catch(() => { });
   }, []);
 
-  const togglePin = useCallback((id: string) => {
-    setPinnedIds(prev => {
-      const next = prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id];
-      AsyncStorage.setItem('pinned_chat_groups', JSON.stringify(next));
-      return next;
-    });
+  // API listede boolean isPinned dönüyorsa sabitleme sunucuda; dönmüyorsa (eski API) eski yerel davranış sürer
+  const serverPinSupported = useMemo(() => chatGroups.some(g => typeof g?.isPinned === 'boolean'), [chatGroups]);
+  const isGroupPinned = useCallback((g: any) => (serverPinSupported ? g.isPinned === true : pinnedIds.includes(g.id)), [serverPinSupported, pinnedIds]);
+  const pinInFlightRef = useRef<Set<string>>(new Set());
+  const chatGroupsRef = useRef<any[]>([]);
+  const pinMigrationStartedRef = useRef(false);
+
+  const applyServerPin = useCallback((id: string, pinned: boolean) => {
+    // Sunucu üye olmayanı sabitlerken üye yapar → listede de üye olarak göster
+    setChatGroups(prev => prev.map(g => (g.id === id ? { ...g, isPinned: pinned, ...(pinned && !g.isMember ? { isMember: true } : null) } : g)));
   }, []);
+
+  const togglePin = useCallback(async (item: any) => {
+    const id = item.id;
+    if (!serverPinSupported) {
+      // Eski API: sabitleme sadece telefonda
+      setPinnedIds(prev => {
+        const next = prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id];
+        AsyncStorage.setItem(PINNED_KEY, JSON.stringify(next));
+        return next;
+      });
+      return;
+    }
+    if (!token || pinInFlightRef.current.has(id)) return;
+    const prevPinned = item.isPinned === true;
+    const nextPinned = !prevPinned;
+    pinInFlightRef.current.add(id);
+    // İyimser güncelleme
+    setChatGroups(prev => prev.map(g => (g.id === id ? { ...g, isPinned: nextPinned } : g)));
+    let serverMsg = '';
+    try {
+      const res = await toggleChatGroupPin(token, id);
+      if (res && res.isSuccess === false) {
+        serverMsg = res.errors?.[0] || '';
+        throw new Error(serverMsg);
+      }
+      applyServerPin(id, typeof res?.data === 'boolean' ? res.data : nextPinned);
+    } catch (e: any) {
+      // Geri al
+      setChatGroups(prev => prev.map(g => (g.id === id ? { ...g, isPinned: prevPinned } : g)));
+      const msg = e?.response?.data?.errors?.[0] || serverMsg || (nextPinned ? 'Grup sabitlenemedi. Lütfen tekrar deneyin.' : 'Sabitleme kaldırılamadı. Lütfen tekrar deneyin.');
+      Alert.alert('Hata', msg);
+    } finally {
+      pinInFlightRef.current.delete(id);
+    }
+  }, [token, serverPinSupported, applyServerPin]);
+
+  useEffect(() => {
+    hasGroupsRef.current = chatGroups.length > 0;
+    chatGroupsRef.current = chatGroups;
+  }, [chatGroups]);
+
+  // Tek seferlik taşıma: telefonda sabitli olup sunucuda sabitli olmayan grupları sunucuda sabitler.
+  // Arka planda çalışır, hatalar sessizdir; hepsi başarılı olursa bayrak yazılır, yoksa sonraki açılışta tekrar denenir.
+  // Uç durumu tersine çevirdiği için SADECE sunucuda sabitli olmadığı bilinen gruplar için çağrılır.
+  useEffect(() => {
+    if (!token || !serverPinSupported || pinMigrationStartedRef.current) return;
+    pinMigrationStartedRef.current = true;
+    (async () => {
+      try {
+        if ((await AsyncStorage.getItem(PINNED_MIGRATED_KEY)) === '1') return;
+        const raw = await AsyncStorage.getItem(PINNED_KEY);
+        let localIds: string[] = [];
+        try {
+          const parsed = raw ? JSON.parse(raw) : [];
+          if (Array.isArray(parsed)) localIds = Array.from(new Set<string>(parsed.filter((x: any) => typeof x === 'string' && x)));
+        } catch { }
+        let allOk = true;
+        for (const id of localIds) {
+          try {
+            const loaded = chatGroupsRef.current.find(g => g.id === id);
+            let shouldPin = false;
+            if (loaded && typeof loaded.isPinned === 'boolean') {
+              shouldPin = loaded.isPinned === false;
+            } else {
+              // Yüklenmemiş grup: detaydan durumu öğren
+              let detailRes: any;
+              try {
+                detailRes = await getGroupDetail(token, id);
+              } catch (e: any) {
+                const status = e?.response?.status;
+                if (status === 404 || status === 403) continue; // grup silinmiş / erişim yok: taşınacak bir şey yok
+                throw e;
+              }
+              const d = detailRes?.data ?? detailRes;
+              if (typeof d?.isPinned === 'boolean') shouldPin = d.isPinned === false;
+              else if (d?.isMember === false) shouldPin = true; // üye olmayan sunucuda sabitli olamaz
+              else continue; // durum bilinmiyor: dokunma (yanlışlıkla sabitlemeyi kaldırmamak için)
+            }
+            if (!shouldPin) continue;
+            const res = await toggleChatGroupPin(token, id);
+            if (res && res.isSuccess === false) {
+              allOk = false;
+              continue;
+            }
+            let pinned = typeof res?.data === 'boolean' ? res.data : true;
+            if (!pinned) {
+              // Liste bayatmış (aslında sabitliymiş): bir kez daha çevirip sabitli bırak
+              const res2 = await toggleChatGroupPin(token, id);
+              pinned = typeof res2?.data === 'boolean' ? res2.data : true;
+              if (!pinned) allOk = false;
+            }
+            applyServerPin(id, pinned);
+          } catch {
+            allOk = false;
+          }
+        }
+        if (allOk) await AsyncStorage.setItem(PINNED_MIGRATED_KEY, '1');
+      } catch { }
+    })();
+  }, [token, serverPinSupported, applyServerPin]);
+
+  // Arama sunucuda yapılır (ilk 20 grubun dışındakiler de bulunsun); her tuşta istek atmamak için beklenir
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchText.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchText]);
+
+  const dedupeById = (list: any[]) => {
+    const seen = new Set<string>();
+    return list.filter(g => {
+      if (!g || g.id == null || seen.has(g.id)) return false;
+      seen.add(g.id);
+      return true;
+    });
+  };
+
+  // İlk sayfayı (yeniden) yükler: yenileme, odaklanma, il değişimi ve aramada çağrılır
+  const fetchGroups = useCallback(async (showLoader: boolean = true) => {
+    if (!token) return;
+    const requestId = ++requestIdRef.current;
+    firstPageLoadingRef.current = true;
+    loadingMoreRef.current = false;
+    setLoadingMore(false);
+    if (showLoader) setLoading(true);
+    try {
+      const res = await getChatGroups(token, selectedCity ?? undefined, 1, GROUP_PAGE_SIZE, debouncedSearch || undefined);
+      if (requestId !== requestIdRef.current) return; // eski istek (il/arama değişti)
+      if (res && res.data && res.data.groups) {
+        setChatGroups(dedupeById(res.data.groups));
+        pageRef.current = 1;
+        totalPagesRef.current = typeof res.data.totalPages === 'number' ? res.data.totalPages : 1;
+      }
+    } catch (error) {
+      console.log('Error fetching groups', error);
+    } finally {
+      if (requestId === requestIdRef.current) {
+        firstPageLoadingRef.current = false;
+        setLoading(false);
+      }
+    }
+  }, [token, selectedCity, debouncedSearch]);
+
+  // Liste sonuna gelince sonraki sayfayı getirir
+  const loadMoreGroups = useCallback(async () => {
+    if (!token) return;
+    if (firstPageLoadingRef.current || loadingMoreRef.current) return;
+    if (pageRef.current >= totalPagesRef.current) return;
+    const requestId = requestIdRef.current;
+    const nextPage = pageRef.current + 1;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const res = await getChatGroups(token, selectedCity ?? undefined, nextPage, GROUP_PAGE_SIZE, debouncedSearch || undefined);
+      if (requestId !== requestIdRef.current) return; // bu arada ilk sayfa yeniden yüklendi
+      if (res && res.data && Array.isArray(res.data.groups)) {
+        const incoming = res.data.groups;
+        setChatGroups(prev => dedupeById([...prev, ...incoming]));
+        pageRef.current = nextPage;
+        if (typeof res.data.totalPages === 'number') totalPagesRef.current = res.data.totalPages;
+        if (incoming.length === 0) totalPagesRef.current = nextPage; // boş sayfa: daha fazla isteme
+      }
+    } catch (error) {
+      console.log('Error fetching more groups', error);
+    } finally {
+      if (requestId === requestIdRef.current) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
+    }
+  }, [token, selectedCity, debouncedSearch]);
+
+  // Odaklanınca / il veya arama değişince ilk sayfadan yükle
+  useFocusEffect(
+    useCallback(() => {
+      fetchGroups(!hasGroupsRef.current);
+    }, [fetchGroups])
+  );
 
   useFocusEffect(
     useCallback(() => {
-      const showLoader = chatGroups.length === 0;
-      fetchGroups(showLoader);
-
       if (token) {
         getProfile(token).then(profileRes => {
           if (profileRes?.isSuccess) {
@@ -79,23 +275,8 @@ export default function SupplierHome() {
           console.log('Error updating profile on focus:', err);
         });
       }
-    }, [selectedCity, chatGroups.length, token, dispatch])
+    }, [token, dispatch])
   );
-
-  const fetchGroups = async (showLoader: boolean = true) => {
-    if (!token) return;
-    if (showLoader) setLoading(true);
-    try {
-      const res = await getChatGroups(token, selectedCity ?? undefined);
-      if (res && res.data && res.data.groups) {
-        setChatGroups(res.data.groups);
-      }
-    } catch (error) {
-      console.log('Error fetching groups', error);
-    } finally {
-      if (showLoader) setLoading(false);
-    }
-  };
 
   const pickGroupImage = () => {
     launchImageLibrary(
@@ -162,29 +343,23 @@ export default function SupplierHome() {
     setCityPickerModalVisible(true);
   };
 
-  const toggleProvince = (code: number) => {
-    if (selectedProvinces.includes(code)) {
-      setSelectedProvinces(prev => prev.filter(c => c !== code));
-    } else {
-      setSelectedProvinces(prev => [...prev, code]);
-    }
-  };
-
   // 🔍 WHATSAPP STYLE SORTING & FILTERING
   const sortedAndFilteredGroups = useMemo(() => {
     let filtered = chatGroups;
     const q = searchText.trim().toLowerCase();
 
     if (q) {
+      // Sunucu ad + açıklamada arar; yazarken (bekleme süresinde) yüklü liste de anında süzülür
       filtered = chatGroups.filter(item =>
-        item.name.toLowerCase().includes(q) ||
+        (item.name || '').toLowerCase().includes(q) ||
+        (item.description && item.description.toLowerCase().includes(q)) ||
         (item.lastMessagePreview && item.lastMessagePreview.toLowerCase().includes(q))
       );
     }
 
     return [...filtered].sort((a, b) => {
-      const aPinned = pinnedIds.includes(a.id);
-      const bPinned = pinnedIds.includes(b.id);
+      const aPinned = isGroupPinned(a);
+      const bPinned = isGroupPinned(b);
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
 
@@ -193,19 +368,14 @@ export default function SupplierHome() {
       const bTime = new Date(b.lastMessageAt || b.createdDate || 0).getTime();
       return bTime - aTime;
     });
-  }, [searchText, chatGroups, pinnedIds]);
-
-  const filteredCitiesForSelect = useMemo(() => {
-    if (!citySearch.trim()) return CITIES;
-    return CITIES.filter(c => c.label.toLowerCase().includes(citySearch.toLowerCase()));
-  }, [citySearch]);
+  }, [searchText, chatGroups, isGroupPinned]);
 
   const renderItem = ({ item }: { item: any }) => {
     const previewText = item.isMember
       ? (item.lastMessageSenderName ? `${item.lastMessageSenderName}: ` : '') + (item.lastMessagePreview || 'Henüz mesaj yok')
       : (item.description || item.lastMessagePreview || 'Henüz mesaj yok');
 
-    const isPinned = pinnedIds.includes(item.id);
+    const isPinned = isGroupPinned(item);
     const hasUnread = typeof item.unreadCount === 'number' && item.unreadCount > 0;
 
     return (
@@ -251,7 +421,7 @@ export default function SupplierHome() {
 
         <TouchableOpacity
           style={[styles.pinBtn, isPinned && styles.pinBtnActive]}
-          onPress={() => togglePin(item.id)}
+          onPress={() => togglePin(item)}
           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
           <Text style={styles.pinIcon}>📌</Text>
@@ -364,6 +534,9 @@ export default function SupplierHome() {
         }
         refreshing={loading}
         onRefresh={() => fetchGroups(true)}
+        onEndReached={loadMoreGroups}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color="#000" style={styles.listFooterLoader} /> : null}
         initialNumToRender={12}
         maxToRenderPerBatch={8}
         windowSize={5}
@@ -419,78 +592,7 @@ export default function SupplierHome() {
 
             <Text style={styles.label}>Görünmek İstediğiniz İlleri Seçin *</Text>
 
-            {/* 📌 Seçili İller (En Üstte) */}
-            {selectedProvinces.length > 0 && (
-              <View style={styles.selectedProvincesContainer}>
-                <View style={styles.selectedProvincesHeader}>
-                  <Text style={styles.selectedProvincesTitle}>Seçili İller ({selectedProvinces.length})</Text>
-                  <TouchableOpacity onPress={() => setSelectedProvinces([])}>
-                    <Text style={styles.clearText}>Temizle</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.cityList}>
-                  {selectedProvinces.map(code => {
-                    const city = CITIES.find(c => c.value === code);
-                    if (!city) return null;
-                    return (
-                      <TouchableOpacity
-                        key={code}
-                        style={[styles.cityChip, styles.cityChipSelected]}
-                        onPress={() => toggleProvince(code)}
-                      >
-                        <Text style={[styles.cityChipText, styles.cityChipTextSelected]}>
-                          {city.label} ✕
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-
-            {/* 🔽 Dropdown Toggle */}
-            <TouchableOpacity
-              style={styles.dropdownToggle}
-              onPress={() => setIsDropdownOpen(!isDropdownOpen)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.dropdownToggleText}>
-                {isDropdownOpen ? 'İl Seçimini Gizle' : 'İl Ekle / Seç'}
-              </Text>
-              <Image
-                source={require('../../../assets/icons/down-arrow.png')}
-                style={{ width: 14, height: 14, opacity: 0.6, transform: [{ rotate: isDropdownOpen ? '180deg' : '0deg' }] }}
-              />
-            </TouchableOpacity>
-
-            {/* 📋 Dropdown İçeriği */}
-            {isDropdownOpen && (
-              <View style={styles.dropdownContent}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="İlleri arayın..."
-                  value={citySearch}
-                  onChangeText={setCitySearch}
-                />
-                <Text style={styles.helperText}>Arama yaparak istediğiniz ili seçebilirsiniz.</Text>
-
-                <View style={styles.cityList}>
-                  {filteredCitiesForSelect.slice(0, 50).map(city => {
-                    const isSelected = selectedProvinces.includes(city.value);
-                    if (isSelected) return null; // Seçili olanları gizle, üstte görünüyorlar zaten
-                    return (
-                      <TouchableOpacity
-                        key={city.value}
-                        style={styles.cityChip}
-                        onPress={() => toggleProvince(city.value)}
-                      >
-                        <Text style={styles.cityChipText}>{city.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
+            <ProvinceMultiSelect selected={selectedProvinces} onChange={setSelectedProvinces} />
 
             <TouchableOpacity style={styles.submitBtn} onPress={handleCreateGroup} disabled={creating}>
               {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitBtnText}>✓ Grubu Oluştur</Text>}
@@ -794,6 +896,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#eee',
     marginLeft: 62,
   },
+  listFooterLoader: {
+    marginVertical: 16,
+  },
   emptyText: {
     textAlign: 'center',
     marginTop: 40,
@@ -836,87 +941,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     height: 46,
     fontSize: 14,
-  },
-  helperText: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 4,
-    marginBottom: 10,
-  },
-  cityList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 20,
-    paddingBottom: 20,
-  },
-  cityChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  cityChipSelected: {
-    backgroundColor: '#FFD500',
-    borderColor: '#FFD500',
-  },
-  cityChipText: {
-    fontSize: 13,
-    color: '#333',
-  },
-  cityChipTextSelected: {
-    fontWeight: '600',
-    color: '#000',
-  },
-  selectedProvincesContainer: {
-    marginBottom: 16,
-    padding: 12,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  selectedProvincesHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  selectedProvincesTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#333',
-  },
-  clearText: {
-    fontSize: 13,
-    color: '#d32f2f',
-    fontWeight: '600',
-  },
-  dropdownToggle: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  dropdownToggleText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-  },
-  dropdownContent: {
-    backgroundColor: '#fafafa',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#eee',
-    marginBottom: 16,
   },
   submitBtn: {
     backgroundColor: '#FFA500', // Turuncu
