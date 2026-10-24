@@ -17,15 +17,16 @@ import { PlateScannerModal } from '../../components/PlateScannerModal';
 import JobNotesModal from '../../components/JobNotesModal';
 import DumpTicketInput, { extractDumpTicketNo } from '../../components/DumpTicketInput';
 import { normalizeTr } from '../../utils/trSearch';
-import CalendarDateButton from '../../components/CalendarDateButton';
 import { formatDumpLine, formatDumpReceiptValue } from '../../utils/dumpFormat';
-import { CameraIcon, QrScanIcon } from '../../components/MiniIcons';
+import { CameraIcon } from '../../components/MiniIcons';
 import { getCompanyById } from '../../services/userService';
 import { addPendingHaul, removePendingHaul, updatePendingHaul, PendingHaul } from '../../store/slices/pendingHaulSlice';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
 import { ensurePrinterReady, printImage, clearSavedPrinter, getReceiptCaptureLayout } from '../../services/printService';
 import { API_BASE_URL, BASE_HOST } from '../../services/api';
+import HaulSearchBar from '../../components/HaulSearchBar';
+import { useDateRange, isInDateRange as isInRange, todayDDMMYYYY, ddmmyyyyToKey, ddmmyyyyToYMD, dateToDDMMYYYY } from '../../utils/dateRange';
 
 const YELLOW = '#FFD500';
 const DARK = '#222';
@@ -35,39 +36,6 @@ const nowTR = (): string => {
   const trMs = Date.now() + 3 * 60 * 60000;
   return new Date(trMs).toISOString().replace('Z', '');
 };
-
-const todayDDMMYYYY = (): string => {
-  const trMs = Date.now() + 3 * 60 * 60000;
-  const d = new Date(trMs);
-  return `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()}`;
-};
-
-// ── Varsayılan tarih aralığı: bu ayın 1'i → ayın son günü (eski "bu yıl + bu ay" filtresiyle birebir aynı liste;
-// sahibin elle ileri tarihli girdiği seferler de görünür)
-const monthStartDDMMYYYY = (): string => `01.${todayDDMMYYYY().slice(3)}`;
-const monthEndDDMMYYYY = (): string => {
-  // Gün sayısı da ay/yıl ile aynı TR tarihinden hesaplanır (cihaz saat dilimi farklıysa "31.11" gibi geçersiz tarih çıkmasın)
-  const monthYear = todayDDMMYYYY().slice(3);
-  const [m, y] = monthYear.split('.').map(Number);
-  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return `${String(last).padStart(2, '0')}.${monthYear}`;
-};
-
-// "DD.MM.YYYY" → YYYYMMDD sayısı (karşılaştırma için); geçersizse null
-const ddmmyyyyToKey = (str: string): number | null => {
-  if (!/^\d{2}\.\d{2}\.\d{4}$/.test(str)) return null;
-  const [d, m, y] = str.split('.').map(Number);
-  return y * 10000 + m * 100 + d;
-};
-
-// "DD.MM.YYYY" → "YYYY-MM-DD" (Excel export query formatı)
-const ddmmyyyyToYMD = (str: string): string => {
-  const [d, m, y] = str.split('.');
-  return `${y}-${m}-${d}`;
-};
-
-// Date (cihaz yerel saati) → "DD.MM.YYYY"
-const dateToDDMMYYYY = (d: Date): string => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
 
 const getNowTimeStr = (): string => {
   const trMs = Date.now() + 3 * 60 * 60000;
@@ -254,13 +222,7 @@ export default function JobDetails() {
   const [hauls, setHauls] = useState<HaulApi[]>([]);
   const [plateFilter, setPlateFilter] = useState('');
   // Tarih aralığı filtresi (DD.MM.YYYY, dahil). Varsayılan: bu ayın 1'i → ayın son günü
-  const [rangeStart, setRangeStart] = useState<string>(monthStartDDMMYYYY());
-  const [rangeEnd, setRangeEnd] = useState<string>(monthEndDDMMYYYY());
-  const isDefaultRange = rangeStart === monthStartDDMMYYYY() && rangeEnd === monthEndDDMMYYYY();
-  const resetDateRange = () => {
-    setRangeStart(monthStartDDMMYYYY());
-    setRangeEnd(monthEndDDMMYYYY());
-  };
+  const { rangeStart, rangeEnd, startKey: rangeStartKey, endKey: rangeEndKey, isDefaultRange, changeStart: handleRangeStartChange, changeEnd: handleRangeEndChange, resetRange: resetDateRange, setRange } = useDateRange();
   const [cachedCompanyLogoPath, setCachedCompanyLogoPath] = useState<string | null>(null);
   const [showHaulsToOwners, setShowHaulsToOwners] = useState<boolean>(job?.isHaulVisibleToVehicleOwners ?? job?.showHaulsToVehicleOwners ?? true);
   const [loading, setLoading] = useState(true);
@@ -1049,12 +1011,12 @@ export default function JobDetails() {
     // Modal kapatılmadan openDocument sunamaz; önce kapat, animasyon bitince aç
     setDeleteStep1Visible(false);
     try {
-      let exportUrl = `https://api.hafriyapp.com/api/Haul/jobsite/${job.id}/export`;
+      let exportUrl = `${API_BASE_URL}/Haul/jobsite/${job.id}/export`;
       if (ddmmyyyyToKey(rangeStart) !== null && ddmmyyyyToKey(rangeEnd) !== null) {
         // Ekrandaki tarih aralığı (dahil) — aynı query formatı: YYYY-MM-DD
         const startDate = ddmmyyyyToYMD(rangeStart);
         const endDate = ddmmyyyyToYMD(rangeEnd);
-        exportUrl = `https://api.hafriyapp.com/api/Haul/jobsite/${job.id}/filtered/export?startDate=${startDate}&endDate=${endDate}`;
+        exportUrl = `${API_BASE_URL}/Haul/jobsite/${job.id}/filtered/export?startDate=${startDate}&endDate=${endDate}`;
       }
       const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' }).fetch('GET', exportUrl, {
         Authorization: `Bearer ${token}`,
@@ -1259,17 +1221,7 @@ export default function JobDetails() {
 
   // ── Tarih aralığı kontrolü (dahil). Eski yıl/ay filtresiyle aynı şekilde new Date(timeOfHaul) yerel tarihi kullanılır
   // (listede gösterilen tarih de bu; Türkiye'deki cihazda TR yerel tarihi).
-  const rangeStartKey = ddmmyyyyToKey(rangeStart);
-  const rangeEndKey = ddmmyyyyToKey(rangeEnd);
-  const isInDateRange = (timeOfHaul?: string): boolean => {
-    if (!timeOfHaul) return true;
-    const d = new Date(timeOfHaul);
-    if (isNaN(d.getTime())) return true;
-    const key = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
-    if (rangeStartKey !== null && key < rangeStartKey) return false;
-    if (rangeEndKey !== null && key > rangeEndKey) return false;
-    return true;
-  };
+  const isInDateRange = (timeOfHaul?: string): boolean => isInRange(timeOfHaul, rangeStartKey, rangeEndKey);
 
   const filteredHauls = useMemo(() => {
     const q = plateFilter.trim();
@@ -1289,19 +1241,6 @@ export default function JobDetails() {
     });
   }, [pendingForThisJob, plateFilter, rangeStartKey, rangeEndKey]);
 
-  // Tarih seçimi: başlangıç bitişten sonra olamaz (gerekirse diğer ucu eşitle)
-  const handleRangeStartChange = (v: string) => {
-    setRangeStart(v);
-    const s = ddmmyyyyToKey(v);
-    const e = ddmmyyyyToKey(rangeEnd);
-    if (s !== null && e !== null && s > e) setRangeEnd(v);
-  };
-  const handleRangeEndChange = (v: string) => {
-    setRangeEnd(v);
-    const s = ddmmyyyyToKey(rangeStart);
-    const e = ddmmyyyyToKey(v);
-    if (s !== null && e !== null && e < s) setRangeStart(v);
-  };
 
   // Boş sonuçta "Tüm tarihler": en eski seferden en yeni sefere (veya bugüne) kadar
   const showAllDates = () => {
@@ -1315,8 +1254,7 @@ export default function JobDetails() {
       if (d < min) min = d;
       if (d > max) max = d;
     }
-    setRangeStart(dateToDDMMYYYY(min));
-    setRangeEnd(dateToDDMMYYYY(max));
+    setRange(dateToDDMMYYYY(min), dateToDDMMYYYY(max));
   };
 
   // ── Özet çubuğu (filtrelenmiş sonuçlara göre dinamik hesaplanır)
@@ -1720,33 +1658,18 @@ export default function JobDetails() {
               </View>
             )}
 
-            {/* Arama çubuğu: QR tara + arama + tarih aralığı (başlangıç ▸ bitiş). Her zaman görünür (eskiden de varsayılan yıl/ay filtresiyle hep görünüyordu) */}
-            <View style={styles.searchBar}>
-              <TouchableOpacity style={styles.searchBarQrBtn} onPress={() => setQrModalVisible(true)} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityLabel="Fiş QR tara">
-                <QrScanIcon size={20} color="#333" />
-              </TouchableOpacity>
-              <TextInput style={styles.searchBarInput} placeholder="Plaka, döküm, seri no…" placeholderTextColor="#aaa" value={plateFilter} onChangeText={setPlateFilter} autoCapitalize="none" autoCorrect={false} />
-              {plateFilter.length > 0 && (
-                <TouchableOpacity onPress={() => setPlateFilter('')} hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}>
-                  <Text style={styles.searchClear}>✕</Text>
-                </TouchableOpacity>
-              )}
-              <View style={styles.searchBarDates}>
-                <CalendarDateButton value={rangeStart} onChange={handleRangeStartChange} title="Başlangıç Tarihi" active={!isDefaultRange} />
-                <Text style={styles.searchBarDateArrow}>▸</Text>
-                <CalendarDateButton value={rangeEnd} onChange={handleRangeEndChange} title="Bitiş Tarihi" active={!isDefaultRange} />
-              </View>
-            </View>
-            <View style={styles.dateRangeInfoRow}>
-              <Text style={[styles.dateRangeInfoText, !isDefaultRange && styles.dateRangeInfoTextActive]}>
-                {rangeStart} – {rangeEnd}
-              </Text>
-              {!isDefaultRange && (
-                <TouchableOpacity onPress={resetDateRange} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Tarih aralığını sıfırla">
-                  <Text style={styles.dateRangeInfoClear}>✕</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+            {/* Arama çubuğu: QR tara + arama + tarih aralığı (Araç Yönetimi ile ortak bileşen) */}
+            <HaulSearchBar
+              query={plateFilter}
+              onQueryChange={setPlateFilter}
+              onQrPress={() => setQrModalVisible(true)}
+              rangeStart={rangeStart}
+              rangeEnd={rangeEnd}
+              onRangeStartChange={handleRangeStartChange}
+              onRangeEndChange={handleRangeEndChange}
+              isDefaultRange={isDefaultRange}
+              onResetRange={resetDateRange}
+            />
 
             {loading && <ActivityIndicator size="large" color={YELLOW} style={{ marginTop: 20 }} />}
           </View>
@@ -1811,7 +1734,7 @@ export default function JobDetails() {
                         activeOpacity={0.7}
                         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                         accessibilityLabel="Plaka tara">
-                        <CameraIcon size={22} color="#333" />
+                        <CameraIcon size={26} color="#222" />
                       </TouchableOpacity>
                     </View>
                     {recentPlates.length > 0 &&
@@ -1957,7 +1880,7 @@ export default function JobDetails() {
                         activeOpacity={0.7}
                         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                         accessibilityLabel="Plaka tara">
-                        <CameraIcon size={22} color="#333" />
+                        <CameraIcon size={26} color="#222" />
                       </TouchableOpacity>
                     </View>
 
@@ -2138,7 +2061,7 @@ export default function JobDetails() {
                           activeOpacity={0.7}
                           hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                           accessibilityLabel="Plaka tara">
-                          <CameraIcon size={22} color="#333" />
+                          <CameraIcon size={26} color="#222" />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -3591,64 +3514,21 @@ const styles = StyleSheet.create({
   },
 
   // ── Tek arama çubuğu: QR | arama | takvim ▸ takvim
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    paddingLeft: 6,
-    paddingRight: 6,
-    minHeight: 46,
-    borderWidth: 1,
-    borderColor: '#E8E8E8',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  searchBarQrBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 4,
-  },
-  searchBarInput: {
-    flex: 1,
-    fontSize: 14,
-    color: '#1a1a1a',
-    paddingVertical: 8,
-  },
-  searchBarDates: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    marginLeft: 4,
-  },
-  searchBarDateArrow: { fontSize: 12, color: '#888', marginHorizontal: 1 },
-  dateRangeInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 8,
-    marginTop: 4,
-    marginBottom: 10,
-    paddingHorizontal: 10,
-  },
-  dateRangeInfoText: { fontSize: 12, color: '#888', fontWeight: '600' },
-  dateRangeInfoTextActive: { color: '#1976D2', fontWeight: '800' },
-  dateRangeInfoClear: { fontSize: 13, color: '#1976D2', fontWeight: '800', paddingHorizontal: 2 },
   // ── Plaka alanı içinde kamera butonu
   plateInputWrap: { position: 'relative', justifyContent: 'center' },
-  plateInputWithIcon: { paddingRight: 52 },
+  plateInputWithIcon: { paddingRight: 56 },
+  // 44 px açık sarı daire, koyu ikon; plaka kutusunun sağında dikey ortalı
   plateInputCamBtn: {
     position: 'absolute',
-    right: 6,
-    top: 0,
-    bottom: 0,
-    width: 42,
+    right: 5,
+    top: '50%',
+    marginTop: -22,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFF3B0',
+    borderWidth: 1,
+    borderColor: '#F2DC6B',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3669,11 +3549,6 @@ const styles = StyleSheet.create({
   dumpMismatchBadge: { backgroundColor: '#FFEBEE', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: '#FFCDD2' },
   dumpMismatchBadgeText: { fontSize: 10, fontWeight: '700', color: '#D32F2F' },
   receiptDumpMismatchValue: { color: '#D32F2F' },
-  searchClear: {
-    fontSize: 14,
-    color: '#aaa',
-    paddingHorizontal: 4,
-  },
   plateLabelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

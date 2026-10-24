@@ -16,7 +16,7 @@ import {
   addBlockedPhone, removeBlockedPhone,
   markGroupAsRead, deleteMessage as deleteChatMessage,
 } from '../../services/chatService';
-import { BASE_HOST } from '../../services/api';
+import { BASE_HOST, UPLOADS_HOST } from '../../services/api';
 import ProvinceMultiSelect from '../../components/ProvinceMultiSelect';
 
 // URL ve Türkçe telefon numaralarını tespit eder ([\s] yerine [ ] — newline yutmasın)
@@ -101,7 +101,7 @@ function LinkifiedText({ text, style }: { text: string; style?: any }) {
 const HUB_URL = `${BASE_HOST}/hubs/chat`;
 
 const YELLOW = '#FFD500';
-const IMAGE_BASE = BASE_HOST;
+const IMAGE_BASE = UPLOADS_HOST;
 const buildImgUrl = (path?: string | null): string => {
   if (!path) return '';
   if (path.startsWith('http')) return path;

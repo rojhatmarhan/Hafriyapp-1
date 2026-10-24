@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { UPLOADS_HOST } from '../../services/api';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   ActivityIndicator, Alert, Modal, ScrollView, Image, RefreshControl, TextInput,
@@ -8,13 +9,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useAppSelector } from '../../hooks';
+import { useStickySearch } from '../../hooks/useStickySearch';
 import { getHauls, getHaulsFiltered, updateHaulPayment, HaulApi } from '../../services/haulService';
 import { getJobSites } from '../../services/jobSiteNewService';
 import { getVehicles, driverAddVehicle, driverLeaveVehicle } from '../../services/vehicleService';
 
 const YELLOW = '#FFD500';
 const DARK = '#222';
-const IMAGE_BASE = 'https://api.hafriyapp.com';
+const IMAGE_BASE = UPLOADS_HOST;
 
 const resolveReceiptLogo = (path?: string | null): any => {
   if (!path) return require('../../../assets/icons/truck.png');
@@ -23,7 +25,7 @@ const resolveReceiptLogo = (path?: string | null): any => {
   const fullUrl = path.startsWith('http')
     ? path
     : (path.startsWith('/uploads') || path.startsWith('/'))
-    ? `https://api.hafriyapp.com${path}`
+    ? `${UPLOADS_HOST}${path}`
     : null;
 
   if (fullUrl) {
@@ -42,6 +44,16 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'week', label: 'Bu Hafta' },
   { key: 'month', label: 'Bu Ay' },
 ];
+
+// Liste işaret satırları: dönem filtresi (sabit/sticky) ve istatistik satırı veri dizisinin başına eklenir.
+// Başlık (SEFERLERİM + araç durumu) listeyle birlikte kayar; sadece filtre satırı üstte kalır.
+const FILTER_ROW = { id: '__driver_jobs_filter__' } as const;
+const STATS_ROW = { id: '__driver_jobs_stats__' } as const;
+type ListRow = HaulApi | typeof FILTER_ROW | typeof STATS_ROW;
+// ListHeaderComponent 0. sırada → filtre satırı 1. sırada
+const STICKY_FILTER_INDEX = [1];
+// Sefer kartları arası 10 px; işaret satırlarından sonra boşluk yok
+const RowSeparator = ({ leadingItem }: { leadingItem?: ListRow }) => (leadingItem === FILTER_ROW || leadingItem === STATS_ROW ? null : <View style={{ height: 10 }} />);
 
 type VehicleItem = {
   id: string;
@@ -75,6 +87,8 @@ const getDateRange = (filter: FilterKey): { start: string; end: string } | null 
 };
 
 export default function DriverJobs() {
+  // Alçak pencerede (yatay telefon) arama satırı da sabitlenmez
+  const stickySearch = useStickySearch();
   const token = useAppSelector(s => s.auth.token) ?? '';
 
   const [hauls, setHauls] = useState<HaulApi[]>([]);
@@ -717,8 +731,9 @@ export default function DriverJobs() {
     </Modal>
   );
 
-  return (
-    <SafeAreaView style={styles.container} edges={[]}>
+  // Başlık + araç durumu: listeyle birlikte kayar
+  const listHeader = (
+    <View style={styles.listHeader}>
       {/* Başlık */}
       <View style={styles.titleRow}>
         <Text style={styles.title}>SEFERLERİM</Text>
@@ -733,9 +748,13 @@ export default function DriverJobs() {
 
       {/* Araç Durumu */}
       <View style={styles.vehicleSection}>{renderVehicleBanner()}</View>
+    </View>
+  );
 
-      {/* Filtre */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterBar} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
+  // Filtre (sabit kalan tek satır; opak arka plan)
+  const filterEl = (
+    <View style={styles.stickyFilter}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterBar} contentContainerStyle={{ paddingHorizontal: 16, gap: 8, alignItems: 'center' }}>
         {FILTERS.map(f => (
           <TouchableOpacity
             key={f.key}
@@ -746,8 +765,12 @@ export default function DriverJobs() {
           </TouchableOpacity>
         ))}
       </ScrollView>
+    </View>
+  );
 
-      {/* İstatistik */}
+  // İstatistik (kayar)
+  const statsEl = (
+    <View style={styles.statsWrap}>
       <View style={styles.statsRow}>
         <View style={styles.statItem}>
           <Text style={styles.statNumber}>{total}</Text>
@@ -764,34 +787,49 @@ export default function DriverJobs() {
           <Text style={styles.statLabel}>Bekliyor</Text>
         </View>
       </View>
+    </View>
+  );
 
-      {/* Liste */}
-      {loading && hauls.length === 0 ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={YELLOW} />
-        </View>
-      ) : (
-        <FlatList
-          data={hauls}
-          keyExtractor={item => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={{ padding: 16, paddingTop: 8, paddingBottom: 32 }}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={loading}
-              onRefresh={() => { fetchVehicle(); fetchData(filter); }}
-              tintColor={YELLOW}
-            />
-          }
-          ListEmptyComponent={
+  const initialLoading = loading && hauls.length === 0;
+  const listData: ListRow[] = initialLoading ? [FILTER_ROW, STATS_ROW] : [FILTER_ROW, STATS_ROW, ...hauls];
+  const renderRow = ({ item }: { item: ListRow }) => {
+    if (item === FILTER_ROW) return filterEl;
+    if (item === STATS_ROW) return statsEl;
+    return renderItem({ item: item as HaulApi });
+  };
+
+  return (
+    <SafeAreaView style={styles.container} edges={[]}>
+      {/* Liste — işaret satırları yüzünden ListEmptyComponent çalışmaz; yükleniyor/boş durumu altbilgide */}
+      <FlatList
+        data={listData}
+        keyExtractor={item => item.id}
+        renderItem={renderRow}
+        ListHeaderComponent={listHeader}
+        stickyHeaderIndices={stickySearch ? STICKY_FILTER_INDEX : undefined}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            // İlk yüklemede altbilgideki büyük gösterge yeter (çift gösterge olmasın)
+            refreshing={loading && !initialLoading}
+            onRefresh={() => { fetchVehicle(); fetchData(filter); }}
+            tintColor={YELLOW}
+          />
+        }
+        ListFooterComponent={
+          initialLoading ? (
+            <View style={styles.center}>
+              <ActivityIndicator size="large" color={YELLOW} />
+            </View>
+          ) : hauls.length === 0 ? (
             <View style={styles.center}>
               <Text style={styles.emptyText}>Bu dönemde sefer kaydı bulunamadı.</Text>
             </View>
-          }
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-        />
-      )}
+          ) : null
+        }
+        ItemSeparatorComponent={RowSeparator}
+      />
 
       {renderReceipt()}
       {renderConfirmPaymentModal()}
@@ -802,7 +840,11 @@ export default function DriverJobs() {
 
 /* ─────────── STILLER ─────────── */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F4F4F4', paddingTop: 8 },
+  container: { flex: 1, backgroundColor: '#F4F4F4' },
+  // Başlık/filtre/istatistik tam genişlik: listenin 16 px yan boşluğu geri alınır (eski konumları korunur)
+  listHeader: { marginHorizontal: -16, paddingTop: 8 },
+  stickyFilter: { marginHorizontal: -16, backgroundColor: '#F4F4F4' },
+  statsWrap: { marginHorizontal: -16, paddingBottom: 8 },
 
   titleRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { API_BASE_URL } from '../../services/api';
 import {
   View,
   Text,
@@ -207,7 +208,7 @@ export default function MyJobs() {
       const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const filename = `Seferler_${jobName}_${date}.xlsx`;
       const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' })
-        .fetch('GET', `https://api.hafriyapp.com/api/Haul/jobsite/${jobId}/export`, {
+        .fetch('GET', `${API_BASE_URL}/Haul/jobsite/${jobId}/export`, {
           Authorization: `Bearer ${token}`,
         });
       const path = res.path();
@@ -232,7 +233,7 @@ export default function MyJobs() {
     try {
       const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' })
-        .fetch('GET', 'https://api.hafriyapp.com/api/Haul/all-jobsites/export', {
+        .fetch('GET', `${API_BASE_URL}/Haul/all-jobsites/export`, {
           Authorization: `Bearer ${token}`,
         });
       const path = res.path();

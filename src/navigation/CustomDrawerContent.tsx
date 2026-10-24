@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -16,48 +16,9 @@ import { DrawerItem } from '@react-navigation/drawer';
 
 const YELLOW = '#FFD500';
 
-const EXTRA_APPS = [
-  {
-    id: 'dokum-fisi',
-    title: 'Döküm Fişi Takip Aracı- Yapay Zeka Destekli',
-    headerTitle: 'DÖKÜM FİŞİ TAKİP ARACI',
-    headerSubtitle: 'Yapay Zeka Destekli Kontrol',
-    url: 'https://hafriyapp.com/dokum-fisi-takip-araci-yapay-zeka-destekli',
-  },
-  {
-    id: 'is-teklifi',
-    title: 'Otomatik İş Teklifi Hazırlama Formu',
-    headerTitle: 'İŞ TEKLİFİ HAZIRLAMA',
-    headerSubtitle: 'Otomatik Teklif Formu',
-    url: 'https://hafriyapp.com/is-teklifi-hazirla',
-  },
-  {
-    id: 'nakliye-kayit',
-    title: 'Nakliye İş Kaydı Tutma Aracı',
-    headerTitle: 'NAKLİYE İŞ KAYDI',
-    headerSubtitle: 'Kayıt Tutma Aracı',
-    url: 'https://hafriyapp.com/nakliye-kayde-tutma-araci',
-  },
-  {
-    id: 'foto-pdf',
-    title: 'Fotoğrafları PDF Dosyasına Çevir',
-    headerTitle: 'FOTOĞRAFLARI PDF YAP',
-    headerSubtitle: 'Belge & Resim Dönüştürücü',
-    url: 'https://hafriyapp.com/fotgraflari-pdf-dosyasina-cevir',
-  },
-  {
-    id: 'notlar',
-    title: 'Hafriyat İşleri İçin Özel Not Uygulaması',
-    headerTitle: 'HAFRİYAT NOTLARI',
-    headerSubtitle: 'Özel Not Uygulaması',
-    url: 'https://hafriyapp.com/notlar',
-  },
-];
-
 export default function CustomDrawerContent(props: any) {
   const dispatch = useDispatch();
   const { state, navigation } = props;
-  const [extraAppsOpen, setExtraAppsOpen] = useState(false);
 
   const handleLogout = async () => {
     await clearAuth();
@@ -65,7 +26,6 @@ export default function CustomDrawerContent(props: any) {
   };
 
   const isActive = (routeName: string) => state.routeNames[state.index] === routeName;
-  const isWebToolActive = state.routeNames[state.index] === 'WebToolScreen';
 
   return (
     <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
@@ -109,59 +69,6 @@ export default function CustomDrawerContent(props: any) {
           style={[styles.item, isActive('MarketAds') && styles.activeItem]}
           labelStyle={[styles.label, isActive('MarketAds') && styles.activeLabel]}
         />
-
-        {/* 🛠️ EK UYGULAMALAR MENÜSÜ */}
-        <TouchableOpacity
-          style={[
-            styles.extraAppsToggle,
-            (extraAppsOpen || isWebToolActive) && styles.extraAppsToggleActive,
-          ]}
-          onPress={() => setExtraAppsOpen(!extraAppsOpen)}
-          activeOpacity={0.75}>
-          <View style={styles.toggleLeft}>
-            <Text
-              style={[
-                styles.label,
-                (extraAppsOpen || isWebToolActive) && styles.activeLabel,
-              ]}>
-              EK UYGULAMALAR
-            </Text>
-            <View style={styles.appCountBadge}>
-              <Text style={styles.appCountText}>5</Text>
-            </View>
-          </View>
-          <Text style={styles.chevronText}>{extraAppsOpen ? '▲' : '▼'}</Text>
-        </TouchableOpacity>
-
-        {extraAppsOpen && (
-          <View style={styles.subListContainer}>
-            {EXTRA_APPS.map((item, idx) => (
-              <TouchableOpacity
-                key={item.id}
-                style={[
-                  styles.subItem,
-                  idx === EXTRA_APPS.length - 1 && { borderBottomWidth: 0 },
-                ]}
-                onPress={() => {
-                  navigation.closeDrawer();
-                  navigation.navigate('WebToolScreen', {
-                    url: item.url,
-                    title: item.headerTitle,
-                    subTitle: item.headerSubtitle,
-                  });
-                }}
-                activeOpacity={0.7}>
-                <View style={styles.subIndexBadge}>
-                  <Text style={styles.subIndexText}>{idx + 1}</Text>
-                </View>
-                <Text style={styles.subItemText} numberOfLines={2}>
-                  {item.title}
-                </Text>
-                <Text style={styles.subArrow}>›</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
 
         <DrawerItem
           label="YAZICI VE KAĞIT SİPARİŞİ"
@@ -267,88 +174,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#000',
-  },
-  extraAppsToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    marginHorizontal: 12,
-    marginVertical: 4,
-    borderRadius: 8,
-  },
-  extraAppsToggleActive: {
-    backgroundColor: '#FFF8D6',
-    borderWidth: 1,
-    borderColor: '#FFD500',
-  },
-  toggleLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  appCountBadge: {
-    backgroundColor: '#FFD500',
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appCountText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#1E1E1C',
-  },
-  chevronText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#555',
-  },
-  subListContainer: {
-    backgroundColor: '#FAFAFA',
-    marginHorizontal: 12,
-    marginBottom: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ECEAE2',
-    overflow: 'hidden',
-  },
-  subItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0EFEA',
-  },
-  subIndexBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#FFD500',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  subIndexText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#1E1E1C',
-  },
-  subItemText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#2A2925',
-    lineHeight: 18,
-  },
-  subArrow: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#999',
-    marginLeft: 6,
   },
   logoutBtn: {
     marginHorizontal: 16,

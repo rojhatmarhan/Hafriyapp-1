@@ -1,4 +1,6 @@
 module.exports = {
+  // Firma tanıtımı fontları (Barlow / Barlow Condensed, OFL). Değişince: npx react-native-asset
+  assets: ['./assets/fonts'],
   dependencies: {
     'react-native-bluetooth-escpos-printer': {
       platforms: {

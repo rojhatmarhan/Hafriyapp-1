@@ -6,6 +6,100 @@ Biçim: `## [Mobil versionName (versionCode/build)] — tarih` → Eklendi / Dü
 
 ## [Yayınlanmadı]
 
+### Menü
+- Yan menüdeki "EK UYGULAMALAR" bölümü kaldırıldı (WebToolScreen ekranı duruyor; Döküm Excel yükleme yönlendirmesi kullanıyor).
+
+### Sayfa üstleri kayar, Pazar kartları her ekrana sığar (sadece düzen)
+#### Değişti
+- Liste ekranlarında sayfanın kendi üst kısmı (başlık, sekmeler, "Yeni Araç Ekle"/"Yenile", özet kartları, Firma Tanıtımları
+  kartı) artık içerikle birlikte kayar; sadece arama/filtre satırı üstte sabit (sticky) kalır. Küçük telefonda liste için yer açılır.
+  Sarı uygulama başlığı ve alt sekme çubuğu değişmedi.
+  - İşlerim (`MyJobs`): "İşlerim | Döküm" + başlık kayar, "İş adına göre ara ↻ ⬇" sabit. Döküm (`DumpOverview`): sekme, kaynak,
+    Hesapta Kalan ve KPI kartları kayar; QR/tarih arama çubuğu sabit, iş filtresi ve sütun başlıkları kayar.
+  - Araç Yönetimi (`SupplierVehicles`): başlık, "Araçlar | Seferler" ve buton kayar; Seferler'de özet çubuğu kayar, arama çubuğu sabit.
+    Dar ekranda "＋ Yeni Araç Ekle" alt satıra iner (taşmaz).
+  - Seferlerim (`DriverJobs`): başlık + araç durumu ve istatistik kayar; dönem filtresi (Tümü/Bugün/Bu Hafta/Bu Ay) sabit.
+  - Ana sayfa (`SupplierHome`/`DriverHome`): "FİRMA SAYFALARI", Firma Tanıtımları ve uyarı kayar; "Ara | Tüm Türkiye | +" sabit.
+  - Pazar ilan listesi (`MyAds`): geri/başlık/"+ İlan Ver" ve "Tüm İlanlar | İlanlarım" kayar; il filtresi sabit.
+  - Piyasa İşleri (`AllJobs`, şoför ve firma): arama satırı ("Firma veya şantiye ara | il | ↻") ve ilçe filtresi kaydırınca üstte sabit; önceden onlar da kayıp gidiyordu.
+  - Pencere alçaksa (yatay telefon, yükseklik < 500 dp) arama satırı da sabitlenmez (`src/hooks/useStickySearch.ts`).
+- Pazar giriş ekranı: 3 kategori kartı (Araç Kiralama, Al-Sat, Şoför İlanları) dikeyde alt alta, ekranı eşit paylaşan geniş kartlar (ikon, ad, kısa açıklama, ›); yatay telefonda tek satır; 320 dp'den tablete
+  sığar, yatayda başlık kompakt, gerekirse sayfa kayar. Etiketler en çok 2 satır, dokunma alanı ≥ 44 dp, yazı büyütme sınırlı
+  (`src/components/MarketCategoryPicker.tsx`). Eskiden kart genişliği açılışta ekran genişliğine sabitleniyor, kartlar kesiliyordu.
+- Testler: `__tests__/stickySearchHeader.test.tsx`, `__tests__/MarketCategoryPicker.test.tsx`.
+#### Uyumluluk
+- API çağrıları, iş mantığı ve yerel veri değişmedi; native değişiklik yok.
+
+### Firma tanıtımı — Faz 2 (mobil)
+#### Eklendi
+- Ana sayfadaki "Firma Tanıtımları" kartı artık WebView yerine native ekranları açar (`src/screens/showcase/`), tasarım
+  hafriyapp.com/firma-tanitimi deneme sürümüyle birebir (sarı `#FAD211`, asfalt `#1E1E1C`, Barlow / Barlow Condensed):
+  - **ShowcaseList** — "Firmalar": arama (Türkçe harf duyarsız, 350 ms bekleyip sunucuda), il filtresi ("Tüm iller", "İstanbul (3)"),
+    "n firma bulundu · Temizle", kartlar (16:9 kapak, "Örnek" rozeti, baş harf yedeği, "A, B ve n il daha", "Profil güncellendi,
+    3 saat önce"), boş durumlar, aşağı çekip yenileme, sayfalama. "+ Firmanı tanıt": `GET /Showcase/my` → yetki yoksa sebep gösterilir.
+  - **ShowcaseDetail** — firma sayfası: sarı başlık (logo, etiketler, ad, "Henüz yorum yok", hizmet illeri, adres → Google Haritalar,
+    telefonlar `tel:` + cepte WhatsApp, e-posta), sahibine "Sayfayı düzenle", "Fiyat listesi" penceresi (tablo, KDV, güncelleme
+    tarihi, "Ara"), başlıklı fotoğraflar, yorum bölümünün boş hali.
+  - **ShowcaseForm** — "Firmanı tanıt / düzenle" + aynı ekranda önizleme ("Önizle" → "Yayınla", `PUT /Showcase/my`): logo, ad,
+    iş alanları (etiketleri ve 8 fotoğraf yuvasının başlıklarını değiştirir, `/Showcase/options` şablonları), etiketler (≤6),
+    hizmet illeri (yazınca öneri), adres, telefonlar (≤5), e-posta, 8 fotoğraf yuvası (Kapak / Kapak yap / Değiştir / Sil),
+    fiyat listesi ("1.250", "1250,50"; birimler). Doğrulama ve hata metinleri sunucuyla aynı. Yeni sayfada firma adı, telefonu ve
+    adresi firmadan önerilir. Yayından sonra firma sayfası "Firmanız yayınlandı." / "Değişiklikler yayınlandı." ile açılır.
+- Servis `src/services/showcaseService.ts` (görseller debug'da yerel API'den: `BASE_HOST`), yardımcılar `src/utils/showcaseFormat.ts`,
+  taslak/doğrulama `src/screens/showcase/showcaseDraft.ts`. Testler: `__tests__/showcaseFormat.test.ts`, `showcaseDraft.test.ts`,
+  `showcaseScreens.test.tsx`.
+- Hikaye, yorum/puan, "Profili paylaş" / PDF ve "Teklif hazırla" sonraki fazlarda; ekranda yerleri `TODO Faz 3/4/5` ile işaretli,
+  çalışmayan düğme gösterilmez.
+#### Native
+- Fontlar: Barlow 400/500/600 ve Barlow Condensed 600/700 (OFL, `assets/fonts/` + `OFL.txt`), `react-native.config.js` → `assets`
+  ile `npx react-native-asset` kullanılarak bağlandı: Android `android/app/src/main/assets/fonts/`, iOS `Info.plist` `UIAppFonts` +
+  Xcode projesinde "Resources" grubu ve Copy Bundle Resources. **Yeni derleme gerekir** (iki platformda); iOS'ta `pod install`
+  gerekmez. Mağazaya yeni sürüm olarak çıkar (`versionCode` / `CURRENT_PROJECT_VERSION` +1).
+#### Uyumluluk
+- API: `GET /Showcase/options`, `GET /Showcase`, `GET /Showcase/{id}`, `GET /Showcase/{id}/prices`, `GET/PUT /Showcase/my` (backend Faz 1).
+  `GET /Showcase/options` ya da liste 404 dönerse (eski API) ekran eski WebView ekranına (`CompanyShowcase`) geçer; o ekran duruyor.
+- Eski mobil sürümler WebView'da hafriyapp.com/firma-tanitimi açmaya devam eder. Yerel veri biçimi değişmedi.
+
+### Döküm ekranı, büyük ikon butonları
+#### Eklendi
+- İşlerim üstünde "İşlerim | Döküm" sekmesi. Döküm (`src/screens/supplier/DumpOverview.tsx`): kaynak seçici (Tüm / Cebeci / İSTAÇ),
+  "İndir / Yükle" (aşağıda),
+  Aktif Fiş / Top. Gider / Ortalama Tonaj kartları, eşleşme sayıları, arama (QR ile etiket no) + tarih aralığı + işe göre filtre,
+  sayfalı liste (eşleşen yeşil, farklı plaka kırmızı, sefer yok gri şerit). Servis `src/services/dumpService.ts`,
+  biçim yardımcıları `src/utils/dumpFormat.ts` (test: `__tests__/dumpOverviewFormat.test.ts`).
+- Döküm: en üstte "Hesapta Kalan" kartı (yatırılan − tüm döküm ücretleri, kaynağa göre; eksiyse kırmızı; alt yazı
+  "Yatırılan x₺ · Harcanan y₺"; yatırım yoksa "+ Yatırım ekle"). Karta basınca para yatırma paneli: kayıt listesi (tarih, saha,
+  tutar, not, ekleyen; ✕ ile onaylı silme) ve "+ Para Yatırma Ekle" (Cebeci / İSTAÇ, Türkçe tutar "150.000,50", tarih GG.AA.YYYY
+  metin kutusu — panel Modal olduğu için takvim Modal'ı açılmaz, not). Yardımcılar `parseTurkishAmount`, `isValidDDMMYYYY`,
+  `depositDateToIso`, `formatBalanceSubtext`.
+- Döküm "İndir / Yükle": "📥 İSTAÇ Dökümleri indir", "📥 Cebeci Dökümü indir" (ekrandaki tarih aralığıyla, varsayılan bu ayın
+  1'i – son günü; dosya döküm sahasının kendi Excel biçiminde, yüklenen dosyanın aynısı) ve "📤 Excel yükle": telefondan .xlsx seçilir,
+  `POST /DumpImport` ile yüklenir (format otomatik tanınır), sonuç web'deki gibi özetlenir (yeni / çift / eşleşen / farklı plaka).
+#### Native
+- Yeni paket `@react-native-documents/picker` 12.0.2 (dosya seçici). Android: yeni derleme gerekir. iOS: Mac'te `cd ios && pod install`
+  sonra yeni derleme. Mağazaya yeni sürüm olarak çıkar; dosya seçici olmayan derlemede "Excel yükle" web sayfasına yönlendirir (çökmez).
+#### Değişti
+- Arama çubuğu QR, takvim, döküm fişi tarama ve plaka kamera butonları büyüdü (42–44 px açık sarı daire, koyu ikon);
+  seçili tarih aralığında takvim butonu koyu sarı.
+#### Uyumluluk
+- API: `GET /DumpImport/summary`, `/DumpImport/records`, `/DumpImport/records/export` (yeni). Uç yoksa (404) ekran
+  "Bu özellik için sunucu güncellemesi gerekiyor." der; diğer ekranlar etkilenmez.
+- API: `GET/POST /DumpImport/deposits`, `DELETE /DumpImport/deposits/{id}` ve summary'de `hasDeposits`, `totalDeposits`,
+  `totalFeesAllTime`, `balance` (yeni). Summary bu alanları döndürmezse kart gizlenir; deposits ucu 404 ise panel
+  "sunucu güncellemesi gerekiyor" der.
+
+### İş notları, Araç Yönetimi
+- İş Notları: başlıktaki tutamaçtan aşağı çekerek kapatma; "📥 Excel" ile notlar ve giderler Excel olarak indirilir (API `GET /JobSite/{id}/notes/export`).
+- Araç Yönetimi: arama satırı İş detayı ile aynı ortak bileşen (`src/components/HaulSearchBar.tsx`): solda QR, arama, başlangıç ▸ bitiş tarihi
+  (varsayılan bu ay); yıl/ay seçicileri kaldırıldı, Excel indirme seçili aralıkla. Tarih mantığı `src/utils/dateRange.ts` (`useDateRange`).
+- İşlerim kartı butonları: 📌 Başa Tuttur → Düzenle → Yayından Kaldır/Yayına Al.
+- İl seçici: 82 ilin tamamı onay kutulu, aranabilir liste; "Tamam" ile aktarılır.
+
+### Sabitleme görünümü
+- İşlerim: 📌 butonu iş adının yanından kartın sol altına alındı (başlık artık tam genişlikte); tutturulunca butonun arka planı sarı.
+- İşlerim ve sohbet listesi: tutturulunca ad yanında çıkan ikinci küçük 📌 kaldırıldı; sohbette tutturulmuş butonun sarısı belirginleşti.
+- Debug: Excel indirme adresleri local API'ye (`API_BASE_URL`), logo/resimler her zaman canlı dosya sunucusuna (`UPLOADS_HOST`) gider.
+
 ### Bildirim düzeltmesi
 #### Düzeltildi
 - Uygulama açıkken gelen bildirim (ör. "… bir sefer attı") **üst üste birden fazla kez** açılıyordu; OK'a 4–5 kez basmak gerekiyordu.

@@ -12,6 +12,7 @@ import { getMarketJobs } from '../../services/jobSiteService';
 import { mapJobFromApi } from '../../utils/jobMapper';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useStickySearch } from '../../hooks/useStickySearch';
 
 const YELLOW = '#FFD500';
 const LIGHT_YELLOW = '#FFF2B3';
@@ -252,6 +253,7 @@ const JobDetailModal = ({
 
 const AllJobs = () => {
   const [search, setSearch] = useState('');
+  const stickSearch = useStickySearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const bottomPadding = tabBarHeight + insets.bottom;
@@ -594,8 +596,10 @@ const AllJobs = () => {
           flexGrow: 1,
           paddingBottom: bottomPadding,
         }}
+        // Arama satırı (ve ilçe filtresi) kaydırınca üstte sabit kalır; alçak pencerede (yatay telefon) sabitlenmez
+        stickyHeaderIndices={stickSearch ? [0] : undefined}
         ListHeaderComponent={
-          <View>
+          <View style={styles.stickyHeader}>
             <View style={styles.searchRow}>
               {/* SEARCH */}
               <TextInput
@@ -711,6 +715,7 @@ const AllJobs = () => {
 export default AllJobs;
 
 const styles = StyleSheet.create({
+  stickyHeader: { backgroundColor: GRAY, zIndex: 10 },
   container: {
     flex: 1,
     backgroundColor: GRAY,

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { UPLOADS_HOST } from '../../services/api';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -172,7 +173,7 @@ const CompanyDetailsScreen = () => {
             <View style={styles.squareIconBlock}>
               {company?.logoPath ? (
                  <Image 
-                   source={{ uri: (company?.logoPath.startsWith('/') ? `https://api.hafriyapp.com${company.logoPath}` : company.logoPath) + `?t=${new Date().getTime()}` }} 
+                   source={{ uri: (company?.logoPath.startsWith('/') ? `${UPLOADS_HOST}${company.logoPath}` : company.logoPath) + `?t=${new Date().getTime()}` }} 
                    style={styles.squareAvatar} 
                  />
               ) : (

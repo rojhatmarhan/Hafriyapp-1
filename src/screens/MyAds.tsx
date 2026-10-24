@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { UPLOADS_HOST } from '../services/api';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, Modal,
+  View, Text, StyleSheet, FlatList, SectionList, TouchableOpacity, Modal,
   TextInput, ScrollView, KeyboardAvoidingView, Platform, Alert,
   ActivityIndicator, RefreshControl, Image, Linking, Dimensions, Share,
 } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSelector } from '../hooks';
+import { useStickySearch } from '../hooks/useStickySearch';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getListings, getMyListings, getListingById, createListing, updateListing, deleteListing,
@@ -14,15 +16,14 @@ import {
   Listing, CreateListingParams, UpdateListingParams,
 } from '../services/listingService';
 import { DISTRICTS } from '../constants/districts';
-import TagIcon from '../components/TagIcon';
+import MarketCategoryPicker from '../components/MarketCategoryPicker';
 
 const { width: SW, height: SH } = Dimensions.get('window');
-const CARD_W = (SW - 48) / 2;
 
 const CATEGORIES = [
-  { type: 0, label: 'Araç Kiralama',  icon: '🚛', iconBg: '#DBEAFE', sectionTitle: 'ARAÇ KİRALAMA' },
-  { type: 1, label: 'Al-Sat',         icon: '🏬', iconBg: '#DCFCE7', sectionTitle: 'SATILIK ARAÇLAR' },
-  { type: 2, label: 'Şoför İlanları', icon: '👤', iconBg: '#FFEDD5', sectionTitle: 'İŞ VE ŞOFÖR İLANLARI' },
+  { type: 0, label: 'Araç Kiralama',  icon: '🚛', iconBg: '#DBEAFE', description: 'Kiralık kamyon, iş makinesi ve araç ilanları', sectionTitle: 'ARAÇ KİRALAMA' },
+  { type: 1, label: 'Al-Sat',         icon: '🏬', iconBg: '#DCFCE7', description: 'Satılık kamyon, iş makinesi ve araç ilanları', sectionTitle: 'SATILIK ARAÇLAR' },
+  { type: 2, label: 'Şoför İlanları', icon: '👤', iconBg: '#FFEDD5', description: 'İş arayan şoförler ve şoför arayan firmalar', sectionTitle: 'İŞ VE ŞOFÖR İLANLARI' },
 ];
 
 const timeDisplay = (iso: string): string => {
@@ -61,7 +62,7 @@ const fmtPriceInput = (raw: string): string => {
 };
 const parsePriceInput = (text: string): string => text.replace(/\D/g, '');
 
-const IMAGE_BASE = 'https://api.hafriyapp.com';
+const IMAGE_BASE = UPLOADS_HOST;
 const buildImageUrl = (path?: string | null): string => {
   if (!path) return '';
   if (path.startsWith('http')) return path;
@@ -105,6 +106,8 @@ const urlToBase64 = async (url: string): Promise<string> => {
 };
 
 export default function MyAds() {
+  // Alçak pencerede (yatay telefon) arama satırı da sabitlenmez
+  const stickySearch = useStickySearch();
   const insets = useSafeAreaInsets();
   const token = useAppSelector(s => s.auth.token);
   const currentUserId = useAppSelector(s => s.auth.user?.id ?? '');
@@ -902,28 +905,11 @@ export default function MyAds() {
   if (selectedType === null) {
     return (
       <SafeAreaView style={styles.landingContainer} edges={['bottom']}>
-        <View style={styles.landingHeader}>
-          <View style={styles.landingIconWrap}>
-            <TagIcon size={52} color="#000" />
-          </View>
-          <Text style={styles.landingTitle}>Pazar</Text>
-          <Text style={styles.landingSubtitle}>Kategoriye tıklayarak pazar ilanlarını görüntüleyin</Text>
-        </View>
-        <View style={styles.categoryGrid}>
-          {CATEGORIES.map(c => (
-            <TouchableOpacity
-              key={c.type}
-              style={styles.categoryCard}
-              onPress={() => { setSelectedType(c.type); setActiveTab('all'); setFilterProvince(null); }}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.categoryIconWrap, { backgroundColor: c.iconBg }]}>
-                <Text style={styles.categoryEmoji}>{c.icon}</Text>
-              </View>
-              <Text style={styles.categoryLabel}>{c.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {/* Başlık + 3 kategori kartı: dikeyde alt alta ekranı doldurur, yatay telefonda tek satır; sığmazsa kayar */}
+        <MarketCategoryPicker
+          categories={CATEGORIES}
+          onSelect={type => { setSelectedType(type); setActiveTab('all'); setFilterProvince(null); }}
+        />
       </SafeAreaView>
     );
   }
@@ -933,8 +919,9 @@ export default function MyAds() {
     l => !blockedUsers.some(bu => bu.id === l.userId)
   );
 
-  return (
-    <SafeAreaView style={styles.listContainer} edges={['bottom']}>
+  // Sayfa başı (geri, başlık, + İlan Ver, sekmeler) — kayar
+  const listTopEl = (
+    <View style={styles.listTop}>
       {/* Header */}
       <View style={styles.listHeader}>
         <TouchableOpacity style={styles.backBtn} onPress={() => setSelectedType(null)}>
@@ -956,8 +943,12 @@ export default function MyAds() {
           </TouchableOpacity>
         ))}
       </View>
+    </View>
+  );
 
-      {/* Province filter */}
+  // İl filtresi — sabit kalan tek satır (eleman olarak verilir)
+  const filterEl = (
+    <View style={styles.stickyFilter}>
       <View style={styles.filterRow}>
         <TouchableOpacity style={styles.provinceBtn} onPress={() => setFilterProvincePicker(true)}>
           <Text style={styles.provinceBtnText} numberOfLines={1}>
@@ -971,31 +962,41 @@ export default function MyAds() {
           </TouchableOpacity>
         )}
       </View>
+    </View>
+  );
+  const renderFilterHeader = () => filterEl;
+  const listSections = [{ key: 'listings', data: displayList }];
 
-      {/* List */}
-      {loading && displayList.length === 0
-        ? <ActivityIndicator size="large" color="#000" style={{ marginTop: 40 }} />
-        : (
-          <FlatList
-            data={displayList}
-            keyExtractor={i => i.id}
-            renderItem={renderCard}
-            contentContainerStyle={styles.listContent}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />}
-            onEndReached={onEndReached}
-            onEndReachedThreshold={0.3}
-            ListEmptyComponent={
+  return (
+    <SafeAreaView style={styles.listContainer} edges={['bottom']}>
+      {/* Başlık + sekmeler listeyle birlikte kayar; il filtresi (bu ekranın arama/filtre satırı) üstte sabit kalır */}
+      <SectionList
+        sections={listSections}
+        keyExtractor={i => i.id}
+        renderItem={renderCard}
+        ListHeaderComponent={listTopEl}
+        renderSectionHeader={renderFilterHeader}
+        stickySectionHeadersEnabled={stickySearch}
+        contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />}
+        onEndReached={onEndReached}
+        onEndReachedThreshold={0.3}
+        // SectionList'te bölüm varken ListEmptyComponent görünmez → yükleniyor/boş durumu altbilgide
+        ListFooterComponent={
+          displayList.length === 0 ? (
+            loading ? (
+              <ActivityIndicator size="large" color="#000" style={{ marginTop: 40 }} />
+            ) : (
               <View style={styles.emptyWrap}>
                 <Text style={styles.emptyIcon}>📭</Text>
                 <Text style={styles.emptyText}>
                   {activeTab === 'my' ? 'Henüz ilanınız bulunmuyor.' : 'İlan bulunamadı.'}
                 </Text>
               </View>
-            }
-            ListFooterComponent={loadingMore ? <ActivityIndicator color="#000" style={{ margin: 16 }} /> : null}
-          />
-        )
-      }
+            )
+          ) : loadingMore ? <ActivityIndicator color="#000" style={{ margin: 16 }} /> : null
+        }
+      />
 
       {/* Scope Province picker */}
       <ProvincePicker
@@ -1587,21 +1588,6 @@ const cf = StyleSheet.create({
 const styles = StyleSheet.create({
   // ── Landing
   landingContainer:  { flex: 1, backgroundColor: '#FFFBF0' },
-  landingHeader:     { alignItems: 'center', paddingTop: 40, paddingBottom: 28, paddingHorizontal: 24 },
-  landingIconWrap:    { width: 90, height: 90, borderRadius: 45, backgroundColor: '#FFD500', alignItems: 'center', justifyContent: 'center', marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 6, elevation: 5 },
-  landingIconImage:   { width: 62, height: 62, resizeMode: 'contain' },
-  landingTitle:      { fontSize: 28, fontWeight: '800', color: '#111', marginBottom: 8 },
-  landingSubtitle:   { fontSize: 14, color: '#666', textAlign: 'center' },
-  categoryGrid:      { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 16 },
-  categoryCard:      {
-    width: CARD_W, backgroundColor: '#fff', borderRadius: 18,
-    alignItems: 'center', paddingVertical: 28, paddingHorizontal: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08, shadowRadius: 8, elevation: 4,
-  },
-  categoryIconWrap:  { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
-  categoryEmoji:     { fontSize: 32 },
-  categoryLabel:     { fontSize: 15, fontWeight: '700', color: '#111', textAlign: 'center' },
 
   // ── List
   listContainer:     { flex: 1, backgroundColor: '#F5F5F5' },
@@ -1627,7 +1613,10 @@ const styles = StyleSheet.create({
   clearFilter:       { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F0F0F0', alignItems: 'center', justifyContent: 'center' },
   clearFilterText:   { color: '#555', fontSize: 14 },
 
-  listContent:       { padding: 12, paddingBottom: 40 },
+  // Yan boşluk kartlar için; sayfa başı ve sabit filtre tam genişlik (-12)
+  listContent:       { paddingHorizontal: 12, paddingBottom: 40 },
+  listTop:           { marginHorizontal: -12 },
+  stickyFilter:      { marginHorizontal: -12, marginBottom: 12 },
 
   // ── Card type 0/1
   cardWrap:          {

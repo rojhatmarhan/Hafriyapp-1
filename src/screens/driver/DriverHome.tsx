@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, Platform, ActionSheetIOS, Alert, Modal, ScrollView, ActivityIndicator, FlatList } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, ActionSheetIOS, Alert, Modal, ScrollView, ActivityIndicator, SectionList } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
-import { BASE_HOST } from '../../services/api';
+import { UPLOADS_HOST } from '../../services/api';
 
-const IMAGE_BASE = BASE_HOST;
+const IMAGE_BASE = UPLOADS_HOST;
 const buildLogoUrl = (path?: string | null): string => {
   if (!path) return '';
   if (path.startsWith('http')) return path;
@@ -13,6 +13,7 @@ const buildLogoUrl = (path?: string | null): string => {
 };
 import { CITIES } from '../../constants/cities';
 import { useAppSelector, useAppDispatch } from '../../hooks';
+import { useStickySearch } from '../../hooks/useStickySearch';
 import { setSelectedCity } from '../../store/slices/uiSlice';
 import CityPickerModal from '../../components/CityPickerModal';
 import ProvinceMultiSelect from '../../components/ProvinceMultiSelect';
@@ -29,7 +30,12 @@ const GROUP_PAGE_SIZE = 20;
 const PINNED_KEY = 'pinned_chat_groups';
 const PINNED_MIGRATED_KEY = 'pinned_chat_groups_migrated';
 
+// Grup satırları arası çizgi (her render'da yeni bileşen oluşmasın diye dışarıda)
+const GroupDivider = () => <View style={styles.divider} />;
+
 export default function DriverHome() {
+  // Alçak pencerede (yatay telefon) arama satırı da sabitlenmez
+  const stickySearch = useStickySearch();
   const navigation = useNavigation<any>();
   const activeUsers = useActiveUserCount();
   const [searchText, setSearchText] = useState('');
@@ -396,7 +402,6 @@ export default function DriverHome() {
         <View style={styles.content}>
           <View style={styles.nameRow}>
             <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-            {isPinned && <Text style={styles.pinnedIndicator}>📌</Text>}
           </View>
           <Text style={styles.message} numberOfLines={1}>{previewText}</Text>
         </View>
@@ -422,8 +427,9 @@ export default function DriverHome() {
     );
   };
 
-  return (
-    <View style={styles.container}>
+  // Sayfanın üst kısmı (başlık, Firma Tanıtımları kartı, uyarı) listeyle birlikte kayar; sadece arama satırı üstte sabit kalır.
+  const listHeader = (
+    <View style={styles.listHeader}>
       <View style={styles.titleRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={styles.title}>FİRMA SAYFALARI</Text>
@@ -448,7 +454,7 @@ export default function DriverHome() {
       {/* 🏢 Firma Tanıtımları & Rehber Kartı */}
       <TouchableOpacity
         style={styles.showcaseBanner}
-        onPress={() => navigation.navigate('CompanyShowcase')}
+        onPress={() => navigation.navigate('ShowcaseList')}
         activeOpacity={0.85}>
         <View style={styles.showcaseIconBox}>
           <Text style={styles.showcaseIconText}>🏢</Text>
@@ -485,7 +491,12 @@ export default function DriverHome() {
           </Text>
         </View>
       ) : null}
+    </View>
+  );
 
+  // Arama | il | + satırı — tek bölümün başlığı (sticky). Eleman olarak verilir; yazarken TextInput yeniden oluşmaz, klavye kapanmaz.
+  const searchEl = (
+    <View style={styles.stickySearch}>
       <View style={styles.searchRow}>
         {/* 🔍 ARAMA */}
         <TextInput
@@ -514,25 +525,38 @@ export default function DriverHome() {
           <Text style={styles.createGroupText}>+</Text>
         </TouchableOpacity>
       </View>
+    </View>
+  );
+  const renderSearchHeader = () => searchEl;
+  const groupSections = [{ key: 'groups', data: sortedAndFilteredGroups }];
 
-      <FlatList
-        data={sortedAndFilteredGroups}
+  return (
+    <View style={styles.container}>
+      <SectionList
+        sections={groupSections}
         keyExtractor={item => item.id}
         renderItem={renderItem}
-        ItemSeparatorComponent={() => <View style={styles.divider} />}
+        ListHeaderComponent={listHeader}
+        renderSectionHeader={renderSearchHeader}
+        stickySectionHeadersEnabled={stickySearch}
+        ItemSeparatorComponent={GroupDivider}
         keyboardShouldPersistTaps="handled"
-        ListEmptyComponent={
-          !loading ? <Text style={styles.emptyText}>Bu ilde grup bulunamadı</Text> : null
+        contentContainerStyle={styles.listContent}
+        // SectionList'te bölüm varken ListEmptyComponent görünmez → boş durum altbilgide
+        ListFooterComponent={
+          <>
+            {!loading && sortedAndFilteredGroups.length === 0 && <Text style={styles.emptyText}>Bu ilde grup bulunamadı</Text>}
+            {loadingMore && <ActivityIndicator size="small" color="#000" style={styles.listFooterLoader} />}
+          </>
         }
         refreshing={loading}
         onRefresh={() => fetchGroups(true)}
         onEndReached={loadMoreGroups}
         onEndReachedThreshold={0.5}
-        ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color="#000" style={styles.listFooterLoader} /> : null}
         initialNumToRender={12}
         maxToRenderPerBatch={8}
         windowSize={5}
-        removeClippedSubviews={Platform.OS === 'android'}
+        // removeClippedSubviews kapalı: Android'de sabit (sticky) arama satırı kaydırınca kırpılıp kaybolabiliyor
       />
 
       {/* CREATE GROUP MODAL */}
@@ -614,7 +638,23 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    padding: 16,
+    paddingHorizontal: 16,
+  },
+  // Eski "padding: 16"nın üst/alt kısmı liste içine taşındı (kayan içerik üst kenara kadar kullanılsın)
+  listHeader: {
+    paddingTop: 16,
+  },
+  listContent: {
+    paddingBottom: 16,
+  },
+  // Sabit arama satırı: opak arka plan, altından kayan satırlar görünmesin
+  // Üstte ve altta eşit boşluk: sabitlendiğinde satır sarı başlık ile liste arasında ortalı durur
+  stickySearch: {
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E6E6E6',
+    marginBottom: 6,
   },
   titleRow: {
     flexDirection: 'row',
@@ -735,7 +775,7 @@ const styles = StyleSheet.create({
   },
   searchRow: {
     flexDirection: 'row',
-    marginBottom: 10,
+    alignItems: 'center',
     gap: 10,
   },
   search: {
@@ -762,9 +802,7 @@ const styles = StyleSheet.create({
   },
   createGroupBtn: {
     backgroundColor: '#FFD500',
-    paddingVertical: 12,
     borderRadius: 12,
-    marginBottom: 16,
     alignItems: 'center',
     justifyContent: 'center',
     width: 42,
@@ -865,9 +903,6 @@ const styles = StyleSheet.create({
     gap: 4,
     marginBottom: 2,
   },
-  pinnedIndicator: {
-    fontSize: 11,
-  },
   pinBtn: {
     width: 32,
     height: 32,
@@ -878,7 +913,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F2F2F2',
   },
   pinBtnActive: {
-    backgroundColor: '#FFF3C4',
+    backgroundColor: '#FFD500',
   },
   pinIcon: {
     fontSize: 15,

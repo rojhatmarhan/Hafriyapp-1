@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { UPLOADS_HOST } from '../services/api';
 import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { useAppDispatch, useAppSelector } from '../hooks';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -122,7 +123,7 @@ const ProfileScreen = () => {
 
               if (detailData.logoPath) {
                 const fullLogoPath = detailData.logoPath.startsWith('/')
-                  ? `https://api.hafriyapp.com${detailData.logoPath}?t=${new Date().getTime()}`
+                  ? `${UPLOADS_HOST}${detailData.logoPath}?t=${new Date().getTime()}`
                   : `${detailData.logoPath}?t=${new Date().getTime()}`;
                 setCompanyLogoUri(fullLogoPath);
               } else {

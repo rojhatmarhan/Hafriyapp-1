@@ -1,10 +1,13 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, SectionList, FlatList, TouchableOpacity, Modal, ScrollView, TextInput, Keyboard, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Pressable, Alert, Image, RefreshControl, Share } from 'react-native';
+import { UPLOADS_HOST, API_BASE_URL } from '../../services/api';
+import { View, Text, StyleSheet, SectionList, TouchableOpacity, Modal, ScrollView, TextInput, Keyboard, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Pressable, Alert, Image, RefreshControl, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppSelector } from '../../hooks';
 import BluetoothPrinterModal from '../../components/BluetoothPrinterModal';
 import { deleteVehicle, getVehicles, updateVehicle, createVehicle, assignDriver, getVehicleDriver, removeDriver } from '../../services/vehicleService';
 import { getHauls, updateHaulPayment, getHaulById, HaulApi } from '../../services/haulService';
+import HaulSearchBar from '../../components/HaulSearchBar';
+import { useDateRange, isInDateRange, ddmmyyyyToYMD } from '../../utils/dateRange';
 import { formatDumpLine } from '../../utils/dumpFormat';
 import { QRScannerModal, ScannedQRData } from '../../components/QRScannerModal';
 import { PlateScannerModal } from '../../components/PlateScannerModal';
@@ -15,6 +18,7 @@ import { ensurePrinterReady, printImage, clearSavedPrinter, getReceiptCaptureLay
 import RNBlobUtil from 'react-native-blob-util';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useFocusEffect } from '@react-navigation/native';
+import { useStickySearch } from '../../hooks/useStickySearch';
 
 const YELLOW = '#FFD500';
 const GRAY = '#F4F4F4';
@@ -48,7 +52,7 @@ const resolveReceiptLogo = (path?: string | null): any => {
   const fullUrl = path.startsWith('http')
     ? path
     : (path.startsWith('/uploads') || path.startsWith('/'))
-    ? `https://api.hafriyapp.com${path}`
+    ? `${UPLOADS_HOST}${path}`
     : null;
 
   if (fullUrl) {
@@ -61,7 +65,12 @@ const resolveReceiptLogo = (path?: string | null): any => {
 
 /* ================= SCREEN ================= */
 
+// Sefer kartları arası boşluk (eskiden contentContainerStyle gap: 10)
+const TripSeparator = () => <View style={{ height: 10 }} />;
+
 export default function SupplierVehicles() {
+  // Alçak pencerede (yatay telefon) arama satırı da sabitlenmez
+  const stickySearch = useStickySearch();
   const [activeTab, setActiveTab] = useState<'vehicles' | 'trips'>('vehicles');
 
   const [vehicleModal, setVehicleModal] = useState(false);
@@ -112,10 +121,8 @@ export default function SupplierVehicles() {
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [haulFilter, setHaulFilter] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [filterYear, setFilterYear] = useState<number | null>(new Date().getFullYear());
-  const [filterMonth, setFilterMonth] = useState<number | null>(new Date().getMonth() + 1);
-  const [yearPickerVisible, setYearPickerVisible] = useState(false);
-  const [monthPickerVisible, setMonthPickerVisible] = useState(false);
+  // Tarih aralığı (İş detayı ile aynı): varsayılan bu ayın tamamı, başlangıç ▸ bitiş seçilebilir
+  const { rangeStart, rangeEnd, startKey, endKey, isDefaultRange, changeStart, changeEnd, resetRange } = useDateRange();
   const [excelDownloading, setExcelDownloading] = useState(false);
 
   const token = useAppSelector(state => state.auth.token);
@@ -640,13 +647,9 @@ export default function SupplierVehicles() {
     if (!token) return;
     setExcelDownloading(true);
     try {
-      const year = filterYear ?? new Date().getFullYear();
-      const month = filterMonth ?? new Date().getMonth() + 1;
-      const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-      const lastDay = new Date(year, month, 0).getDate();
-      const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
-      const monthLabel = filterMonth ? `${year}_${String(month).padStart(2, '0')}` : String(year);
-      const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' }).fetch('GET', `https://api.hafriyapp.com/api/Haul/my/filtered/export?startDate=${startDate}&endDate=${endDate}`, {
+      const startDate = ddmmyyyyToYMD(rangeStart);
+      const endDate = ddmmyyyyToYMD(rangeEnd);
+      const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' }).fetch('GET', `${API_BASE_URL}/Haul/my/filtered/export?startDate=${startDate}&endDate=${endDate}`, {
         Authorization: `Bearer ${token}`,
       });
       const path = res.path();
@@ -776,11 +779,6 @@ export default function SupplierVehicles() {
     setTimeout(() => setCopiedKey(null), 1500);
   };
 
-  const TR_MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-
-  // Mevcut haul listesinden benzersiz yılları çıkar
-  const availableYears = Array.from(new Set(hauls.map(h => new Date(h.timeOfHaul).getFullYear()))).sort((a, b) => b - a);
-
   const isToday = (iso: string) => {
     const d = new Date(iso);
     const now = new Date();
@@ -869,9 +867,7 @@ export default function SupplierVehicles() {
 
   // Aktif filtreye göre gösterilecek sefer listesi
   const filteredHauls = hauls.filter(h => {
-    const d = new Date(h.timeOfHaul);
-    if (filterYear !== null && d.getFullYear() !== filterYear) return false;
-    if (filterMonth !== null && d.getMonth() + 1 !== filterMonth) return false;
+    if (!isInDateRange(h.timeOfHaul, startKey, endKey)) return false;
     if (haulFilter && !matchesHaulSearch(h, haulFilter)) return false;
     return true;
   });
@@ -1008,8 +1004,9 @@ export default function SupplierVehicles() {
     );
   };
 
-  return (
-    <SafeAreaView style={styles.container} edges={[]}>
+  // Sayfanın üst kısmı (başlık, sekmeler, Yeni Araç Ekle / Yenile) listeyle birlikte kayar — küçük ekranda yer kaplamasın.
+  const pageHeader = (
+    <View>
       {/* HEADER */}
       <Text style={styles.title}>Araç Yönetimi</Text>
       <Text style={styles.subTitle}>Araç listeniz ve yönetim işlemleri</Text>
@@ -1036,11 +1033,66 @@ export default function SupplierVehicles() {
           </TouchableOpacity>
         )}
       </View>
+    </View>
+  );
 
+  const showHaulSearch = !haulsLoading && !haulsError && hauls.length > 0;
+
+  // Seferler: başlık + özet çubuğu kayar; sadece arama çubuğu (QR + arama + tarih) üstte sabit kalır.
+  const tripsHeader = (
+    <View>
+      {pageHeader}
+      {/* Özet Çubuğu */}
+      <View style={styles.summaryBar}>
+        <View style={styles.summaryItem}>
+          <Text style={[styles.summaryValue, { color: '#E65100' }]}>{todayInFiltered}</Text>
+          <Text style={styles.summaryLabel}>Bugün</Text>
+        </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryItem}>
+          <Text style={[styles.summaryValue, { color: '#2E7D32' }]}>{filteredHauls.filter(h => h.isPaid).length}</Text>
+          <Text style={styles.summaryLabel}>Ödendi</Text>
+        </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryItem}>
+          <Text style={[styles.summaryValue, { color: '#E53935' }]}>{filteredHauls.filter(h => !h.isPaid).length}</Text>
+          <Text style={styles.summaryLabel}>Bekliyor</Text>
+        </View>
+        <View style={styles.summaryDivider} />
+        <TouchableOpacity style={styles.summaryExcelBtn} onPress={downloadFilteredExcel} disabled={excelDownloading}>
+          <Text style={styles.summaryExcelText}>{excelDownloading ? '⏳' : '⬇ Excel'}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  // Arama çubuğu: QR tara + arama + tarih aralığı (İş detayı ile aynı bileşen). Eleman olarak verilir; yazarken odak kaybolmaz.
+  const haulSearchEl = (
+    <View style={styles.stickySearch}>
+      <HaulSearchBar
+        query={haulFilter}
+        onQueryChange={setHaulFilter}
+        onQrPress={() => setQrModalVisible(true)}
+        placeholder="Plaka, şantiye, döküm, seri no…"
+        rangeStart={rangeStart}
+        rangeEnd={rangeEnd}
+        onRangeStartChange={changeStart}
+        onRangeEndChange={changeEnd}
+        isDefaultRange={isDefaultRange}
+        onResetRange={resetRange}
+      />
+    </View>
+  );
+  const renderHaulSearchHeader = () => haulSearchEl;
+  const tripSections = [{ key: 'trips', data: filteredHauls }];
+
+  return (
+    <SafeAreaView style={styles.container} edges={[]}>
       {/* ================= VEHICLES ================= */}
       {activeTab === 'vehicles' && (
         vehicles.length === 0 ? (
           <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 30 }}>
+            <View style={styles.headerFullWidth}>{pageHeader}</View>
             <View style={styles.guideCard}>
               <Text style={styles.guideCardEmoji}>🚚</Text>
               <Text style={styles.guideCardTitle}>Nasıl Araç Eklenir? (Adım Adım Rehber)</Text>
@@ -1066,132 +1118,57 @@ export default function SupplierVehicles() {
             </View>
           </ScrollView>
         ) : (
-          <SectionList sections={sections} keyExtractor={item => item[0].id} renderItem={renderVehicle} renderSectionHeader={renderSectionHeader} contentContainerStyle={{ paddingTop: 12, paddingBottom: 20, gap: 10, paddingHorizontal: 5 }} stickySectionHeadersEnabled={false} renderSectionFooter={() => <View style={{ height: 10 }} />} />
+          <SectionList sections={sections} keyExtractor={item => item[0].id} renderItem={renderVehicle} renderSectionHeader={renderSectionHeader} ListHeaderComponent={<View style={styles.vehiclesHeader}>{pageHeader}</View>} contentContainerStyle={{ paddingBottom: 20, gap: 10, paddingHorizontal: 5 }} stickySectionHeadersEnabled={false} renderSectionFooter={() => <View style={{ height: 10 }} />} />
         )
       )}
 
       {/* ================= TRIPS ================= */}
       {activeTab === 'trips' && (
-        <>
-          {/* Özet Çubuğu */}
-          <View style={styles.summaryBar}>
-            <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, { color: '#E65100' }]}>{todayInFiltered}</Text>
-              <Text style={styles.summaryLabel}>Bugün</Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, { color: '#2E7D32' }]}>{filteredHauls.filter(h => h.isPaid).length}</Text>
-              <Text style={styles.summaryLabel}>Ödendi</Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, { color: '#E53935' }]}>{filteredHauls.filter(h => !h.isPaid).length}</Text>
-              <Text style={styles.summaryLabel}>Bekliyor</Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <TouchableOpacity style={styles.summaryExcelBtn} onPress={downloadFilteredExcel} disabled={excelDownloading}>
-              <Text style={styles.summaryExcelText}>{excelDownloading ? '⏳' : '⬇ Excel'}</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Filtre satırı */}
-          {!haulsLoading && !haulsError && hauls.length > 0 && (
-            <>
-              {/* Metin arama & QR */}
-              <View style={styles.searchRow}>
-                <View style={styles.searchBox}>
-                  <Text style={styles.searchIcon}>🔍</Text>
-                  <TextInput
-                    style={styles.searchInput}
-                    placeholder="Plaka, şantiye, döküm yeri, tarih..."
-                    placeholderTextColor="#aaa"
-                    value={haulFilter}
-                    onChangeText={setHaulFilter}
-                    autoCapitalize="none"
-                  />
-                  {haulFilter.length > 0 && (
-                    <TouchableOpacity onPress={() => setHaulFilter('')}>
-                      <Text style={styles.searchClear}>✕</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <TouchableOpacity style={styles.qrScanBtn} onPress={() => setQrModalVisible(true)} activeOpacity={0.8}>
-                  <Text style={styles.qrScanBtnText}>📷 QR</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Yıl / Ay filtresi */}
-              <View style={styles.dateFilterRow}>
-                <TouchableOpacity style={[styles.dateFilterBtn, filterYear !== null && styles.dateFilterBtnActive]} onPress={() => setYearPickerVisible(true)}>
-                  <Text style={[styles.dateFilterBtnText, filterYear !== null && styles.dateFilterBtnTextActive]}>📅 {filterYear !== null ? String(filterYear) : 'Yıl'}</Text>
-                  {filterYear !== new Date().getFullYear() && filterYear !== null && (
-                    <TouchableOpacity
-                      onPress={() => {
-                        setFilterYear(new Date().getFullYear());
-                        setFilterMonth(new Date().getMonth() + 1);
-                      }}
-                      style={styles.dateFilterClear}>
-                      <Text style={styles.dateFilterClearText}>✕</Text>
-                    </TouchableOpacity>
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.dateFilterBtn, filterMonth !== null && styles.dateFilterBtnActive]}
-                  onPress={() => {
-                    if (filterYear !== null) setMonthPickerVisible(true);
-                    else setMonthPickerVisible(true);
-                  }}>
-                  <Text style={[styles.dateFilterBtnText, filterMonth !== null && styles.dateFilterBtnTextActive]}>🗓 {filterMonth !== null ? TR_MONTHS[filterMonth - 1] : 'Ay'}</Text>
-                  {filterMonth !== null && filterMonth !== new Date().getMonth() + 1 && (
-                    <TouchableOpacity onPress={() => setFilterMonth(new Date().getMonth() + 1)} style={styles.dateFilterClear}>
-                      <Text style={styles.dateFilterClearText}>✕</Text>
-                    </TouchableOpacity>
-                  )}
-                </TouchableOpacity>
-
-                {haulFilter ? (
-                  <TouchableOpacity style={styles.dateFilterResetBtn} onPress={() => setHaulFilter('')}>
-                    <Text style={styles.dateFilterResetText}>Temizle</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            </>
-          )}
-
-          {haulsLoading ? (
-            <View style={styles.centerBox}>
-              <Text style={styles.loadingText}>Seferler yükleniyor...</Text>
-            </View>
-          ) : haulsError ? (
-            <View style={styles.centerBox}>
-              <Text style={styles.errorText}>{haulsError}</Text>
-              <TouchableOpacity style={styles.retryBtn} onPress={fetchHauls}>
-                <Text style={styles.retryText}>Tekrar Dene</Text>
-              </TouchableOpacity>
-            </View>
-          ) : hauls.length === 0 ? (
-            <View style={styles.centerBox}>
-              <Text style={{ fontSize: 40 }}>🚛</Text>
-              <Text style={styles.emptyText}>Henüz sefer kaydı yok.</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={filteredHauls}
-              keyExtractor={i => i.id}
-              renderItem={renderTrip}
-              contentContainerStyle={{ paddingBottom: 20, gap: 10 }}
-              showsVerticalScrollIndicator={false}
-              refreshControl={<RefreshControl refreshing={haulsRefreshing} onRefresh={onHaulsRefresh} colors={['#1976D2']} tintColor="#1976D2" />}
-              ListEmptyComponent={
+        showHaulSearch ? (
+          <SectionList
+            sections={tripSections}
+            keyExtractor={i => i.id}
+            renderItem={renderTrip}
+            ListHeaderComponent={tripsHeader}
+            renderSectionHeader={renderHaulSearchHeader}
+            stickySectionHeadersEnabled={stickySearch}
+            ItemSeparatorComponent={TripSeparator}
+            contentContainerStyle={{ paddingBottom: 20 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={<RefreshControl refreshing={haulsRefreshing} onRefresh={onHaulsRefresh} colors={['#1976D2']} tintColor="#1976D2" />}
+            // SectionList'te bölüm varken ListEmptyComponent görünmez → boş sonuç altbilgide
+            ListFooterComponent={
+              filteredHauls.length === 0 ? (
                 <View style={styles.centerBox}>
                   <Text style={styles.emptyText}>Filtre sonucu bulunamadı.</Text>
                 </View>
-              }
-            />
-          )}
-        </>
+              ) : null
+            }
+          />
+        ) : (
+          // Yükleniyor / hata / hiç sefer yok: başlık yine kayabilir, durum kutusu kalan alanı ortalar
+          <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+            {tripsHeader}
+            {haulsLoading ? (
+              <View style={styles.centerBox}>
+                <Text style={styles.loadingText}>Seferler yükleniyor...</Text>
+              </View>
+            ) : haulsError ? (
+              <View style={styles.centerBox}>
+                <Text style={styles.errorText}>{haulsError}</Text>
+                <TouchableOpacity style={styles.retryBtn} onPress={fetchHauls}>
+                  <Text style={styles.retryText}>Tekrar Dene</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.centerBox}>
+                <Text style={{ fontSize: 40 }}>🚛</Text>
+                <Text style={styles.emptyText}>Henüz sefer kaydı yok.</Text>
+              </View>
+            )}
+          </ScrollView>
+        )
       )}
 
       {/* ================= VEHICLE DETAIL MODAL ================= */}
@@ -1694,75 +1671,6 @@ export default function SupplierVehicles() {
         onConnected={handlePrinterConnected}
       />
 
-      {/* ================= YIL SEÇİCİ ================= */}
-      <Modal visible={yearPickerVisible} transparent animationType="slide">
-        <TouchableWithoutFeedback onPress={() => setYearPickerVisible(false)}>
-          <View style={styles.pickerOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.pickerContainer}>
-                <View style={styles.pickerHeader}>
-                  <Text style={styles.pickerHeaderText}>Yıl Seçin</Text>
-                  <TouchableOpacity onPress={() => setYearPickerVisible(false)}>
-                    <Text style={styles.pickerHeaderClose}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-                <FlatList
-                  data={availableYears}
-                  keyExtractor={y => String(y)}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={[styles.pickerItem, filterYear === item && styles.pickerItemActive]}
-                      onPress={() => {
-                        setFilterYear(item);
-                        setFilterMonth(null);
-                        setYearPickerVisible(false);
-                      }}>
-                      <Text style={[styles.pickerItemText, filterYear === item && styles.pickerItemTextActive]}>{item}</Text>
-                      {filterYear === item && <Text style={{ color: '#1976D2', fontWeight: '800' }}>✔</Text>}
-                    </TouchableOpacity>
-                  )}
-                  ItemSeparatorComponent={() => <View style={styles.pickerSeparator} />}
-                />
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      {/* ================= AY SEÇİCİ ================= */}
-      <Modal visible={monthPickerVisible} transparent animationType="slide">
-        <TouchableWithoutFeedback onPress={() => setMonthPickerVisible(false)}>
-          <View style={styles.pickerOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.pickerContainer}>
-                <View style={styles.pickerHeader}>
-                  <Text style={styles.pickerHeaderText}>Ay Seçin — {filterYear}</Text>
-                  <TouchableOpacity onPress={() => setMonthPickerVisible(false)}>
-                    <Text style={styles.pickerHeaderClose}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-                <FlatList
-                  data={TR_MONTHS.map((name, i) => ({ name, month: i + 1 }))}
-                  keyExtractor={m => String(m.month)}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={[styles.pickerItem, filterMonth === item.month && styles.pickerItemActive]}
-                      onPress={() => {
-                        setFilterMonth(item.month);
-                        setMonthPickerVisible(false);
-                      }}>
-                      <Text style={[styles.pickerItemText, filterMonth === item.month && styles.pickerItemTextActive]}>{item.name}</Text>
-                      {filterMonth === item.month && <Text style={{ color: '#1976D2', fontWeight: '800' }}>✔</Text>}
-                    </TouchableOpacity>
-                  )}
-                  ItemSeparatorComponent={() => <View style={styles.pickerSeparator} />}
-                />
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
       <QRScannerModal
         visible={qrModalVisible}
         onClose={() => setQrModalVisible(false)}
@@ -1783,10 +1691,17 @@ const styles = StyleSheet.create({
 
   tabRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap', // dar ekranda (320 dp) "＋ Yeni Araç Ekle" alt satıra iner, taşmaz
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
     marginBottom: 12,
   },
+  // Liste başlığı listenin iç boşluklarını geri alır (eski konumunda kalsın)
+  vehiclesHeader: { marginHorizontal: -5, paddingTop: 2 },
+  headerFullWidth: { marginHorizontal: -16 },
+  // Sabit arama çubuğu: opak arka plan, altından kayan kartlar görünmesin
+  stickySearch: { backgroundColor: '#FFFBEA', paddingTop: 4 },
 
   tabs: {
     flexDirection: 'row',
@@ -1949,6 +1864,14 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: DARK,
+  },
+
+  searchQrBtn: {
+    marginLeft: 6,
+    paddingLeft: 8,
+    borderLeftWidth: 1,
+    borderLeftColor: '#E8E8E8',
+    justifyContent: 'center',
   },
 
   searchClear: {

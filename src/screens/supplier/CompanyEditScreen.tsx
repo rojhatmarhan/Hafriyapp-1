@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { UPLOADS_HOST } from '../../services/api';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Alert, Image } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useAppSelector } from '../../hooks';
@@ -48,7 +49,7 @@ const CompanyEditScreen = () => {
 
         if (data.logoPath) {
           const fullLogoPath = data.logoPath.startsWith('/')
-            ? `https://api.hafriyapp.com/api${data.logoPath}`
+            ? `${UPLOADS_HOST}/api${data.logoPath}`
             : data.logoPath;
           setPhotoUri(fullLogoPath);
         }

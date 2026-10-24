@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, Keyboard, FlatList, ActivityIndicator, InputAccessoryView, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, Keyboard, FlatList, ActivityIndicator, InputAccessoryView, StatusBar, Animated, PanResponder, Dimensions } from 'react-native';
+import RNBlobUtil from 'react-native-blob-util';
+import { API_BASE_URL } from '../services/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getJobSiteNotes, createJobSiteNote, updateJobSiteNote, deleteJobSiteNote, JobSiteNoteItem } from '../services/jobSiteNewService';
 
@@ -367,6 +369,57 @@ export default function JobNotesModal({ visible, onClose, jobSiteId, token, jobN
     </View>
   );
 
+  // ── Aşağı kaydırarak kapatma: başlıktan (tutamaçtan) aşağı çekince sayfa iner, yeterince çekilirse kapanır.
+  // Liste kendi kaydırmasını ve aşağı çekip yenilemeyi koruduğu için hareket sadece başlıkta dinlenir.
+  const dragY = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (visible) dragY.setValue(0);
+  }, [visible, dragY]);
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, g) => g.dy > 8 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderGrant: () => Keyboard.dismiss(),
+      onPanResponderMove: (_e, g) => dragY.setValue(Math.max(0, g.dy)),
+      onPanResponderRelease: (_e, g) => {
+        if (g.dy > 120 || g.vy > 1.2) {
+          Animated.timing(dragY, { toValue: Dimensions.get('window').height, duration: 180, useNativeDriver: true }).start(() => handleCloseRef.current());
+        } else {
+          Animated.spring(dragY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+        }
+      },
+      onPanResponderTerminate: () => Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start(),
+    }),
+  ).current;
+  const handleCloseRef = useRef(handleClose);
+  handleCloseRef.current = handleClose;
+
+  // ── Excel: iş notları ve giderleri (API: GET /JobSite/{id}/notes/export)
+  const [exporting, setExporting] = useState(false);
+  const handleExport = async () => {
+    if (!jobSiteId || !token || exporting) return;
+    setExporting(true);
+    try {
+      const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' }).fetch('GET', `${API_BASE_URL}/JobSite/${jobSiteId}/notes/export`, {
+        Authorization: `Bearer ${token}`,
+      });
+      const status = res.info().status;
+      if (status !== 200) {
+        Alert.alert('Hata', status === 403 ? 'Bu şantiyenin notlarını indirme yetkiniz yok.' : 'Excel dosyası indirilemedi.');
+        return;
+      }
+      const path = res.path();
+      if (Platform.OS === 'ios') {
+        await RNBlobUtil.ios.openDocument(path);
+      } else {
+        await RNBlobUtil.android.actionViewIntent(path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      }
+    } catch {
+      Alert.alert('Hata', 'Excel dosyası indirilemedi.');
+    } finally {
+      if (mountedRef.current) setExporting(false);
+    }
+  };
+
   // Android'de modal durum çubuğunun altına çizilir (statusBarTranslucent) → üst boşluğu kendimiz veriyoruz
   const topGap = (Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight ?? 24) : insets.top) + 12;
 
@@ -376,18 +429,24 @@ export default function JobNotesModal({ visible, onClose, jobSiteId, token, jobN
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={{ height: topGap }} />
         </TouchableWithoutFeedback>
-        <View style={styles.sheet}>
+        <Animated.View style={[styles.sheet, { transform: [{ translateY: dragY }] }]}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <View style={styles.header}>
-              <View style={styles.headerTextWrap}>
-                <Text style={styles.title}>📝 İş Notları & Giderler</Text>
-                <Text style={styles.subTitle} numberOfLines={1}>
-                  {jobName || 'Şantiye'}
-                </Text>
+            <View {...panResponder.panHandlers}>
+              <View style={styles.grabber} />
+              <View style={styles.header}>
+                <View style={styles.headerTextWrap}>
+                  <Text style={styles.title}>📝 İş Notları & Giderler</Text>
+                  <Text style={styles.subTitle} numberOfLines={1}>
+                    {jobName || 'Şantiye'}
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.excelBtn} onPress={handleExport} disabled={exporting} accessibilityLabel="Excel indir">
+                  {exporting ? <ActivityIndicator size="small" color="#2E7D32" /> : <Text style={styles.excelText}>📥 Excel</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.closeBtn} onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Kapat">
+                  <Text style={styles.closeText}>✕</Text>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity style={styles.closeBtn} onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Kapat">
-                <Text style={styles.closeText}>✕</Text>
-              </TouchableOpacity>
             </View>
           </TouchableWithoutFeedback>
           <FlatList
@@ -405,7 +464,7 @@ export default function JobNotesModal({ visible, onClose, jobSiteId, token, jobN
             onRefresh={() => loadNotes(true)}
             contentContainerStyle={[styles.listContent, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}
           />
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
       {Platform.OS === 'ios' && (
         <InputAccessoryView nativeID={ACCESSORY_ID}>
@@ -432,6 +491,30 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     overflow: 'hidden',
   },
+  grabber: {
+    alignSelf: 'center',
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#D0D0D0',
+    marginTop: 8,
+  },
+  excelBtn: {
+    height: 36,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1,
+    borderColor: '#A5D6A7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  excelText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2E7D32',
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -439,7 +522,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 10,
     paddingBottom: 12,
     backgroundColor: '#fff',
   },

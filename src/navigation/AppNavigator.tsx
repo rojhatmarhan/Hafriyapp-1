@@ -12,6 +12,9 @@ import ProfileEditScreen from '../screens/ProfileEditScreen';
 import CompanyEditScreen from '../screens/supplier/CompanyEditScreen';
 import CompanyShowcase from '../screens/common/CompanyShowcase';
 import WebToolScreen from '../screens/common/WebToolScreen';
+import ShowcaseListScreen from '../screens/showcase/ShowcaseListScreen';
+import ShowcaseDetailScreen from '../screens/showcase/ShowcaseDetailScreen';
+import ShowcaseFormScreen from '../screens/showcase/ShowcaseFormScreen';
 
 const Drawer = createDrawerNavigator();
 
@@ -75,6 +78,30 @@ export default function AppNavigator() {
       <Drawer.Screen
         name="CompanyShowcase"
         component={CompanyShowcase}
+        options={{
+          headerShown: false,
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
+      <Drawer.Screen
+        name="ShowcaseList"
+        component={ShowcaseListScreen}
+        options={{
+          headerShown: false,
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
+      <Drawer.Screen
+        name="ShowcaseDetail"
+        component={ShowcaseDetailScreen}
+        options={{
+          headerShown: false,
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
+      <Drawer.Screen
+        name="ShowcaseForm"
+        component={ShowcaseFormScreen}
         options={{
           headerShown: false,
           drawerItemStyle: { display: 'none' },

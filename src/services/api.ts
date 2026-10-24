@@ -8,6 +8,10 @@ export const BASE_HOST = __DEV__
   : 'https://api.hafriyapp.com';
 export const API_BASE_URL = `${BASE_HOST}/api`;
 
+// Yüklenen dosyalar (logo, ilan/grup resimleri) canlı sunucuda durur; debug'da local API canlı veritabanıyla
+// çalışırken de resimler görünsün diye her zaman canlı adresten okunur.
+export const UPLOADS_HOST = 'https://api.hafriyapp.com';
+
 // Uygulama sürüm başlıkları: API bir davranışı sadece yeni sürümlere uygulamak isterse bunlara bakar.
 // Eski sürümler bu başlıkları göndermez (bkz. docs/UYUMLULUK.md). Kaldırmayın, adlarını değiştirmeyin.
 export const APP_VERSION_HEADERS = {

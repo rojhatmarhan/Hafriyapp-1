@@ -40,7 +40,7 @@ const CalendarDateButton: React.FC<Props> = ({ value, onChange, title = 'Tarih S
   return (
     <View>
       <TouchableOpacity style={[styles.btn, active && styles.btnActive]} onPress={handleOpen} activeOpacity={0.7} accessibilityLabel={accessibilityLabel || title}>
-        <CalendarIcon size={17} color={active ? '#1976D2' : '#333'} />
+        <CalendarIcon size={22} color="#222" />
       </TouchableOpacity>
 
       {Platform.OS === 'android' && show && <DateTimePicker value={tempDate} mode="date" display="calendar" onChange={handleAndroidChange} />}
@@ -74,17 +74,18 @@ const CalendarDateButton: React.FC<Props> = ({ value, onChange, title = 'Tarih S
 export default CalendarDateButton;
 
 const styles = StyleSheet.create({
+  // 42 px açık sarı daire, koyu ikon; varsayılandan farklı aralık seçiliyse (active) koyu sarı
   btn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     borderWidth: 1,
-    borderColor: '#CFCFCF',
-    backgroundColor: '#F7F7F7',
+    borderColor: '#F2DC6B',
+    backgroundColor: '#FFF3B0',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnActive: { borderColor: '#90CAF9', backgroundColor: '#E3F2FD' },
+  btnActive: { borderColor: '#C9A800', borderWidth: 1.5, backgroundColor: '#FFD500' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingBottom: 30 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },

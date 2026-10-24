@@ -1,9 +1,10 @@
 import React, { useMemo, useState, useCallback, useRef } from 'react';
+import { API_BASE_URL } from '../../services/api';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  SectionList,
   TouchableOpacity,
   Modal,
   ActivityIndicator,
@@ -17,6 +18,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import NewJobModal from '../../components/NewJobModal';
+import DumpOverview from './DumpOverview';
 import {
   deleteJobSite,
   toggleJobSiteActive,
@@ -24,6 +26,7 @@ import {
   toggleJobSitePin,
 } from '../../services/jobSiteNewService';
 import { useAppSelector } from '../../hooks';
+import { useStickySearch } from '../../hooks/useStickySearch';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const YELLOW = '#FFD500';
@@ -72,6 +75,8 @@ type JobUI = {
 };
 
 export default function MyJobs() {
+  // Alçak pencerede (yatay telefon) arama satırı da sabitlenmez
+  const stickySearch = useStickySearch();
   const navigation = useNavigation<any>();
   const token = useAppSelector(state => state.auth.token);
   const [jobs, setJobs] = useState<JobUI[]>([]);
@@ -82,6 +87,8 @@ export default function MyJobs() {
   const [selectedJob, setSelectedJob] = useState<Job | undefined>(undefined);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'HAFRIYAT' | 'KUM'>('ALL');
+  // Üst sekme: İşlerim (mevcut liste) | Döküm (döküm sahası verileri)
+  const [tab, setTab] = useState<'jobs' | 'dump'>('jobs');
   const insets = useSafeAreaInsets();
 
   const fetchJobs = async (isRefresh = false) => {
@@ -182,7 +189,7 @@ export default function MyJobs() {
       const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const filename = `Seferler_${jobName}_${date}.xlsx`;
       const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' })
-        .fetch('GET', `https://api.hafriyapp.com/api/Haul/jobsite/${jobId}/export`, {
+        .fetch('GET', `${API_BASE_URL}/Haul/jobsite/${jobId}/export`, {
           Authorization: `Bearer ${token}`,
         });
       const path = res.path();
@@ -207,7 +214,7 @@ export default function MyJobs() {
     try {
       const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' })
-        .fetch('GET', 'https://api.hafriyapp.com/api/Haul/all-jobsites/export', {
+        .fetch('GET', `${API_BASE_URL}/Haul/all-jobsites/export`, {
           Authorization: `Bearer ${token}`,
         });
       const path = res.path();
@@ -302,6 +309,9 @@ export default function MyJobs() {
     }
   };
 
+  // Döküm ekranındaki "İşe Göre Filtrele" listesi
+  const jobOptions = useMemo(() => jobs.map(j => ({ id: j.id, name: j.site })), [jobs]);
+
   const filteredJobs = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = jobs.filter(item => {
@@ -335,22 +345,7 @@ export default function MyJobs() {
         activeOpacity={0.85}
       >
         <View style={{ flex: 1 }}>
-          {pinSupported ? (
-            <View style={styles.siteRow}>
-              <Text style={[styles.site, styles.siteInRow]}>{item.site}</Text>
-              {item.isPinned === true && <Text style={styles.pinnedIndicator}>📌</Text>}
-              <TouchableOpacity
-                style={[styles.pinBtn, item.isPinned === true && styles.pinBtnActive]}
-                onPress={() => handleTogglePin(item)}
-                hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-                accessibilityLabel={item.isPinned === true ? 'Tutturmayı kaldır' : 'Başa tuttur'}
-              >
-                <Text style={styles.pinIcon}>📌</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <Text style={styles.site}>{item.site}</Text>
-          )}
+          <Text style={styles.site}>{item.site}</Text>
           {/* <Text style={styles.jobType}>
             {isKum ? 'Kum & Mıcır' : 'Hafriyat Döküm'}
           </Text> */}
@@ -361,6 +356,7 @@ export default function MyJobs() {
             <Text style={styles.info}>Ödemesi yapılan: <Text style={[styles.infoBold, { color: '#2E7D32' }]}>{item.paid}</Text></Text>
             <Text style={styles.info}>Ödemesi yapılmayan: <Text style={[styles.infoBold, { color: '#E53935' }]}>{item.unpaid}</Text></Text>
           </View>
+
         </View>
 
         <View style={styles.right}>
@@ -385,6 +381,21 @@ export default function MyJobs() {
             </View>
           )}
 
+          {/* Başa tutturma: diğer aksiyonlarla aynı buton; tutturulunca sarı */}
+          {pinSupported && (
+            <TouchableOpacity
+              style={[styles.actionBtn, item.isPinned === true && styles.actionBtnPinned]}
+              onPress={() => handleTogglePin(item)}
+              accessibilityLabel={item.isPinned === true ? 'Tutturmayı kaldır' : 'Başa tuttur'}
+            >
+              <Text style={styles.actionBtnText}>{item.isPinned === true ? '📌 Tutturuldu' : '📌 Başa Tuttur'}</Text>
+            </TouchableOpacity>
+          )}
+          {item.canEdit && (
+            <TouchableOpacity style={styles.actionBtn} onPress={() => handleEdit(item.raw)}>
+              <Text style={styles.actionBtnText}>Düzenle</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => handleToggleActive(item)}
@@ -393,16 +404,101 @@ export default function MyJobs() {
               {item.isActive ? 'Yayından Kaldır' : 'Yayına Al'}
             </Text>
           </TouchableOpacity>
-          {item.canEdit && (
-            <TouchableOpacity style={styles.actionBtn} onPress={() => handleEdit(item.raw)}>
-              <Text style={styles.actionBtnText}>Düzenle</Text>
-            </TouchableOpacity>
-          )}
 
         </View>
       </TouchableOpacity>
     );
   };
+
+  // Üst sekme (İşlerim | Döküm): iki sekmede de listenin başlığında, içerikle birlikte kayar
+  const segmentEl = (
+    <View style={styles.segment}>
+      {(['jobs', 'dump'] as const).map(t => (
+        <TouchableOpacity key={t} style={[styles.segmentItem, tab === t && styles.segmentItemActive]} onPress={() => setTab(t)} activeOpacity={0.8} accessibilityState={{ selected: tab === t }}>
+          <Text style={[styles.segmentText, tab === t && styles.segmentTextActive]}>{t === 'jobs' ? 'İşlerim' : 'Döküm'}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
+  // ARAMA — listede sabit kalan tek satır. Bileşen değil eleman olarak verilir; yazarken TextInput yeniden oluşmaz, odak/klavye kaybolmaz.
+  const searchEl = (
+    <View style={styles.stickySearch}>
+      <View style={styles.searchRow}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="İş adına göre ara..."
+          placeholderTextColor="#999"
+          value={search}
+          onChangeText={setSearch}
+        />
+        <TouchableOpacity
+          style={styles.refreshBtn}
+          onPress={() => fetchJobs(true)}
+          activeOpacity={0.7}
+          disabled={refreshing}
+        >
+          <Text style={[styles.refreshIcon, refreshing && { opacity: 0.4 }]}>↻</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.downloadBtn}
+          onPress={handleDownloadPress}
+          activeOpacity={0.7}
+          disabled={downloading}
+        >
+          {downloading
+            ? <ActivityIndicator size="small" color="#111" />
+            : <Text style={styles.downloadIcon}>⬇</Text>
+          }
+        </TouchableOpacity>
+      </View>
+      {/* FİLTRE */}
+      {/* <View style={styles.filterRow}>
+        {(['ALL', 'HAFRIYAT', 'KUM'] as const).map(type => (
+          <TouchableOpacity
+            key={type}
+            style={[styles.filterChip, filterType === type && styles.filterChipActive]}
+            onPress={() => setFilterType(type)}
+          >
+            <Text style={[styles.filterChipText, filterType === type && styles.filterChipTextActive]}>
+              {type === 'ALL' ? 'Tümü' : type === 'HAFRIYAT' ? 'Hafriyat' : 'Kum & Mıcır'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View> */}
+    </View>
+  );
+  const renderSearchHeader = () => searchEl;
+  const jobSections = useMemo(() => [{ key: 'jobs', data: filteredJobs }], [filteredJobs]);
+
+  const emptyEl =
+    search.trim() ? (
+      <Text style={styles.emptyText}>Arama kriterine uygun iş bulunamadı</Text>
+    ) : (
+      <View style={styles.guideCard}>
+        <Text style={styles.guideCardEmoji}>🏗️</Text>
+        <Text style={styles.guideCardTitle}>Nasıl Yeni İş Kurulur? (Adım Adım Rehber)</Text>
+        <View style={styles.guideStepRow}>
+          <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>1</Text></View>
+          <Text style={styles.guideStepText}>Sağ alttaki sarı <Text style={{ fontWeight: '700' }}>"＋ Yeni İş Kur"</Text> butonuna dokunun.</Text>
+        </View>
+        <View style={styles.guideStepRow}>
+          <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>2</Text></View>
+          <Text style={styles.guideStepText}>İş türünüzü seçin (<Text style={{ fontWeight: '700' }}>Hafriyat / Döküm</Text> veya <Text style={{ fontWeight: '700' }}>Kum-Mıcır</Text>).</Text>
+        </View>
+        <View style={styles.guideStepRow}>
+          <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>3</Text></View>
+          <Text style={styles.guideStepText}>Şantiye adını, konumunu ve döküm yeri tekliflerini (Nakit ₺ ve Yakıt Lt) belirleyin.</Text>
+        </View>
+        <View style={styles.guideStepRow}>
+          <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>4</Text></View>
+          <Text style={styles.guideStepText}>İşinizi kurduktan sonra araç plakalarını tarayarak sefer girin, fiş yazdırın ve dilediğiniz zaman Excel raporu alın.</Text>
+        </View>
+        <TouchableOpacity style={styles.guideActionBtn} onPress={handleNewJob} activeOpacity={0.85}>
+          <Text style={styles.guideActionBtnText}>＋ Hemen İlk İşini Kur</Text>
+        </TouchableOpacity>
+      </View>
+    );
 
   if (loading) {
     return (
@@ -418,102 +514,44 @@ export default function MyJobs() {
         styles.content,
         { marginTop: -insets.top + 15 },
       ]}>
-        <Text style={styles.title}>FİRMANIZA AİT İŞLER</Text>
-
-        {/* ARAMA */}
-        <View style={styles.searchRow}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="İş adına göre ara..."
-            placeholderTextColor="#999"
-            value={search}
-            onChangeText={setSearch}
-          />
-          <TouchableOpacity
-            style={styles.refreshBtn}
-            onPress={() => fetchJobs(true)}
-            activeOpacity={0.7}
-            disabled={refreshing}
-          >
-            <Text style={[styles.refreshIcon, refreshing && { opacity: 0.4 }]}>↻</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.downloadBtn}
-            onPress={handleDownloadPress}
-            activeOpacity={0.7}
-            disabled={downloading}
-          >
-            {downloading
-              ? <ActivityIndicator size="small" color="#111" />
-              : <Text style={styles.downloadIcon}>⬇</Text>
-            }
-          </TouchableOpacity>
-        </View>
-
-        {/* FİLTRE */}
-        {/* <View style={styles.filterRow}>
-          {(['ALL', 'HAFRIYAT', 'KUM'] as const).map(type => (
-            <TouchableOpacity
-              key={type}
-              style={[styles.filterChip, filterType === type && styles.filterChipActive]}
-              onPress={() => setFilterType(type)}
-            >
-              <Text style={[styles.filterChipText, filterType === type && styles.filterChipTextActive]}>
-                {type === 'ALL' ? 'Tümü' : type === 'HAFRIYAT' ? 'Hafriyat' : 'Kum & Mıcır'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View> */}
-
-        <FlatList
-          data={filteredJobs}
+        {tab === 'dump' ? (
+          <DumpOverview jobSites={jobOptions} topHeader={segmentEl} />
+        ) : (
+        // Üst kısım (sekmeler + başlık) listeyle birlikte kayar; sadece arama satırı üstte sabit kalır (tek bölümün başlığı = sticky).
+        <SectionList
+          sections={jobSections}
           keyExtractor={item => item.id}
           renderItem={renderItem}
+          ListHeaderComponent={
+            <View style={styles.listHeader}>
+              {segmentEl}
+              <Text style={styles.title}>FİRMANIZA AİT İŞLER</Text>
+            </View>
+          }
+          renderSectionHeader={renderSearchHeader}
+          stickySectionHeadersEnabled={stickySearch}
+          // SectionList'te bölüm varken ListEmptyComponent görünmez → boş durum altbilgi olarak gösterilir
+          ListFooterComponent={filteredJobs.length === 0 ? emptyEl : null}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
-          style={{ marginTop: '2%' }}
           refreshing={refreshing}
           onRefresh={() => fetchJobs(true)}
           initialNumToRender={10}
           maxToRenderPerBatch={10}
           windowSize={5}
-          ListEmptyComponent={
-            search.trim() ? (
-              <Text style={styles.emptyText}>Arama kriterine uygun iş bulunamadı</Text>
-            ) : (
-              <View style={styles.guideCard}>
-                <Text style={styles.guideCardEmoji}>🏗️</Text>
-                <Text style={styles.guideCardTitle}>Nasıl Yeni İş Kurulur? (Adım Adım Rehber)</Text>
-                <View style={styles.guideStepRow}>
-                  <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>1</Text></View>
-                  <Text style={styles.guideStepText}>Sağ alttaki sarı <Text style={{ fontWeight: '700' }}>"＋ Yeni İş Kur"</Text> butonuna dokunun.</Text>
-                </View>
-                <View style={styles.guideStepRow}>
-                  <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>2</Text></View>
-                  <Text style={styles.guideStepText}>İş türünüzü seçin (<Text style={{ fontWeight: '700' }}>Hafriyat / Döküm</Text> veya <Text style={{ fontWeight: '700' }}>Kum-Mıcır</Text>).</Text>
-                </View>
-                <View style={styles.guideStepRow}>
-                  <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>3</Text></View>
-                  <Text style={styles.guideStepText}>Şantiye adını, konumunu ve döküm yeri tekliflerini (Nakit ₺ ve Yakıt Lt) belirleyin.</Text>
-                </View>
-                <View style={styles.guideStepRow}>
-                  <View style={styles.guideStepNumberBadge}><Text style={styles.guideStepNumber}>4</Text></View>
-                  <Text style={styles.guideStepText}>İşinizi kurduktan sonra araç plakalarını tarayarak sefer girin, fiş yazdırın ve dilediğiniz zaman Excel raporu alın.</Text>
-                </View>
-                <TouchableOpacity style={styles.guideActionBtn} onPress={handleNewJob} activeOpacity={0.85}>
-                  <Text style={styles.guideActionBtnText}>＋ Hemen İlk İşini Kur</Text>
-                </TouchableOpacity>
-              </View>
-            )
-          }
         />
+        )}
       </View>
 
       {/* ➕ YENİ İŞ KUR */}
+      {tab === 'jobs' && (
       <TouchableOpacity style={styles.fab} onPress={handleNewJob}>
         <Text style={styles.plus}>＋</Text>
         <Text style={styles.fabText}>Yeni İş Kur</Text>
       </TouchableOpacity>
+      )}
 
       <Modal visible={showModal} animationType="slide">
         <NewJobModal onClose={handleCloseModal} initialJob={selectedJob} />
@@ -528,6 +566,38 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F6F6F6',
+  },
+
+  segment: {
+    flexDirection: 'row',
+    marginHorizontal: 12,
+    marginBottom: 8,
+    backgroundColor: '#E9E9E9',
+    borderRadius: 14,
+    padding: 4,
+  },
+  segmentItem: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 11,
+    alignItems: 'center',
+  },
+  segmentItemActive: {
+    backgroundColor: YELLOW,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  segmentText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#666',
+  },
+  segmentTextActive: {
+    color: '#111',
+    fontWeight: '800',
   },
 
   title: {
@@ -559,39 +629,6 @@ const styles = StyleSheet.create({
     color: '#111',
   },
 
-  siteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 8,
-  },
-
-  siteInRow: {
-    flexShrink: 1,
-    marginBottom: 0,
-  },
-
-  pinnedIndicator: {
-    fontSize: 11,
-  },
-
-  pinBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    marginLeft: 'auto',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F2F2F2',
-  },
-
-  pinBtnActive: {
-    backgroundColor: '#FFF3C4',
-  },
-
-  pinIcon: {
-    fontSize: 15,
-  },
 
   jobType: {
     fontSize: 12,
@@ -698,6 +735,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  actionBtnPinned: {
+    backgroundColor: '#FFD500',
+  },
+
   actionBtnDanger: {
     backgroundColor: '#FFF0EE',
     borderWidth: 1,
@@ -756,6 +797,16 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 12,
     paddingBottom: 120,
+  },
+  // Liste başlığı ve sabit arama satırı tam genişlik (kendi iç boşlukları var) → listenin 12 px yan boşluğu geri alınır
+  listHeader: {
+    marginHorizontal: -12,
+  },
+  stickySearch: {
+    marginHorizontal: -12,
+    paddingTop: 4,
+    paddingBottom: 4,
+    backgroundColor: '#F6F6F6',
   },
 
   searchRow: {

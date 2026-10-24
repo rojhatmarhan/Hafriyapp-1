@@ -2,14 +2,16 @@ import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 import { Text, TextInput } from 'react-native';
 import ProvinceMultiSelect from '../src/components/ProvinceMultiSelect';
+import { CITIES } from '../src/constants/cities';
 
 type Instance = ReactTestRenderer.ReactTestInstance;
 
 const textOf = (node: Instance | string): string => (typeof node === 'string' ? node : node.children.map(textOf).join(''));
 
 /** Metni birebir eşleşen Text'ten yukarı çıkıp ilk onPress sahibini basar. */
+// Aynı metin hem çipte hem listede olabilir; liste satırı her zaman sonda olduğu için son eşleşme kullanılır.
 const pressByExactText = async (root: Instance, text: string) => {
-  const target = root.findAllByType(Text).find(t => textOf(t) === text);
+  const target = root.findAllByType(Text).filter(t => textOf(t) === text).pop();
   if (!target) throw new Error(`"${text}" bulunamadı`);
   let node: Instance | null = target;
   while (node && typeof node.props.onPress !== 'function') node = node.parent;
@@ -17,6 +19,14 @@ const pressByExactText = async (root: Instance, text: string) => {
   const pressable = node;
   await ReactTestRenderer.act(async () => {
     pressable.props.onPress();
+  });
+};
+
+const pressByLabel = async (root: Instance, label: string) => {
+  const node = root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function')[0];
+  if (!node) throw new Error(`"${label}" bulunamadı`);
+  await ReactTestRenderer.act(async () => {
+    node.props.onPress();
   });
 };
 
@@ -30,7 +40,13 @@ const render = async (selected: number[], onChange = jest.fn()) => {
   return { r: renderer!, onChange };
 };
 
-const openDropdown = (root: Instance) => pressByExactText(root, 'İl Ekle / Seç');
+/** Seçim alanına basarak listeyi açar */
+const openList = async (root: Instance) => {
+  const field = root.findAll(n => typeof n.props.onPress === 'function')[0];
+  await ReactTestRenderer.act(async () => {
+    field.props.onPress();
+  });
+};
 
 const search = async (root: Instance, q: string) => {
   const input = root.findByType(TextInput);
@@ -40,78 +56,83 @@ const search = async (root: Instance, q: string) => {
 };
 
 describe('ProvinceMultiSelect', () => {
-  it('shows no selected header when nothing is selected and the dropdown is closed', async () => {
+  it('seçim yokken yer tutucu gösterir, liste kapalıdır', async () => {
     const { r } = await render([]);
-    expect(texts(r.root).some(t => t.startsWith('Seçili İller'))).toBe(false);
+    expect(texts(r.root)).toContain('İl seçin…');
     expect(r.root.findAllByType(TextInput)).toHaveLength(0);
   });
 
-  it('opening the dropdown lists cities; selecting one appends its code', async () => {
-    const { r, onChange } = await render([6]);
-    await openDropdown(r.root);
-    expect(texts(r.root)).toContain('İl Seçimini Gizle');
-
-    await pressByExactText(r.root, 'Adana');
-    expect(onChange).toHaveBeenCalledWith([6, 1]);
+  it('liste açılınca 82 ilin tamamı görünür', async () => {
+    const { r } = await render([]);
+    await openList(r.root);
+    const all = texts(r.root);
+    expect(CITIES).toHaveLength(82);
+    for (const city of CITIES) expect(all).toContain(city.label);
   });
 
-  it('keeps selection order (first selected stays first)', async () => {
-    const { r, onChange } = await render([340, 6]);
-    await openDropdown(r.root);
-    await pressByExactText(r.root, 'Adana');
-    expect(onChange).toHaveBeenLastCalledWith([340, 6, 1]);
-  });
-
-  it('does not list already-selected cities in the dropdown', async () => {
-    const { r } = await render([1]);
-    await openDropdown(r.root);
-    expect(texts(r.root)).not.toContain('Adana');
-    expect(texts(r.root)).toContain('Adana ✕');
-  });
-
-  it('pressing a selected chip removes that province', async () => {
-    const { r, onChange } = await render([340, 6, 1]);
-    expect(texts(r.root)).toContain('Seçili İller (3)');
-    await pressByExactText(r.root, 'Ankara ✕');
-    expect(onChange).toHaveBeenCalledWith([340, 1]);
-  });
-
-  it('"Temizle" clears all', async () => {
-    const { r, onChange } = await render([6, 1]);
-    await pressByExactText(r.root, 'Temizle');
-    expect(onChange).toHaveBeenCalledWith([]);
-  });
-
-  it('shows unknown legacy codes as "İl N" so they can be removed', async () => {
-    const { r, onChange } = await render([999, 6]);
-    await pressByExactText(r.root, 'İl 999 ✕');
-    expect(onChange).toHaveBeenCalledWith([6]);
-  });
-
-  it('filters the dropdown by search text', async () => {
+  it('işaretlenen iller Tamam ile seçim sırasıyla aktarılır', async () => {
     const { r, onChange } = await render([]);
-    await openDropdown(r.root);
-    await search(r.root, 'ank');
-    const cityTexts = texts(r.root).filter(t => t === 'Ankara' || t === 'Adana');
-    expect(cityTexts).toEqual(['Ankara']);
+    await openList(r.root);
     await pressByExactText(r.root, 'Ankara');
-    expect(onChange).toHaveBeenCalledWith([6]);
+    await pressByExactText(r.root, 'İstanbul (Avrupa)');
+    expect(onChange).not.toHaveBeenCalled(); // Tamam'a basılmadan aktarılmaz
+    await pressByExactText(r.root, 'Tamam (2)');
+    expect(onChange).toHaveBeenCalledWith([6, 340]);
   });
 
-  it('finds İzmir when the search is typed with "İ"', async () => {
-    const { r } = await render([]);
-    await openDropdown(r.root);
-    await search(r.root, 'İzm');
-    expect(texts(r.root)).toContain('İzmir');
+  it('Vazgeç seçimi aktarmaz', async () => {
+    const { r, onChange } = await render([6]);
+    await openList(r.root);
+    await pressByExactText(r.root, 'İzmir');
+    await pressByExactText(r.root, 'Vazgeç');
+    expect(onChange).not.toHaveBeenCalled();
   });
 
-  // Eski hata: arama `toLowerCase()` ile yapılıyordu ('İzmir'.toLowerCase() === 'i̇zmir'); artık utils/trSearch kullanılıyor.
-  it('finds İzmir / İstanbul when the search is typed with a plain "i"', async () => {
+  it('seçili il işaretli gelir, işareti kaldırılınca çıkarılır', async () => {
+    const { r, onChange } = await render([6, 35]);
+    await openList(r.root);
+    await pressByExactText(r.root, 'Ankara');
+    await pressByExactText(r.root, 'Tamam (1)');
+    expect(onChange).toHaveBeenCalledWith([35]);
+  });
+
+  it('Türkçe arama: "izmir" ve "istanbul" bulunur', async () => {
     const { r } = await render([]);
-    await openDropdown(r.root);
+    await openList(r.root);
     await search(r.root, 'izmir');
     expect(texts(r.root)).toContain('İzmir');
     await search(r.root, 'istanbul');
-    expect(texts(r.root)).toContain('İstanbul (Avrupa)');
+    const t = texts(r.root);
+    expect(t).toContain('İstanbul (Avrupa)');
+    expect(t).toContain('İstanbul (Asya)');
+    expect(t).not.toContain('Ankara');
+  });
+
+  it('Bulunanları seç: aramadaki tüm illeri işaretler', async () => {
+    const { r, onChange } = await render([]);
+    await openList(r.root);
+    await search(r.root, 'istanbul');
+    await pressByExactText(r.root, 'Bulunanları seç');
+    await pressByExactText(r.root, 'Tamam (2)');
+    expect(onChange).toHaveBeenCalledWith([340, 341]);
+  });
+
+  it('Temizle tüm işaretleri kaldırır', async () => {
+    const { r, onChange } = await render([6, 35]);
+    await openList(r.root);
+    await pressByExactText(r.root, 'Temizle');
+    await pressByExactText(r.root, 'Tamam (0)');
+    expect(onChange).toHaveBeenCalledWith([]);
+  });
+
+  it('kapalıyken çipteki ✕ ili hemen çıkarır', async () => {
+    const { r, onChange } = await render([6, 35]);
+    await pressByLabel(r.root, 'Ankara kaldır');
+    expect(onChange).toHaveBeenCalledWith([35]);
+  });
+
+  it('listede olmayan eski il kodu çipte "İl 999" olarak görünür', async () => {
+    const { r } = await render([999]);
+    expect(texts(r.root)).toContain('İl 999');
   });
 });

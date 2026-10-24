@@ -25,7 +25,7 @@ const DumpTicketInput: React.FC<Props> = ({ value, onChangeText, onScanPress, ed
   <View style={[styles.wrap, !editable && styles.disabled, style]}>
     <TextInput value={value} onChangeText={onChangeText} style={styles.input} placeholder="Döküm fişi…" placeholderTextColor="#AAA" maxLength={50} autoCapitalize="characters" autoCorrect={false} editable={editable} />
     <TouchableOpacity style={styles.scanBtn} onPress={onScanPress} disabled={!editable} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }} accessibilityLabel="Döküm fişi tara">
-      <QrScanIcon size={18} color="#333" />
+      <QrScanIcon size={26} color="#222" />
     </TouchableOpacity>
   </View>
 );
@@ -38,11 +38,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#CFCFCF',
-    borderRadius: 10,
+    borderRadius: 12,
     backgroundColor: '#fff',
-    height: 38,
-    width: 170,
+    height: 50,
+    width: 186,
     paddingLeft: 10,
+    paddingRight: 2,
   },
   disabled: { opacity: 0.5, backgroundColor: '#f0f0f0' },
   input: {
@@ -52,12 +53,16 @@ const styles = StyleSheet.create({
     color: '#222',
     paddingVertical: 0,
   },
+  // 44 px açık sarı daire, koyu ikon (HaulSearchBar QR butonu ile aynı)
   scanBtn: {
-    height: '100%',
-    paddingHorizontal: 9,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFF3B0',
+    borderWidth: 1,
+    borderColor: '#F2DC6B',
     justifyContent: 'center',
     alignItems: 'center',
-    borderLeftWidth: 1,
-    borderLeftColor: '#E0E0E0',
+    marginLeft: 4,
   },
 });
