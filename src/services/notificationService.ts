@@ -13,6 +13,39 @@ import { api } from './api';
 
 const SYNCED_TOKEN_KEY = 'push_device_token_synced';
 
+// initPushNotifications birden fazla yerden çağrılıyor (App, useAuthBootstrap, RootNavigator, OtpScreen).
+// Dinleyiciler uygulama ömrü boyunca TEK kez kurulmalı; aksi halde her bildirim için birden fazla Alert açılır.
+let unsubscribeOnMessage: (() => void) | null = null;
+let unsubscribeTokenRefresh: (() => void) | null = null;
+
+// Aynı bildirimin (aynı messageId) kısa sürede ikinci kez gösterilmesini engeller
+const RECENT_MESSAGE_TTL_MS = 60 * 1000;
+const recentMessageIds = new Map<string, number>();
+
+/**
+ * Bildirim bu kısa süre içinde zaten gösterildiyse true döner (ve kaydı tutar). Test için dışa açık.
+ */
+export const isDuplicateMessage = (messageId?: string | null): boolean => {
+  if (!messageId) return false;
+  const now = Date.now();
+  recentMessageIds.forEach((shownAt, id) => {
+    if (now - shownAt > RECENT_MESSAGE_TTL_MS) recentMessageIds.delete(id);
+  });
+  if (recentMessageIds.has(messageId)) return true;
+  recentMessageIds.set(messageId, now);
+  return false;
+};
+
+/**
+ * Ön plandaki bildirimi gösterir (aynı messageId tekrar gelirse gösterilmez)
+ */
+export const handleForegroundMessage = (remoteMessage: any) => {
+  console.log('[NotificationService] Foreground message received:', remoteMessage?.messageId);
+  if (!remoteMessage?.notification) return;
+  if (isDuplicateMessage(remoteMessage.messageId)) return;
+  Alert.alert(remoteMessage.notification.title || 'HafriyApp', remoteMessage.notification.body || '');
+};
+
 /**
  * Cihazın push bildirim token'ını backend'e kaydeder.
  */
@@ -106,22 +139,20 @@ export const initPushNotifications = async () => {
       await registerDeviceToken(token, true);
     }
 
-    // Token yenilendiğinde backend'i güncelle
-    onTokenRefresh(messagingInstance, async (newToken: string) => {
-      console.log('[NotificationService] FCM Token refreshed:', newToken);
-      await registerDeviceToken(newToken, true);
-    });
+    // Token yenilendiğinde backend'i güncelle (dinleyici tek kez kurulur)
+    if (!unsubscribeTokenRefresh) {
+      unsubscribeTokenRefresh = onTokenRefresh(messagingInstance, async (newToken: string) => {
+        console.log('[NotificationService] FCM Token refreshed');
+        await registerDeviceToken(newToken, true);
+      });
+    }
 
-    // Uygulama açıkken (Foreground) gelen bildirimleri yakala
-    onMessage(messagingInstance, async (remoteMessage: any) => {
-      console.log('[NotificationService] Foreground message received:', remoteMessage);
-      if (remoteMessage.notification) {
-        Alert.alert(
-          remoteMessage.notification.title || 'HafriyApp',
-          remoteMessage.notification.body || ''
-        );
-      }
-    });
+    // Uygulama açıkken (Foreground) gelen bildirimleri yakala (dinleyici tek kez kurulur)
+    if (!unsubscribeOnMessage) {
+      unsubscribeOnMessage = onMessage(messagingInstance, async (remoteMessage: any) => {
+        handleForegroundMessage(remoteMessage);
+      });
+    }
   } catch (err) {
     console.warn('[NotificationService] Init push notifications failed:', err);
   }

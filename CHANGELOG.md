@@ -6,6 +6,15 @@ Biçim: `## [Mobil versionName (versionCode/build)] — tarih` → Eklendi / Dü
 
 ## [Yayınlanmadı]
 
+### Bildirim düzeltmesi
+#### Düzeltildi
+- Uygulama açıkken gelen bildirim (ör. "… bir sefer attı") **üst üste birden fazla kez** açılıyordu; OK'a 4–5 kez basmak gerekiyordu.
+  Sebep: `initPushNotifications()` 4 yerden çağrılıyor (App, useAuthBootstrap, RootNavigator, OtpScreen) ve her çağrı yeni bir
+  `onMessage` dinleyicisi ekliyordu. Dinleyiciler artık tek kez kuruluyor; aynı `messageId` 60 sn içinde ikinci kez gösterilmiyor
+  (`src/services/notificationService.ts`). Test: `__tests__/notificationService.test.ts`.
+#### Uyumluluk
+- Sadece mobil; backend değişmedi (backend her cihaza zaten tek bildirim gönderiyor). Native değişiklik yok.
+
 ### İnceleme düzeltmeleri + testler
 #### Düzeltildi
 - Sohbet sabitlemesinin sunucuya taşınması: üye olunmayan gruplar atlanır (kullanıcı sessizce üye yapılmaz), taşıma tek seferlik.
