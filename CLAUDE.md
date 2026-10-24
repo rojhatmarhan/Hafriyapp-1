@@ -32,17 +32,19 @@ Plan ve iş durumu backend reposundaki `docs/YOL-HARITASI.md`'de. Kısaca:
 | QR | react-native-qrcode-svg, react-native-camera-kit |
 | Fiş görüntüsü | react-native-view-shot |
 | Mağaza güncellemesi | sp-react-native-in-app-updates |
+| Dosya seçici (Döküm Excel yükleme) | @react-native-documents/picker 12.0.2 (native → iOS'ta `pod install`) |
+| Yazı tipi (Firma tanıtımı) | Barlow / Barlow Condensed — `assets/fonts/`, `react-native-asset` ile bağlı (`fontFamily: 'Barlow-SemiBold'`, `fontWeight` yok) |
 
 `patches/` klasöründeki yamalar `npm install` sonrası `patch-package` ile otomatik uygulanır — bu kütüphaneleri güncellerken yamayı da güncelle.
 
 ## Klasör yapısı (`src/`)
 ```
 services/     API çağrıları (her alan için bir dosya) — api.ts axios instance
-screens/      Auth/, driver/, supplier/, common/ (WebView ekranları) + Profile, MyAds
+screens/      Auth/, driver/, supplier/, common/ (WebView ekranları), showcase/ (Firma tanıtımı) + Profile, MyAds
 navigation/   RootNavigator → AuthNavigator | AppNavigator(Drawer) → BottomTabs (role göre)
 components/   Modal'lar (NewJobModal, JobNotesModal, BluetoothPrinterModal, PlateScannerModal, QRScannerModal...), ProvinceMultiSelect, TagIcon, CustomHeader
 store/        authSlice, pendingHaulSlice (offline sefer kuyruğu), uiSlice, counterSlice (kullanılmıyor)
-hooks/        useAuthBootstrap (keychain → redux), useAppDispatch/Selector
+hooks/        useAuthBootstrap (keychain → redux), useAppDispatch/Selector, useStickySearch (sadece arama satırı sabit)
 utils/        secureStore, jobMapper (pazar ilanı mapping), jobSiteMapper
 constants/    cities (81 il; İstanbul 340 Avrupa / 341 Anadolu), districts
 api/authApi.ts  ESKİ sahte OTP — kullanılmıyor, gerçek akış services/authService.ts
@@ -55,7 +57,8 @@ api/authApi.ts  ESKİ sahte OTP — kullanılmıyor, gerçek akış services/aut
 - JSON casing: backend camelCase döner ama bazı eski kodlar iki casing'i de kontrol eder (`h.IsVisibleToVehicleOwner ?? h.isVisibleToVehicleOwner`).
 - Resim URL'leri: `IMAGE_BASE` birkaç ekranda ayrı tanımlı (bazıları `BASE_HOST`, bazıları sabit `https://api.hafriyapp.com`).
 - SignalR: `CompanyChat.tsx` → `${BASE_HOST}/hubs/chat`. (Backend'de mobil için ayrı `/hubs/mobile-chat` da var, token query string ile.)
-- WebView ekranları: `WebToolScreen` (`https://hafriyapp.com`, drawer'dan), `CompanyShowcase` (`https://hafriyapp.com/firma-tanitimi` — backend'in Razor Web projesinde bu sayfa yok, ayrı bir siteden geliyor olabilir).
+- WebView ekranları: `WebToolScreen` (Döküm Excel'i web'den yükleme yedeği), `CompanyShowcase` (`https://hafriyapp.com/firma-tanitimi`, Hostinger'daki deneme sayfası). Ana sayfadaki "Firma Tanıtımları" kartı artık native `ShowcaseList`'i açar; API'de `/Showcase` yoksa (404) `CompanyShowcase` WebView'ına döner. Yan menüdeki "EK UYGULAMALAR" kaldırıldı.
+- `UPLOADS_HOST` her zaman canlı (`https://api.hafriyapp.com`). Firma tanıtımı görselleri `showcaseImageUrl()` ile `BASE_HOST`'a göre çözülür (debug'da yerel API).
 
 ## Giriş akışı
 1. `SelectRoleScreen` → rol: `driver` (UserType 0) / `supplier` (UserType 1)
@@ -86,6 +89,27 @@ api/authApi.ts  ESKİ sahte OTP — kullanılmıyor, gerçek akış services/aut
 - **İlan tipleri:** 0 Araç Kiralama, 1 Tır Pazarı, 2 Şoför İlanı.
 - **Plaka:** TR formatı `^(01-81)([A-Z]{1,3})([0-9]{2,4})$` (`PlateScannerModal`).
 
+## Son eklenen özellikler (2026-10-24, ayrıntı: CHANGELOG.md)
+- **Firma tanıtımı** (`src/screens/showcase/`, servis `src/services/showcaseService.ts`, yardımcılar `src/utils/showcaseFormat.ts`):
+  liste, firma sayfası, Firmanı tanıt formu (8 fotoğraf yuvası) + önizleme, fiyat listesi. Tasarım hafriyapp.com/firma-tanitimi ile
+  **birebir** (renkler `showcase/theme.ts`; ayrıntılı döküm backend `docs/FIRMA-TANITIMI-SPEC.md`, plan `docs/FIRMA-TANITIMI-PLAN.md`).
+  Hikayeler, yorum/puan, PDF paylaşım, teklif hazırla sonraki fazlar (kodda `TODO Faz 3/4/5`). Düzenle sadece sayfanın sahibine.
+- **Döküm** (İşlerim → "Döküm" sekmesi, `src/screens/supplier/DumpOverview.tsx`, `src/services/dumpService.ts`): özet kartları,
+  Hesapta Kalan + para yatırma, "İSTAÇ Dökümleri / Cebeci Dökümü indir" (döküm sahasının kendi Excel biçimi), telefondan Excel yükleme.
+- **Arayüz**: sayfa başlıkları listeyle kayar, sadece arama satırı sabit (`useStickySearch`; pencere < 500 dp ise o da kayar).
+  Pazar kategori kartları `src/components/MarketCategoryPicker.tsx` (dikeyde alt alta ekranı doldurur).
+
+## Mac'te / iOS'ta devam ederken
+1. `git pull` → `npm install` (patch-package yamaları otomatik uygulanır) → `cd ios && pod install` (yeni: documents picker).
+2. Xcode'da `ios/Hafriyapp.xcworkspace`. Barlow yazı tipleri `Info.plist` `UIAppFonts` + Copy Bundle Resources'ta; görünmezse
+   `npx react-native-asset` tekrar çalıştırılabilir (`ios/link-assets-manifest.json` duruyor).
+3. Debug derleme `http://localhost:5062`'ye gider; Mac'te yerel API çalışmıyorsa canlıya karşı denemek için **Release** şeması kullan.
+4. Mağaza öncesi: `CURRENT_PROJECT_VERSION` / `versionCode` +1. Önce API yayınlanmalı (yeni uçlar); API eskiyse yeni ekranlar
+   kendini gizler / WebView'a döner, çökmez.
+5. `android/gradle.properties`: Windows makinesinde yerel `org.gradle.java.home` satırı var, **commit edilmez** (Mac'te gerekmez).
+6. Kamera yaması (`patches/react-native-camera-kit+18.0.1.patch`) sadece iOS düzeltmelerini (`CameraView.swift`,
+   `PhotoCaptureDelegate.swift`, `RealCamera.swift`) içerir; içine `android/build` çıktısı girmesin (`npx patch-package` öncesi build klasörünü temizle).
+
 ## Stil
 Sarı `#FFD500`, siyah `#000`, arka plan `#F3F2F3`, kenarlık `#CFCFCF`, yazı gri `#555/#AAA`; buton radius 12-14, tab bar 80 px.
 Prettier: tek tırnak, `printWidth: 999` (satır bölme yok), trailing comma, 2 boşluk.
@@ -94,7 +118,7 @@ Prettier: tek tırnak, `printWidth: 999` (satır bölme yok), trailing comma, 2 
 ```bash
 npx tsc --noEmit     # tip kontrolü
 npm run lint
-npm test             # __tests__: App, OtpScreen, printService
+npm test             # __tests__/ (jest; 18 dosya, 163 test — showcase, döküm, tarih, sticky arama, Pazar kartları...)
 ```
 
 ## Bilinen borçlar
