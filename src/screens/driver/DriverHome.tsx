@@ -21,6 +21,7 @@ import { launchImageLibrary } from 'react-native-image-picker';
 import { getChatGroups, createChatGroup, uploadGroupImage, toggleChatGroupPin, getGroupDetail } from '../../services/chatService';
 import { getProfile } from '../../services/userService';
 import { clearAuth } from '../../utils/secureStore';
+import { trIncludes } from '../../utils/trSearch';
 import { logout, setUser } from '../../store/slices/authSlice';
 
 const GROUP_PAGE_SIZE = 20;
@@ -33,6 +34,7 @@ export default function DriverHome() {
   const activeUsers = useActiveUserCount();
   const [searchText, setSearchText] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [loadedSearch, setLoadedSearch] = useState<string | null>(null); // listedeki ilk sayfanın hangi sunucu aramasına ait olduğu
   const [chatGroups, setChatGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -122,8 +124,9 @@ export default function DriverHome() {
   }, [chatGroups]);
 
   // Tek seferlik taşıma: telefonda sabitli olup sunucuda sabitli olmayan grupları sunucuda sabitler.
-  // Arka planda çalışır, hatalar sessizdir; hepsi başarılı olursa bayrak yazılır, yoksa sonraki açılışta tekrar denenir.
-  // Uç durumu tersine çevirdiği için SADECE sunucuda sabitli olmadığı bilinen gruplar için çağrılır.
+  // Arka planda çalışır, hatalar sessizdir. İlk deneme bitince (kısmi hata olsa da) bayrak yazılır; böylece kullanıcının
+  // sonradan kaldırdığı sabitleme bir sonraki açılışta geri gelmez.
+  // Uç durumu tersine çevirdiği ve üye olmayanı üye yaptığı için SADECE üyesi olunan ve sunucuda sabitli olmadığı bilinen gruplar için çağrılır.
   useEffect(() => {
     if (!token || !serverPinSupported || pinMigrationStartedRef.current) return;
     pinMigrationStartedRef.current = true;
@@ -136,13 +139,13 @@ export default function DriverHome() {
           const parsed = raw ? JSON.parse(raw) : [];
           if (Array.isArray(parsed)) localIds = Array.from(new Set<string>(parsed.filter((x: any) => typeof x === 'string' && x)));
         } catch { }
-        let allOk = true;
         for (const id of localIds) {
           try {
             const loaded = chatGroupsRef.current.find(g => g.id === id);
             let shouldPin = false;
             if (loaded && typeof loaded.isPinned === 'boolean') {
-              shouldPin = loaded.isPinned === false;
+              // Üye değilse dokunma (uç, üye olmayanı sessizce gruba katar)
+              shouldPin = loaded.isMember === true && loaded.isPinned === false;
             } else {
               // Yüklenmemiş grup: detaydan durumu öğren
               let detailRes: any;
@@ -154,29 +157,16 @@ export default function DriverHome() {
                 throw e;
               }
               const d = detailRes?.data ?? detailRes;
-              if (typeof d?.isPinned === 'boolean') shouldPin = d.isPinned === false;
-              else if (d?.isMember === false) shouldPin = true; // üye olmayan sunucuda sabitli olamaz
-              else continue; // durum bilinmiyor: dokunma (yanlışlıkla sabitlemeyi kaldırmamak için)
+              // Üye değil veya sabitleme durumu bilinmiyor: dokunma
+              shouldPin = d?.isMember === true && d?.isPinned === false;
             }
             if (!shouldPin) continue;
             const res = await toggleChatGroupPin(token, id);
-            if (res && res.isSuccess === false) {
-              allOk = false;
-              continue;
-            }
-            let pinned = typeof res?.data === 'boolean' ? res.data : true;
-            if (!pinned) {
-              // Liste bayatmış (aslında sabitliymiş): bir kez daha çevirip sabitli bırak
-              const res2 = await toggleChatGroupPin(token, id);
-              pinned = typeof res2?.data === 'boolean' ? res2.data : true;
-              if (!pinned) allOk = false;
-            }
-            applyServerPin(id, pinned);
-          } catch {
-            allOk = false;
-          }
+            if (res && res.isSuccess === false) continue;
+            applyServerPin(id, typeof res?.data === 'boolean' ? res.data : true);
+          } catch { }
         }
-        if (allOk) await AsyncStorage.setItem(PINNED_MIGRATED_KEY, '1');
+        await AsyncStorage.setItem(PINNED_MIGRATED_KEY, '1');
       } catch { }
     })();
   }, [token, serverPinSupported, applyServerPin]);
@@ -209,6 +199,7 @@ export default function DriverHome() {
       if (requestId !== requestIdRef.current) return; // eski istek (il/arama değişti)
       if (res && res.data && res.data.groups) {
         setChatGroups(dedupeById(res.data.groups));
+        setLoadedSearch(debouncedSearch);
         pageRef.current = 1;
         totalPagesRef.current = typeof res.data.totalPages === 'number' ? res.data.totalPages : 1;
       }
@@ -346,14 +337,15 @@ export default function DriverHome() {
   // 🔍 WHATSAPP STYLE SORTING & FILTERING
   const sortedAndFilteredGroups = useMemo(() => {
     let filtered = chatGroups;
-    const q = searchText.trim().toLowerCase();
+    const q = searchText.trim();
 
-    if (q) {
-      // Sunucu ad + açıklamada arar; yazarken (bekleme süresinde) yüklü liste de anında süzülür
+    // Sunucu ad + açıklamada arar; yazarken (bekleme süresinde) yüklü liste de anında süzülür.
+    // Bu metnin sunucu sonucu geldiyse istemci süzmesi yapılmaz (sunucunun bulduğu gruplar gizlenmesin).
+    if (q && loadedSearch !== q) {
       filtered = chatGroups.filter(item =>
-        (item.name || '').toLowerCase().includes(q) ||
-        (item.description && item.description.toLowerCase().includes(q)) ||
-        (item.lastMessagePreview && item.lastMessagePreview.toLowerCase().includes(q))
+        trIncludes(item.name, q) ||
+        trIncludes(item.description, q) ||
+        trIncludes(item.lastMessagePreview, q)
       );
     }
 
@@ -368,7 +360,7 @@ export default function DriverHome() {
       const bTime = new Date(b.lastMessageAt || b.createdDate || 0).getTime();
       return bTime - aTime;
     });
-  }, [searchText, chatGroups, isGroupPinned]);
+  }, [searchText, chatGroups, isGroupPinned, loadedSearch]);
 
   const renderItem = ({ item }: { item: any }) => {
     const previewText = item.isMember

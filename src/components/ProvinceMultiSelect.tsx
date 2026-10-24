@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput } from 'react-native';
 import { CITIES } from '../constants/cities';
+import { trIncludes } from '../utils/trSearch';
 
 type Props = {
   selected: number[];
@@ -18,7 +19,7 @@ export default function ProvinceMultiSelect({ selected, onChange }: Props) {
 
   const filteredCities = useMemo(() => {
     if (!citySearch.trim()) return CITIES;
-    return CITIES.filter(c => c.label.toLowerCase().includes(citySearch.toLowerCase()));
+    return CITIES.filter(c => trIncludes(c.label, citySearch));
   }, [citySearch]);
 
   const toggleProvince = (code: number) => {

@@ -16,6 +16,7 @@ import { QRScannerModal, ScannedQRData } from '../../components/QRScannerModal';
 import { PlateScannerModal } from '../../components/PlateScannerModal';
 import JobNotesModal from '../../components/JobNotesModal';
 import DumpTicketInput, { extractDumpTicketNo } from '../../components/DumpTicketInput';
+import { normalizeTr } from '../../utils/trSearch';
 import CalendarDateButton from '../../components/CalendarDateButton';
 import { formatDumpLine, formatDumpReceiptValue } from '../../utils/dumpFormat';
 import { CameraIcon, QrScanIcon } from '../../components/MiniIcons';
@@ -45,9 +46,11 @@ const todayDDMMYYYY = (): string => {
 // sahibin elle ileri tarihli girdiği seferler de görünür)
 const monthStartDDMMYYYY = (): string => `01.${todayDDMMYYYY().slice(3)}`;
 const monthEndDDMMYYYY = (): string => {
-  const now = new Date();
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  return `${String(last).padStart(2, '0')}.${todayDDMMYYYY().slice(3)}`;
+  // Gün sayısı da ay/yıl ile aynı TR tarihinden hesaplanır (cihaz saat dilimi farklıysa "31.11" gibi geçersiz tarih çıkmasın)
+  const monthYear = todayDDMMYYYY().slice(3);
+  const [m, y] = monthYear.split('.').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${String(last).padStart(2, '0')}.${monthYear}`;
 };
 
 // "DD.MM.YYYY" → YYYYMMDD sayısı (karşılaştırma için); geçersizse null
@@ -417,7 +420,10 @@ export default function JobDetails() {
     const dumpCode = scanned.type === 'SERIAL_OR_RAW' ? extractDumpTicketNo(scanned.raw) : '';
     if (dumpCode) {
       const codeLc = dumpCode.toLowerCase();
-      const dumpMatched = hauls.find(h => (h.dumpTicketNo || '').trim().toLowerCase() === codeLc) || (dumpCode.length >= 5 ? hauls.find(h => (h.note || '').toLowerCase().includes(codeLc)) : undefined);
+      // Öncelik: dumpTicketNo birebir → not birebir → not içinde ayrı bir parça olarak (telefon/irsaliye no içindeki rakamlar eşleşmesin)
+      const codeEsc = codeLc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const tokenRe = new RegExp(`(^|\\D)${codeEsc}(\\D|$)`);
+      const dumpMatched = hauls.find(h => String(h.dumpTicketNo || '').trim().toLowerCase() === codeLc) || hauls.find(h => String(h.note || '').trim().toLowerCase() === codeLc) || (dumpCode.length >= 5 ? hauls.find(h => tokenRe.test(String(h.note || '').toLowerCase())) : undefined);
       if (dumpMatched) {
         setSelectedHaul(normalizeHaul(dumpMatched));
         setReceiptVisible(true);
@@ -1211,6 +1217,7 @@ export default function JobDetails() {
     if (!query || !query.trim()) return true;
     const q = query.trim().toLowerCase();
     const qClean = q.replace(/\s/g, '');
+    const qTr = normalizeTr(query.trim()); // ad/metin alanları için Türkçe İ/ı uyumlu arama
 
     // 1. Plaka
     const plate = (h.plateNumber || '').toLowerCase();
@@ -1224,22 +1231,16 @@ export default function JobDetails() {
     if (serialClean.includes(qClean) || serial.includes(q) || rawSerial.includes(qClean)) return true;
 
     // 3. Döküm Sahası / Yeri
-    const dump = (h.dumpLocation || '').toLowerCase();
-    if (dump.includes(q)) return true;
+    if (normalizeTr(h.dumpLocation).includes(qTr)) return true;
 
     // 4. Şantiye Adı
-    const jobSite = (h.jobSiteName || '').toLowerCase();
-    if (jobSite.includes(q)) return true;
+    if (normalizeTr(h.jobSiteName).includes(qTr)) return true;
 
     // 5. Şoför Adı
-    const driver = (h.driverName || '').toLowerCase();
-    if (driver.includes(q)) return true;
+    if (normalizeTr(h.driverName).includes(qTr)) return true;
 
     // 6. Rota / Teklif Adı / Not
-    const offer1 = (h.offer1Name || '').toLowerCase();
-    const offer2 = (h.offer2Name || '').toLowerCase();
-    const note = (h.note || '').toLowerCase();
-    if (offer1.includes(q) || offer2.includes(q) || note.includes(q)) return true;
+    if (normalizeTr(h.offer1Name).includes(qTr) || normalizeTr(h.offer2Name).includes(qTr) || normalizeTr(h.note).includes(qTr)) return true;
 
     // 6b. Döküm Fişi No (yeni alan; eski kayıtlarda not içinde — yukarıda aranıyor)
     const dumpTicket = String(h.dumpTicketNo || '').toLowerCase().replace(/\s/g, '');
@@ -2651,8 +2652,8 @@ export default function JobDetails() {
                             borderColor: '#000',
                             paddingBottom: 2,
                           }}>
-                          <Text style={{ color: '#222', fontWeight: '700', width: rows.length > 7 ? 124 : 108, fontSize: rows.length > 7 ? 17 : 18 }}>{label}</Text>
-                          <Text numberOfLines={1} style={{ fontWeight: '700', color: '#000', fontSize: 18, flex: 1 }}>
+                          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ color: '#222', fontWeight: '700', width: rows.length > 7 ? 124 : 108, fontSize: rows.length > 7 ? 17 : 18 }}>{label}</Text>
+                          <Text numberOfLines={1} adjustsFontSizeToFit={label === 'Döküm Fişi :'} minimumFontScale={0.7} style={{ fontWeight: '700', color: '#000', fontSize: 18, flex: 1 }}>
                             {value}
                           </Text>
                         </View>

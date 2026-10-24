@@ -287,8 +287,10 @@ export default function MyJobs() {
     setJobs(prev => prev.map(j => (j.id === job.id ? { ...j, isPinned: nextPinned } : j)));
     try {
       const res = await toggleJobSitePin(token, job.id);
-      if (typeof res?.isPinned === 'boolean' && res.isPinned !== nextPinned) {
-        setJobs(prev => prev.map(j => (j.id === job.id ? { ...j, isPinned: res.isPinned } : j)));
+      // Sunucu durumu her zaman uygulanır (aynı işe art arda dokunulursa listedeki değer bayat kalmasın)
+      if (typeof res?.isPinned === 'boolean') {
+        const serverPinned = res.isPinned;
+        setJobs(prev => prev.map(j => (j.id === job.id ? { ...j, isPinned: serverPinned } : j)));
       }
     } catch (e: any) {
       // Geri al

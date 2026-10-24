@@ -136,11 +136,6 @@ export default function CompanyChat() {
   const loadingOlderRef = useRef(false);
   const loadGenRef = useRef(0); // grup değişince/yeniden yüklenince eski cevapları yok saymak için
 
-  // Eski sürümlerdeki kullanıcı yazı boyutu ayarı kaldırıldı; kalan anahtarları bir kez temizle (zararsız)
-  useEffect(() => {
-    AsyncStorage.multiRemove(['@hafriyapp_chat_fontSize', '@hafriyapp_chat_fontBold']).catch(() => {});
-  }, []);
-
   /* ─── DISTRICT FILTER ─── */
   const selectedCity = useAppSelector(state => (state as any).ui?.selectedCity);
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);

@@ -54,7 +54,9 @@ describe('OtpScreen', () => {
   });
 
   afterEach(() => {
-    jest.runOnlyPendingTimers();
+    ReactTestRenderer.act(() => {
+      jest.runOnlyPendingTimers();
+    });
     jest.useRealTimers();
   });
 
@@ -71,6 +73,8 @@ describe('OtpScreen', () => {
     expect(topLevelTouchables).toHaveLength(0);
     expect(backButton.parent?.type).not.toBe(renderer!.root.type);
 
-    renderer!.unmount();
+    await ReactTestRenderer.act(() => {
+      renderer!.unmount();
+    });
   });
 });

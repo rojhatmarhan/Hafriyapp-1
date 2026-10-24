@@ -6,6 +6,17 @@ Biçim: `## [Mobil versionName (versionCode/build)] — tarih` → Eklendi / Dü
 
 ## [Yayınlanmadı]
 
+### İnceleme düzeltmeleri + testler
+#### Düzeltildi
+- Sohbet sabitlemesinin sunucuya taşınması: üye olunmayan gruplar atlanır (kullanıcı sessizce üye yapılmaz), taşıma tek seferlik.
+- Türkçe İ/ı araması (`src/utils/trSearch.ts`): grup listesi, il seçici ve sefer araması "istanbul" ile "İSTANBUL"u eşleştirir;
+  sunucudan gelen arama sonuçları istemci filtresiyle gizlenmez.
+- Ay sonu tarihi saat dilimine göre geçersiz tarih üretmiyor; basılı fişte "Döküm Fişi" satırı tek satıra sığar.
+- QR ile eski kayıtta yanlış seferin açılması (not içinde tam numara eşleşmesi); İşlerim sabitleme yarışında sunucu durumu uygulanır.
+- Eski yazı boyutu tercihleri telefondan silinmiyor (yerel veri kuralı).
+#### Testler
+- Jest altyapısı onarıldı (native modül mock'ları, ESM dönüşümü) — `npx jest`: 10 dosya, 71 test.
+
 ### Faz 3
 #### Eklendi
 - Sefer satırında döküm durumu (`src/utils/dumpFormat.ts`; JobDetails + SupplierVehicles): "Döküm: 26,43 t · 4.376,81 ₺" /
