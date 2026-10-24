@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { UPLOADS_HOST, API_BASE_URL } from '../../services/api';
+import { excelIndir, excelDosyaAdi, excelTarihParcasi } from '../../utils/excelDownload';
 import { View, Text, StyleSheet, SectionList, TouchableOpacity, Modal, ScrollView, TextInput, Keyboard, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Pressable, Alert, Image, RefreshControl, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppSelector } from '../../hooks';
@@ -649,9 +650,7 @@ export default function SupplierVehicles() {
     try {
       const startDate = ddmmyyyyToYMD(rangeStart);
       const endDate = ddmmyyyyToYMD(rangeEnd);
-      const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' }).fetch('GET', `${API_BASE_URL}/Haul/my/filtered/export?startDate=${startDate}&endDate=${endDate}`, {
-        Authorization: `Bearer ${token}`,
-      });
+      const res = await excelIndir(`${API_BASE_URL}/Haul/my/filtered/export?startDate=${startDate}&endDate=${endDate}`, token, excelDosyaAdi('Arac_Seferleri', excelTarihParcasi(rangeStart, rangeEnd)));
       const path = res.path();
       if (Platform.OS === 'ios') {
         await RNBlobUtil.ios.openDocument(path);

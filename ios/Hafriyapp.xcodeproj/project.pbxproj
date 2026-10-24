@@ -7,38 +7,38 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		13249B14C7074AA099ECB2F7 /* Barlow-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 5E20D4484E884602A4FA4D77 /* Barlow-Regular.ttf */; };
+		13AA7B4AD851493CB079305B /* BarlowCondensed-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CC2E87D2AD2D4B56B97BC344 /* BarlowCondensed-SemiBold.ttf */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		3BBFC43BB381478B976161A5 /* Barlow-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0C9E731BE49C4A40BDC6AF15 /* Barlow-SemiBold.ttf */; };
+		3DF93010CEC54A3EAAD09F15 /* Barlow-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 34BF21282D824F6CB86EED59 /* Barlow-Medium.ttf */; };
+		61FB26228B834A398F677E7C /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 6F45681FE424438FBDF9834C /* OFL.txt */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		80AB4BFA4079F7161E8F0C3D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		829D5F08FC417DE3B21761DB /* libPods-Hafriyapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 30FA7C0A1E75EF20613CB743 /* libPods-Hafriyapp.a */; };
-		FF1234567890123456789012 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = FF1234567890123456789011 /* GoogleService-Info.plist */; };
-		3DF93010CEC54A3EAAD09F15 /* Barlow-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 34BF21282D824F6CB86EED59 /* Barlow-Medium.ttf */; };
-		13249B14C7074AA099ECB2F7 /* Barlow-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 5E20D4484E884602A4FA4D77 /* Barlow-Regular.ttf */; };
-		3BBFC43BB381478B976161A5 /* Barlow-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0C9E731BE49C4A40BDC6AF15 /* Barlow-SemiBold.ttf */; };
 		F9D14403899341AD912DC9A9 /* BarlowCondensed-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7C57FBD049A34ADC90C081A8 /* BarlowCondensed-Bold.ttf */; };
-		13AA7B4AD851493CB079305B /* BarlowCondensed-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CC2E87D2AD2D4B56B97BC344 /* BarlowCondensed-SemiBold.ttf */; };
-		61FB26228B834A398F677E7C /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 6F45681FE424438FBDF9834C /* OFL.txt */; };
+		FF1234567890123456789012 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = FF1234567890123456789011 /* GoogleService-Info.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0C9E731BE49C4A40BDC6AF15 /* Barlow-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = "Barlow-SemiBold.ttf"; path = "../assets/fonts/Barlow-SemiBold.ttf"; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* Hafriyapp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Hafriyapp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Hafriyapp/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Hafriyapp/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = Hafriyapp/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		30FA7C0A1E75EF20613CB743 /* libPods-Hafriyapp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Hafriyapp.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		34BF21282D824F6CB86EED59 /* Barlow-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = "Barlow-Medium.ttf"; path = "../assets/fonts/Barlow-Medium.ttf"; sourceTree = "<group>"; };
+		5E20D4484E884602A4FA4D77 /* Barlow-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = "Barlow-Regular.ttf"; path = "../assets/fonts/Barlow-Regular.ttf"; sourceTree = "<group>"; };
+		6F45681FE424438FBDF9834C /* OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = file; name = OFL.txt; path = ../assets/fonts/OFL.txt; sourceTree = "<group>"; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Hafriyapp/AppDelegate.swift; sourceTree = "<group>"; };
+		7C57FBD049A34ADC90C081A8 /* BarlowCondensed-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = "BarlowCondensed-Bold.ttf"; path = "../assets/fonts/BarlowCondensed-Bold.ttf"; sourceTree = "<group>"; };
 		7DE2E58D99C5FF33BCD6CCF5 /* Pods-Hafriyapp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Hafriyapp.debug.xcconfig"; path = "Target Support Files/Pods-Hafriyapp/Pods-Hafriyapp.debug.xcconfig"; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = Hafriyapp/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		CC2E87D2AD2D4B56B97BC344 /* BarlowCondensed-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = "BarlowCondensed-SemiBold.ttf"; path = "../assets/fonts/BarlowCondensed-SemiBold.ttf"; sourceTree = "<group>"; };
 		D568432CCC41DEFED1FA3654 /* Pods-Hafriyapp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Hafriyapp.release.xcconfig"; path = "Target Support Files/Pods-Hafriyapp/Pods-Hafriyapp.release.xcconfig"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		FF1234567890123456789011 /* GoogleService-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "Hafriyapp/GoogleService-Info.plist"; sourceTree = "<group>"; };
-		34BF21282D824F6CB86EED59 /* Barlow-Medium.ttf */ = {isa = PBXFileReference; name = "Barlow-Medium.ttf"; path = "../assets/fonts/Barlow-Medium.ttf"; lastKnownFileType = file; sourceTree = "<group>"; };
-		5E20D4484E884602A4FA4D77 /* Barlow-Regular.ttf */ = {isa = PBXFileReference; name = "Barlow-Regular.ttf"; path = "../assets/fonts/Barlow-Regular.ttf"; lastKnownFileType = file; sourceTree = "<group>"; };
-		0C9E731BE49C4A40BDC6AF15 /* Barlow-SemiBold.ttf */ = {isa = PBXFileReference; name = "Barlow-SemiBold.ttf"; path = "../assets/fonts/Barlow-SemiBold.ttf"; lastKnownFileType = file; sourceTree = "<group>"; };
-		7C57FBD049A34ADC90C081A8 /* BarlowCondensed-Bold.ttf */ = {isa = PBXFileReference; name = "BarlowCondensed-Bold.ttf"; path = "../assets/fonts/BarlowCondensed-Bold.ttf"; lastKnownFileType = file; sourceTree = "<group>"; };
-		CC2E87D2AD2D4B56B97BC344 /* BarlowCondensed-SemiBold.ttf */ = {isa = PBXFileReference; name = "BarlowCondensed-SemiBold.ttf"; path = "../assets/fonts/BarlowCondensed-SemiBold.ttf"; lastKnownFileType = file; sourceTree = "<group>"; };
-		6F45681FE424438FBDF9834C /* OFL.txt */ = {isa = PBXFileReference; name = "OFL.txt"; path = "../assets/fonts/OFL.txt"; lastKnownFileType = file; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -115,7 +115,7 @@
 			sourceTree = "<group>";
 		};
 		CA12FDAD5781439B962E1106 /* Resources */ = {
-			isa = "PBXGroup";
+			isa = PBXGroup;
 			children = (
 				34BF21282D824F6CB86EED59 /* Barlow-Medium.ttf */,
 				5E20D4484E884602A4FA4D77 /* Barlow-Regular.ttf */,
@@ -125,8 +125,8 @@
 				6F45681FE424438FBDF9834C /* OFL.txt */,
 			);
 			name = Resources;
-			sourceTree = "<group>";
 			path = "";
+			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
@@ -314,7 +314,7 @@
 				CODE_SIGN_ENTITLEMENTS = Hafriyapp/Hafriyapp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEVELOPMENT_TEAM = P2VZ3NRNXZ;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Hafriyapp/Info.plist;
@@ -349,7 +349,7 @@
 				CODE_SIGN_ENTITLEMENTS = Hafriyapp/Hafriyapp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEVELOPMENT_TEAM = P2VZ3NRNXZ;
 				INFOPLIST_FILE = Hafriyapp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = HarfiyApp;

@@ -25,6 +25,7 @@ import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
 import { ensurePrinterReady, printImage, clearSavedPrinter, getReceiptCaptureLayout } from '../../services/printService';
 import { API_BASE_URL, BASE_HOST } from '../../services/api';
+import { excelIndir, excelDosyaAdi, excelTarihParcasi } from '../../utils/excelDownload';
 import HaulSearchBar from '../../components/HaulSearchBar';
 import { useDateRange, isInDateRange as isInRange, todayDDMMYYYY, ddmmyyyyToKey, ddmmyyyyToYMD, dateToDDMMYYYY } from '../../utils/dateRange';
 
@@ -1012,15 +1013,15 @@ export default function JobDetails() {
     setDeleteStep1Visible(false);
     try {
       let exportUrl = `${API_BASE_URL}/Haul/jobsite/${job.id}/export`;
+      let tarihParcasi = excelTarihParcasi();
       if (ddmmyyyyToKey(rangeStart) !== null && ddmmyyyyToKey(rangeEnd) !== null) {
         // Ekrandaki tarih aralığı (dahil) — aynı query formatı: YYYY-MM-DD
         const startDate = ddmmyyyyToYMD(rangeStart);
         const endDate = ddmmyyyyToYMD(rangeEnd);
         exportUrl = `${API_BASE_URL}/Haul/jobsite/${job.id}/filtered/export?startDate=${startDate}&endDate=${endDate}`;
+        tarihParcasi = excelTarihParcasi(rangeStart, rangeEnd);
       }
-      const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' }).fetch('GET', exportUrl, {
-        Authorization: `Bearer ${token}`,
-      });
+      const res = await excelIndir(exportUrl, token, excelDosyaAdi('Seferler', job.name, tarihParcasi));
       const path = res.path();
       await new Promise<void>(r => setTimeout(r, 350));
       if (Platform.OS === 'ios') {

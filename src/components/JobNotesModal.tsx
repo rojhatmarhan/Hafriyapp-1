@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, Keyboard, FlatList, ActivityIndicator, InputAccessoryView, StatusBar, Animated, PanResponder, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, Keyboard, FlatList, ActivityIndicator, InputAccessoryView, StatusBar, Animated, PanResponder, Dimensions, Share } from 'react-native';
 import RNBlobUtil from 'react-native-blob-util';
 import { API_BASE_URL } from '../services/api';
+import { excelIndir, excelDosyaAdi, excelTarihParcasi } from '../utils/excelDownload';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getJobSiteNotes, createJobSiteNote, updateJobSiteNote, deleteJobSiteNote, JobSiteNoteItem } from '../services/jobSiteNewService';
 
@@ -399,9 +400,7 @@ export default function JobNotesModal({ visible, onClose, jobSiteId, token, jobN
     if (!jobSiteId || !token || exporting) return;
     setExporting(true);
     try {
-      const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' }).fetch('GET', `${API_BASE_URL}/JobSite/${jobSiteId}/notes/export`, {
-        Authorization: `Bearer ${token}`,
-      });
+      const res = await excelIndir(`${API_BASE_URL}/JobSite/${jobSiteId}/notes/export`, token, excelDosyaAdi('Is_Notlari', jobName, excelTarihParcasi()));
       const status = res.info().status;
       if (status !== 200) {
         Alert.alert('Hata', status === 403 ? 'Bu şantiyenin notlarını indirme yetkiniz yok.' : 'Excel dosyası indirilemedi.');
@@ -409,7 +408,16 @@ export default function JobNotesModal({ visible, onClose, jobSiteId, token, jobN
       }
       const path = res.path();
       if (Platform.OS === 'ios') {
-        await RNBlobUtil.ios.openDocument(path);
+        // openDocument ana ekrandan sunulur; bu pencere (Modal) açıkken iOS onu sessizce yutar ve "hiçbir şey olmaz".
+        // Paylaş penceresi en üstteki ekrandan açılır: Modal açık kalır, kullanıcı Dosyalar'a kaydeder / Excel'de açar / gönderir.
+        try {
+          await Share.share({ url: path.startsWith('file://') ? path : `file://${path}` });
+        } catch {
+          // Paylaş açılamazsa: pencereyi kapat, kapanma animasyonu bitince belgeyi aç (JobDetails Excel'iyle aynı yöntem)
+          handleClose();
+          await new Promise<void>(r => setTimeout(r, 450));
+          await RNBlobUtil.ios.openDocument(path);
+        }
       } else {
         await RNBlobUtil.android.actionViewIntent(path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       }

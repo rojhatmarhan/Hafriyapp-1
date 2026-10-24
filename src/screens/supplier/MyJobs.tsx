@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useCallback, useRef } from 'react';
 import { API_BASE_URL } from '../../services/api';
+import { excelIndir, excelDosyaAdi, excelTarihParcasi } from '../../utils/excelDownload';
 import {
   View,
   Text,
@@ -186,12 +187,7 @@ export default function MyJobs() {
     if (!token) return;
     setDownloading(true);
     try {
-      const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      const filename = `Seferler_${jobName}_${date}.xlsx`;
-      const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' })
-        .fetch('GET', `${API_BASE_URL}/Haul/jobsite/${jobId}/export`, {
-          Authorization: `Bearer ${token}`,
-        });
+      const res = await excelIndir(`${API_BASE_URL}/Haul/jobsite/${jobId}/export`, token, excelDosyaAdi('Seferler', jobName, excelTarihParcasi()));
       const path = res.path();
       if (Platform.OS === 'ios') {
         await RNBlobUtil.ios.openDocument(path);
@@ -212,11 +208,7 @@ export default function MyJobs() {
     if (!token) return;
     setDownloading(true);
     try {
-      const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      const res = await RNBlobUtil.config({ fileCache: true, appendExt: 'xlsx' })
-        .fetch('GET', `${API_BASE_URL}/Haul/all-jobsites/export`, {
-          Authorization: `Bearer ${token}`,
-        });
+      const res = await excelIndir(`${API_BASE_URL}/Haul/all-jobsites/export`, token, excelDosyaAdi('Tum_Seferler', excelTarihParcasi()));
       const path = res.path();
       if (Platform.OS === 'ios') {
         await RNBlobUtil.ios.openDocument(path);

@@ -6,6 +6,20 @@ Biçim: `## [Mobil versionName (versionCode/build)] — tarih` → Eklendi / Dü
 
 ## [Yayınlanmadı]
 
+### Excel indirmeleri: iOS'ta iş notları + anlamlı dosya adları
+#### Düzeltildi
+- **iOS: İş Notları & Giderler → Excel hiçbir şey yapmıyordu.** `RNBlobUtil.ios.openDocument` belgeyi ana ekrandan sunar; notlar penceresi
+  (Modal) açıkken iOS bunu sessizce yutuyordu. Artık iOS'un Paylaş penceresi açılır (Modal'ın üstünde; Dosyalar'a kaydet / Excel'de aç /
+  gönder). Paylaş açılamazsa pencere kapatılıp belge açılır (JobDetails Excel'iyle aynı yöntem). Android aynı.
+- **Excel dosya adları** rastgeleydi (`RNBlobTmp_…xlsx`). Ortak `src/utils/excelDownload.ts` (`excelIndir`, `excelDosyaAdi`,
+  `excelTarihParcasi`) ile anlamlı adlar: `Is_Notlari_<şantiye>_<gg.aa.yyyy>`, `Seferler_<şantiye>_<aralık>`, `Tum_Seferler_<tarih>`,
+  `Arac_Seferleri_<aralık>` (İş Notları, JobDetails, MyJobs ×2, SupplierVehicles). Döküm Excel'i zaten anlamlı adla iniyordu.
+#### Native
+- `ios/Podfile.lock`: `react-native-document-picker` podu (Excel yükleme için `npm install` + `pod install` sonrası; yeni native paket).
+- iOS build numarası 14 → 15 (TestFlight).
+#### Uyumluluk
+- API değişmedi; yerel veri değişmedi.
+
 ### Menü
 - Yan menüdeki "EK UYGULAMALAR" bölümü kaldırıldı (WebToolScreen ekranı duruyor; Döküm Excel yükleme yönlendirmesi kullanıyor).
 
