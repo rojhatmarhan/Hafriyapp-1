@@ -329,6 +329,29 @@ const ProfileScreen = () => {
         </View>
       )}
 
+      {/* 🔌 ENTEGRASYONLAR KARTI (SADECE SUPPLIER İÇİN) */}
+      {!isDriver && (
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>🔌 Entegrasyonlar</Text>
+            <TouchableOpacity
+              style={styles.btnOrange}
+              onPress={() => {
+                if (companyId) {
+                  navigation.navigate('Integrations', { companyId });
+                } else {
+                  Alert.alert('Bilgi', 'Firma bilgisi henüz yüklenmedi.');
+                }
+              }}>
+              <Text style={styles.btnOrangeText}>Yönet ›</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={{ fontSize: 13.5, color: '#555', lineHeight: 20 }}>
+            İSTAÇ Hafriyat Online kullanıcı adı ve şifrenizi kaydederek döküm verilerinizi güvenlik kodu girmeden otomatik çekebilirsiniz.
+          </Text>
+        </View>
+      )}
+
       {/* 🛡️ ENGELLENEN KULLANICILAR KARTI */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>

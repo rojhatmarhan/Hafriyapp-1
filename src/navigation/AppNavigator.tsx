@@ -15,6 +15,7 @@ import WebToolScreen from '../screens/common/WebToolScreen';
 import ShowcaseListScreen from '../screens/showcase/ShowcaseListScreen';
 import ShowcaseDetailScreen from '../screens/showcase/ShowcaseDetailScreen';
 import ShowcaseFormScreen from '../screens/showcase/ShowcaseFormScreen';
+import IntegrationsScreen from '../screens/supplier/IntegrationsScreen';
 
 const Drawer = createDrawerNavigator();
 
@@ -110,6 +111,14 @@ export default function AppNavigator() {
       <Drawer.Screen
         name="WebToolScreen"
         component={WebToolScreen}
+        options={{
+          headerShown: false,
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
+      <Drawer.Screen
+        name="Integrations"
+        component={IntegrationsScreen}
         options={{
           headerShown: false,
           drawerItemStyle: { display: 'none' },

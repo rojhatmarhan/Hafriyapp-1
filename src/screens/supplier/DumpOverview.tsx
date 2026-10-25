@@ -10,7 +10,7 @@ import { useAppSelector } from '../../hooks';
 import { useStickySearch } from '../../hooks/useStickySearch';
 import { useDateRange, ddmmyyyyToYMD, todayDDMMYYYY } from '../../utils/dateRange';
 import { DumpSource, dumpSourceTitle, formatTL, formatKg, formatTonnes, formatFee, formatDumpDateTime, getDumpMatchStatus, dumpStatusColor, DumpQueryParams, dumpSourceLabel, parseTurkishAmount, isValidDDMMYYYY, depositDateToIso, formatBalanceSubtext } from '../../utils/dumpFormat';
-import { getDumpSummary, getDumpRecords, buildDumpExportUrl, isEndpointMissing, DumpSummary, DumpRecord, getDeposits, addDeposit, deleteDeposit, DumpDeposit, uploadDumpExcel, formatImportResult } from '../../services/dumpService';
+import { getDumpSummary, getDumpRecords, buildDumpExportUrl, isEndpointMissing, DumpSummary, DumpRecord, getDeposits, addDeposit, deleteDeposit, DumpDeposit, uploadDumpExcel, formatImportResult, syncIstac, formatIstacSyncSummary } from '../../services/dumpService';
 
 // ── İşlerim → Döküm: döküm sahası (Cebeci/KİG, İSTAÇ) Excel verilerinin özeti ve listesi.
 // Ekran Modal içinde değil; kaynak/iş seçimi ve QR tarama ekran seviyesinde Modal kullanır.
@@ -60,8 +60,10 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
   const [errorText, setErrorText] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [syncingIstac, setSyncingIstac] = useState(false);
 
   const [sourceModal, setSourceModal] = useState(false);
+  const [actionsModal, setActionsModal] = useState(false);
   const [jobModal, setJobModal] = useState(false);
   const [qrVisible, setQrVisible] = useState(false);
 
@@ -261,6 +263,40 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
     setSearch(code || '');
   };
 
+  // ── İSTAÇ'tan otomatik çek (Tesseract OCR ile güvenlik kodu sormadan, en fazla 5 deneme)
+  const pullFromIstac = async () => {
+    if (!companyId || syncingIstac) return;
+    setSyncingIstac(true);
+    try {
+      const res = await syncIstac({
+        companyId,
+        startDate: ddmmyyyyToYMD(rangeStart),
+        endDate: ddmmyyyyToYMD(rangeEnd),
+      });
+      Alert.alert(res.plateMismatchRows > 0 ? '⚠️ İSTAÇ Güncellendi' : '✅ İSTAÇ Güncellendi', formatIstacSyncSummary(res));
+      loadAll();
+    } catch (e: any) {
+      if (isEndpointMissing(e)) {
+        Alert.alert('Bilgi', 'Bu özellik için sunucu güncellemesi gerekiyor.');
+        return;
+      }
+      const msg = e?.response?.data?.errors?.[0] || e?.response?.data?.message || 'İSTAÇ verileri çekilemedi.';
+      if (/tanımlı değil|entegrasyon/i.test(String(msg))) {
+        Alert.alert('İSTAÇ Entegrasyonu', msg, [
+          { text: 'Vazgeç', style: 'cancel' },
+          {
+            text: 'Entegrasyonlara Git',
+            onPress: () => navigation.navigate('Integrations', { companyId }),
+          },
+        ]);
+      } else {
+        Alert.alert('Hata', msg);
+      }
+    } finally {
+      setSyncingIstac(false);
+    }
+  };
+
   // ── Excel indir: seçilen döküm sahasının kendi biçiminde (yüklenen dosyanın aynısı), ekrandaki tarih aralığıyla (varsayılan bu ay)
   const downloadExcel = async (dumpSource: 'Kig' | 'Istac') => {
     if (!token || !companyId || downloading) return;
@@ -349,28 +385,23 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
   };
 
   const openActions = () => {
+    const pull = "🔄 İSTAÇ'tan Çek (Otomatik)";
     const istac = '📥 İSTAÇ Dökümleri indir';
     const cebeci = '📥 Cebeci Dökümü indir';
     const upload = '📤 Excel yükle (İSTAÇ / Cebeci)';
     const rangeText = `${rangeStart} – ${rangeEnd}`;
     if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions({ title: 'Döküm Excel', message: `İndirme tarih aralığı: ${rangeText}`, options: ['İptal', istac, cebeci, upload], cancelButtonIndex: 0 }, idx => {
-        if (idx === 1) downloadExcel('Istac');
-        else if (idx === 2) downloadExcel('Kig');
-        else if (idx === 3) uploadExcel();
-      });
-    } else {
-      // Android Alert en fazla 3 buton gösterir → İptal yerine dışarı dokununca kapanır
-      Alert.alert(
-        'Döküm Excel',
-        `İndirme tarih aralığı: ${rangeText}`,
-        [
-          { text: istac, onPress: () => downloadExcel('Istac') },
-          { text: cebeci, onPress: () => downloadExcel('Kig') },
-          { text: upload, onPress: uploadExcel },
-        ],
-        { cancelable: true },
+      ActionSheetIOS.showActionSheetWithOptions(
+        { title: 'Döküm İşlemleri', message: `Tarih aralığı: ${rangeText}`, options: ['İptal', pull, istac, cebeci, upload], cancelButtonIndex: 0 },
+        idx => {
+          if (idx === 1) pullFromIstac();
+          else if (idx === 2) downloadExcel('Istac');
+          else if (idx === 3) downloadExcel('Kig');
+          else if (idx === 4) uploadExcel();
+        },
       );
+    } else {
+      setActionsModal(true);
     }
   };
 
@@ -437,7 +468,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
     </View>
   );
 
-  // İş filtresi + sütun başlıkları — aramanın altında, listeyle birlikte kayar
+  // İş filtresi + İSTAÇ'tan Çek + sütun başlıkları — aramanın altında, listeyle birlikte kayar
   const filtersEl = (
     <View>
       <View style={styles.jobFilterRow}>
@@ -451,6 +482,14 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
             <Text style={styles.jobFilterClear}>✕</Text>
           </TouchableOpacity>
         )}
+        <TouchableOpacity
+          style={[styles.istacPullBtn, syncingIstac && styles.istacPullBtnDisabled]}
+          onPress={pullFromIstac}
+          disabled={syncingIstac || downloading || uploading}
+          activeOpacity={0.85}
+          accessibilityLabel="İSTAÇ'tan döküm verilerini çek">
+          {syncingIstac ? <ActivityIndicator size="small" color="#1B5E20" /> : <Text style={styles.istacPullBtnText}>🔄 İSTAÇ'tan Çek</Text>}
+        </TouchableOpacity>
       </View>
 
       {/* Sütun başlıkları */}
@@ -485,8 +524,8 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
             {dumpSourceTitle(source)} ▾
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionsBtn} onPress={openActions} activeOpacity={0.8} disabled={downloading || uploading}>
-          {downloading || uploading ? <ActivityIndicator size="small" color="#111" /> : <Text style={styles.actionsBtnText}>İndir / Yükle</Text>}
+        <TouchableOpacity style={styles.actionsBtn} onPress={openActions} activeOpacity={0.8} disabled={downloading || uploading || syncingIstac}>
+          {downloading || uploading || syncingIstac ? <ActivityIndicator size="small" color="#111" /> : <Text style={styles.actionsBtnText}>İndir / Yükle</Text>}
         </TouchableOpacity>
       </View>
 
@@ -566,7 +605,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
             {showEmpty && (
               <View style={styles.emptyBox}>
                 <Text style={styles.emptyTitle}>{errorText || 'Bu filtreye uygun döküm kaydı yok.'}</Text>
-                {!errorText && <Text style={styles.emptyHint}>Döküm sahası Excel'ini "İndir / Yükle" → "Excel yükle" ile yükleyebilirsiniz.</Text>}
+                {!errorText && <Text style={styles.emptyHint}>"🔄 İSTAÇ'tan Çek" ile verileri otomatik çekebilir veya "İndir / Yükle" → "Excel yükle" ile dosya yükleyebilirsiniz.</Text>}
               </View>
             )}
             {loadingMore && <ActivityIndicator size="small" color="#FFD500" style={{ marginVertical: 14 }} />}
@@ -600,6 +639,49 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
                 {source === s && <Text style={styles.sheetCheck}>✓</Text>}
               </TouchableOpacity>
             ))}
+          </View>
+        </View>
+      </Modal>
+
+      {/* İndir / Yükle / İSTAÇ'tan Çek menüsü (Android) */}
+      <Modal visible={actionsModal} transparent animationType="fade" onRequestClose={() => setActionsModal(false)}>
+        <View style={styles.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setActionsModal(false)} accessibilityLabel="Kapat" />
+          <View style={styles.sheet}>
+            <Text style={styles.sheetTitle}>Döküm İşlemleri</Text>
+            <Text style={styles.sheetSubtitle}>Tarih aralığı: {rangeStart} – {rangeEnd}</Text>
+            <TouchableOpacity
+              style={styles.sheetItem}
+              onPress={() => {
+                setActionsModal(false);
+                pullFromIstac();
+              }}>
+              <Text style={[styles.sheetItemText, { color: '#1B5E20', fontWeight: '800' }]}>🔄 İSTAÇ'tan Çek (Otomatik)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sheetItem}
+              onPress={() => {
+                setActionsModal(false);
+                downloadExcel('Istac');
+              }}>
+              <Text style={styles.sheetItemText}>📥 İSTAÇ Dökümleri indir</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sheetItem}
+              onPress={() => {
+                setActionsModal(false);
+                downloadExcel('Kig');
+              }}>
+              <Text style={styles.sheetItemText}>📥 Cebeci Dökümü indir</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sheetItem}
+              onPress={() => {
+                setActionsModal(false);
+                uploadExcel();
+              }}>
+              <Text style={styles.sheetItemText}>📤 Excel yükle (İSTAÇ / Cebeci)</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -765,6 +847,9 @@ const styles = StyleSheet.create({
   jobFilterBtnActive: { backgroundColor: '#FFF3B0', borderColor: '#F2DC6B' },
   jobFilterText: { fontSize: 14, fontWeight: '700', color: '#222' },
   jobFilterClear: { fontSize: 15, color: '#1976D2', fontWeight: '800' },
+  istacPullBtn: { marginLeft: 'auto', backgroundColor: '#E8F5E9', borderRadius: 12, borderWidth: 1, borderColor: '#A5D6A7', paddingVertical: 10, paddingHorizontal: 12, minWidth: 124, alignItems: 'center', justifyContent: 'center' },
+  istacPullBtnDisabled: { opacity: 0.6 },
+  istacPullBtnText: { fontSize: 13.5, fontWeight: '800', color: '#1B5E20' },
 
   tableHead: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingRight: 10, borderBottomWidth: 1, borderBottomColor: '#E0E0E0', marginBottom: 6 },
   headText: { fontSize: 12, fontWeight: '800', color: '#555', paddingHorizontal: 4 },
@@ -792,6 +877,7 @@ const styles = StyleSheet.create({
   sheet: { backgroundColor: '#fff', borderRadius: 16, paddingVertical: 10 },
   jobSheet: { maxHeight: '75%' },
   sheetTitle: { fontSize: 16, fontWeight: '800', color: '#111', paddingHorizontal: 18, paddingVertical: 10 },
+  sheetSubtitle: { fontSize: 12.5, fontWeight: '600', color: '#666', paddingHorizontal: 18, paddingBottom: 8 },
   sheetItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
   sheetItemActive: { backgroundColor: '#FFF8D6' },
   sheetItemText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#222' },

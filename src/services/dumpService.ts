@@ -1,5 +1,5 @@
 import { api, API_BASE_URL } from './api';
-import { buildDumpQuery, DumpQueryParams, DumpSource } from '../utils/dumpFormat';
+import { buildDumpQuery, DumpQueryParams, DumpSource, formatDumpDateTime } from '../utils/dumpFormat';
 
 // ── Döküm sahası verileri (İşlerim → Döküm). Yeni API uçları: eski API'de 404 döner → ekran "sunucu güncellemesi gerekiyor" der.
 
@@ -188,5 +188,113 @@ export const formatImportResult = (r: DumpImportResult): string => {
   if (r.skippedRows > 0) s += `, ${r.skippedRows} etiket no'su eksik`;
   s += `. ${r.matchedRows} sefer eşleşti`;
   s += r.plateMismatchRows > 0 ? `, ${r.plateMismatchRows} seferde FARKLI PLAKA.` : '.';
+  return s;
+};
+
+// ── İSTAÇ Hafriyat Online entegrasyonu (Profil → Entegrasyonlar & Döküm → İSTAÇ'tan Çek)
+
+export type IstacIntegration = {
+  companyId: string;
+  configured: boolean;
+  username: string;
+  hasPassword: boolean;
+  isActive: boolean;
+  lastSyncAt?: string | null;
+  lastSyncSuccess?: boolean | null;
+  lastSyncError?: string | null;
+  lastSyncedUntil?: string | null;
+  updatedDate?: string | null;
+};
+
+export type IstacSiteSyncResult = {
+  siteId: string;
+  siteName: string;
+  reportedRows: number;
+  lastDataTime?: string | null;
+  insertedRows: number;
+  duplicateRows: number;
+  matchedRows: number;
+  plateMismatchRows: number;
+  importId?: string | null;
+  error?: string | null;
+};
+
+export type IstacSyncResult = {
+  startDate: string;
+  endDate: string;
+  sites: IstacSiteSyncResult[];
+  insertedRows: number;
+  duplicateRows: number;
+  matchedRows: number;
+  plateMismatchRows: number;
+  hasErrors: boolean;
+};
+
+const normalizeIstacIntegration = (d: any, fallbackCompanyId: string): IstacIntegration => ({
+  companyId: String(d?.companyId ?? fallbackCompanyId),
+  configured: d?.configured === true,
+  username: String(d?.username ?? ''),
+  hasPassword: d?.hasPassword === true,
+  isActive: d?.configured ? d?.isActive !== false : true,
+  lastSyncAt: d?.lastSyncAt ?? null,
+  lastSyncSuccess: typeof d?.lastSyncSuccess === 'boolean' ? d.lastSyncSuccess : null,
+  lastSyncError: d?.lastSyncError ?? null,
+  lastSyncedUntil: d?.lastSyncedUntil ?? null,
+  updatedDate: d?.updatedDate ?? null,
+});
+
+export const getIstacIntegration = async (companyId: string): Promise<IstacIntegration> => {
+  const res = await api.get(`/Integrations/istac?companyId=${encodeURIComponent(companyId)}`, { headers: { accept: '*/*' } });
+  return normalizeIstacIntegration(ensureSuccess(res.data), companyId);
+};
+
+export const saveIstacIntegration = async (body: { companyId: string; username: string; password?: string; isActive?: boolean }): Promise<IstacIntegration> => {
+  const res = await api.put('/Integrations/istac', body);
+  return normalizeIstacIntegration(ensureSuccess(res.data), body.companyId);
+};
+
+export const deleteIstacIntegration = async (companyId: string): Promise<boolean> => {
+  const res = await api.delete(`/Integrations/istac?companyId=${encodeURIComponent(companyId)}`);
+  ensureSuccess(res.data);
+  return true;
+};
+
+/**
+ * İSTAÇ günlük raporlarını otomatik (Tesseract OCR + en fazla 5 deneme) çeker ve döküm verilerine ekler.
+ */
+export const syncIstac = async (body: { companyId: string; startDate?: string; endDate?: string }): Promise<IstacSyncResult> => {
+  const res = await api.post('/Integrations/istac/sync', body, { timeout: 120000 });
+  const d: any = ensureSuccess(res.data) || {};
+  const sites: IstacSiteSyncResult[] = Array.isArray(d.sites)
+    ? d.sites.map((s: any) => ({
+        siteId: String(s?.siteId ?? ''),
+        siteName: String(s?.siteName ?? ''),
+        reportedRows: num(s?.reportedRows),
+        lastDataTime: s?.lastDataTime ?? null,
+        insertedRows: num(s?.insertedRows),
+        duplicateRows: num(s?.duplicateRows),
+        matchedRows: num(s?.matchedRows),
+        plateMismatchRows: num(s?.plateMismatchRows),
+        importId: s?.importId ?? null,
+        error: s?.error ?? null,
+      }))
+    : [];
+  return {
+    startDate: String(d.startDate ?? ''),
+    endDate: String(d.endDate ?? ''),
+    sites,
+    insertedRows: num(d.insertedRows),
+    duplicateRows: num(d.duplicateRows),
+    matchedRows: num(d.matchedRows),
+    plateMismatchRows: num(d.plateMismatchRows),
+    hasErrors: d.hasErrors === true,
+  };
+};
+
+export const formatIstacSyncSummary = (r: IstacSyncResult): string => {
+  const start = formatDumpDateTime(r.startDate).date;
+  const end = formatDumpDateTime(r.endDate).date;
+  let s = `İSTAÇ (${start} – ${end}): ${r.insertedRows} yeni kayıt, ${r.duplicateRows} zaten vardı, ${r.matchedRows} seferle eşleşti`;
+  s += r.plateMismatchRows > 0 ? `, ${r.plateMismatchRows} plaka farkı.` : '.';
   return s;
 };

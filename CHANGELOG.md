@@ -6,6 +6,13 @@ Biçim: `## [Mobil versionName (versionCode/build)] — tarih` → Eklendi / Dü
 
 ## [Yayınlanmadı]
 
+### İSTAÇ Entegrasyonları (Profil → Entegrasyonlar & Döküm → İSTAÇ'tan Çek)
+#### Eklendi
+- **Profil → Entegrasyonlar (`src/screens/supplier/IntegrationsScreen.tsx`):** Firma/araç sahipleri için İSTAÇ Hafriyat Online kullanıcı adı ve şifresini kaydetme, bağlantı durumunu ve son senkron bilgisini görme, "🔄 Şimdi Güncelle" ile güvenlik kodu girmeden (sunucuda Tesseract OCR ile otomatik çözülerek) tüm sahaların döküm verilerini çekme ve entegrasyonu silme ekranı.
+- **İşlerim → Döküm (`src/screens/supplier/DumpOverview.tsx`):** Seçili tarih aralığı için tek dokunuşla "🔄 İSTAÇ'tan Çek" butonu (ve "İndir / Yükle" menüsünde "🔄 İSTAÇ'tan Çek (Otomatik)" seçeneği). Entegrasyon henüz tanımlı değilse doğrudan Entegrasyonlar ekranına yönlendirir.
+#### Uyumluluk
+- API: `GET/PUT/DELETE /Integrations/istac`, `POST /Integrations/istac/sync`. Eski sunucuda uç yoksa (404) "Bu özellik için sunucu güncellemesi gerekiyor." mesajı gösterilir; uygulama çökmez. Native değişiklik yok.
+
 ### Excel indirmeleri: iOS'ta iş notları + anlamlı dosya adları
 #### Düzeltildi
 - **iOS: İş Notları & Giderler → Excel hiçbir şey yapmıyordu.** `RNBlobUtil.ios.openDocument` belgeyi ana ekrandan sunar; notlar penceresi
