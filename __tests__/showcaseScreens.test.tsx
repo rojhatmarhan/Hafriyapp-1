@@ -147,7 +147,7 @@ describe('ShowcaseListScreen', () => {
     const navigation = { replace: jest.fn(), navigate: jest.fn() };
     const r = await render(<ShowcaseListScreen navigation={navigation} />);
     const t = metinler(r);
-    expect(t).toContain('Firmalar');
+    expect(t).toContain('Sektör Firmaları');
     expect(t).toContain('Kaya Hafriyat');
     expect(t).toContain('Tüm iller');
     expect(t).toContain('Firmanı tanıt');

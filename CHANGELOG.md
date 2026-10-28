@@ -6,6 +6,28 @@ Biçim: `## [Mobil versionName (versionCode/build)] — tarih` → Eklendi / Dü
 
 ## [Yayınlanmadı]
 
+### "Fiş Kes ve Yazdır" → "Ekle"
+- Sefer Gir ve Manuel Sefer pencerelerinde kaydet düğmesinin adı "Ekle" (`JobDetails`); davranış aynı (kaydeder, fiş penceresi açılır).
+
+
+### "Firma Tanıtımları" → "Sektör Firmaları" · İşlerim kartında döküm kutusu
+- Ana sayfa kartı (Supplier/DriverHome), firmalar listesi başlığı ve WebView yükleniyor metni "Sektör Firmaları". Ekran/route adları değişmedi.
+- İşlerim kartındaki döküm özeti çerçeveli kutuda: "DÖKÜM" başlığı, Ort. tonaj / Toplam satırları, verisi alınamayan sefer notu kırmızı.
+
+
+### Döküm ekranı sekmeli · satır yazıları kaybolmuyor
+#### Değişti
+- **İşlerim → Döküm (`DumpOverview`):** Web'deki gibi sekmeler: **Fişler** (özet kutuları, eşleşme filtresi, arama, liste),
+  **Hesap** (Hesapta Kalan, para yatırma), **Yükle / İndir** (İSTAÇ'tan Çek, İSTAÇ/Cebeci Excel indir, Excel yükle). Eski "İndir / Yükle"
+  menüsü ve listedeki "İSTAÇ'tan Çek" düğmesi bu sekmeye taşındı.
+- İşlerim kartında "Ortalama tonaj" her zaman görünür; eşleşen döküm kaydı yoksa "-".
+#### Düzeltildi
+- **Android: döküm satırına dokunup açıp kapatınca satırlardaki yazılar kayboluyordu.** Satır `TouchableOpacity` yerine `Pressable`
+  (gölgeli + `overflow: hidden` kutuda saydamlık animasyonu), liste açık satır/filtre/sekme değişince yeniden çiziliyor (`extraData`).
+#### Uyumluluk
+- API değişmedi; native değişiklik yok.
+
+
 ### Döküm listesi sade ve açılır · iş kartında döküm özeti · iOS döküm fişi kutusu
 #### Değişti
 - **İşlerim → Döküm (`DumpOverview`):** satıra dokununca detay açılır (`DumpRecordDetail`: kabul belgesi, toplam/dara/net, bedel, kart

@@ -243,7 +243,7 @@ export default function CompanyShowcase() {
           renderLoading={() => (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#FFC20E" />
-              <Text style={styles.loadingText}>Firma Tanıtımları Yükleniyor...</Text>
+              <Text style={styles.loadingText}>Sektör Firmaları Yükleniyor...</Text>
             </View>
           )}
           onShouldStartLoadWithRequest={(request: any) => {

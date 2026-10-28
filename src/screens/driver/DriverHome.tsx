@@ -427,7 +427,7 @@ export default function DriverHome() {
     );
   };
 
-  // Sayfanın üst kısmı (başlık, Firma Tanıtımları kartı, uyarı) listeyle birlikte kayar; sadece arama satırı üstte sabit kalır.
+  // Sayfanın üst kısmı (başlık, Sektör Firmaları kartı, uyarı) listeyle birlikte kayar; sadece arama satırı üstte sabit kalır.
   const listHeader = (
     <View style={styles.listHeader}>
       <View style={styles.titleRow}>
@@ -451,7 +451,7 @@ export default function DriverHome() {
         </TouchableOpacity>
       </View>
 
-      {/* 🏢 Firma Tanıtımları & Rehber Kartı */}
+      {/* 🏢 Sektör Firmaları & Rehber Kartı */}
       <TouchableOpacity
         style={styles.showcaseBanner}
         onPress={() => navigation.navigate('ShowcaseList')}
@@ -461,12 +461,12 @@ export default function DriverHome() {
         </View>
         <View style={{ flex: 1, paddingVertical: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={styles.showcaseTitle}>Firma Tanıtımları</Text>
+            <Text style={styles.showcaseTitle}>Sektör Firmaları</Text>
             <View style={styles.showcaseBadge}>
               <Text style={styles.showcaseBadgeText}>YENİ</Text>
             </View>
           </View>
-          <Text style={styles.showcaseSub}>Sektör firmalarını ve profillerini inceleyin</Text>
+          <Text style={styles.showcaseSub}>Firmaları ve profillerini inceleyin</Text>
         </View>
         <View style={styles.showcaseActionBtn}>
           <Text style={styles.showcaseActionText}>İncele ›</Text>

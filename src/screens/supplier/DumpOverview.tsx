@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, ActivityIndicator, Alert, Platform, ActionSheetIOS, Linking, RefreshControl, Pressable, TextInput, ScrollView, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, ActivityIndicator, Alert, Platform, Linking, RefreshControl, Pressable, TextInput, ScrollView, KeyboardAvoidingView } from 'react-native';
 import RNBlobUtil from 'react-native-blob-util';
 import { useNavigation } from '@react-navigation/native';
 
@@ -50,6 +50,8 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
   // Eşleşme filtresi ('' = tümü) ve açık satır (tıklayınca detay)
   const [status, setStatus] = useState<'' | 'matched' | 'unmatched' | 'plateMismatch'>('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Sekmeler (Web /Dump/Index ile aynı): Fişler varsayılan; Hesap = Hesapta Kalan; Yükle / İndir = İSTAÇ, Excel
+  const [tab, setTab] = useState<'fisler' | 'hesap' | 'aktar'>('fisler');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const { rangeStart, rangeEnd, isDefaultRange, changeStart, changeEnd, resetRange } = useDateRange();
 
@@ -67,7 +69,6 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
   const [syncingIstac, setSyncingIstac] = useState(false);
 
   const [sourceModal, setSourceModal] = useState(false);
-  const [actionsModal, setActionsModal] = useState(false);
   const [jobModal, setJobModal] = useState(false);
   const [qrVisible, setQrVisible] = useState(false);
 
@@ -389,27 +390,6 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
     }
   };
 
-  const openActions = () => {
-    const pull = "🔄 İSTAÇ'tan Çek (Otomatik)";
-    const istac = '📥 İSTAÇ Dökümleri indir';
-    const cebeci = '📥 Cebeci Dökümü indir';
-    const upload = '📤 Excel yükle (İSTAÇ / Cebeci)';
-    const rangeText = `${rangeStart} – ${rangeEnd}`;
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { title: 'Döküm İşlemleri', message: `Tarih aralığı: ${rangeText}`, options: ['İptal', pull, istac, cebeci, upload], cancelButtonIndex: 0 },
-        idx => {
-          if (idx === 1) pullFromIstac();
-          else if (idx === 2) downloadExcel('Istac');
-          else if (idx === 3) downloadExcel('Kig');
-          else if (idx === 4) uploadExcel();
-        },
-      );
-    } else {
-      setActionsModal(true);
-    }
-  };
-
   const selectedJobName = jobSiteId ? jobSites.find(j => j.id === jobSiteId)?.name || 'Seçili iş' : null;
 
   if (!companyId) {
@@ -431,7 +411,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
     // Ton sütunu: dolu (brüt) ağırlık, yoksa (eski API) net
     const listKg = item.brutKg ?? item.netKg;
     return (
-      <TouchableOpacity activeOpacity={0.8} onPress={() => setExpandedId(expanded ? null : item.id)} style={[styles.rowWrap, expanded && styles.rowWrapOpen]} accessibilityLabel="Fiş detayını aç/kapat">
+      <Pressable onPress={() => setExpandedId(expanded ? null : item.id)} style={({ pressed }) => [styles.rowWrap, expanded && styles.rowWrapOpen, pressed && styles.rowWrapPressed]} accessibilityRole="button" accessibilityLabel="Fiş detayını aç/kapat">
       <View style={styles.row}>
         <View style={[styles.strip, { backgroundColor: dumpStatusColor(status) }]} />
         <View style={[styles.cell, styles.colPlate]}>
@@ -473,7 +453,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
         </View>
       </View>
       {expanded && <DumpRecordDetail item={item} />}
-      </TouchableOpacity>
+      </Pressable>
     );
   };
 
@@ -498,14 +478,6 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
             <Text style={styles.jobFilterClear}>✕</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity
-          style={[styles.istacPullBtn, syncingIstac && styles.istacPullBtnDisabled]}
-          onPress={pullFromIstac}
-          disabled={syncingIstac || downloading || uploading}
-          activeOpacity={0.85}
-          accessibilityLabel="İSTAÇ'tan döküm verilerini çek">
-          {syncingIstac ? <ActivityIndicator size="small" color="#1B5E20" /> : <Text style={styles.istacPullBtnText}>🔄 İSTAÇ'tan Çek</Text>}
-        </TouchableOpacity>
       </View>
 
       {/* Sütun başlıkları */}
@@ -525,23 +497,83 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
     return renderRecord(item as DumpRecord);
   };
 
-  const listData: ListRow[] = notSupported ? [] : [SEARCH_ROW, FILTER_ROW, ...records];
-  const showEmpty = !loading && !notSupported && records.length === 0;
+  const onFisler = tab === 'fisler';
+  const listData: ListRow[] = notSupported || !onFisler ? [] : [SEARCH_ROW, FILTER_ROW, ...records];
+  const showEmpty = onFisler && !loading && !notSupported && records.length === 0;
+  const busy = downloading || uploading || syncingIstac;
+
+  // Hesapta Kalan kartı (Hesap sekmesi; eski API alanları döndürmezse gizli)
+  const balanceEl = summary?.balanceSupported ? (
+    <TouchableOpacity style={styles.balanceCard} onPress={openDeposits} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Hesapta kalan, para yatırma kayıtlarını aç">
+      <View style={styles.balanceHead}>
+        <Text style={styles.balanceLabel}>Hesapta Kalan{source ? ` · ${dumpSourceLabel(source)}` : ''}</Text>
+        <Text style={styles.balanceChevron}>›</Text>
+      </View>
+      {summary.hasDeposits ? (
+        <>
+          <Text style={[styles.balanceValue, summary.balance < 0 && styles.balanceNegative]} numberOfLines={1} adjustsFontSizeToFit>
+            {formatTL(summary.balance)}
+          </Text>
+          <Text style={styles.balanceSub} numberOfLines={1} adjustsFontSizeToFit>
+            {formatBalanceSubtext(summary.totalDeposits, summary.totalFeesAllTime)}
+          </Text>
+        </>
+      ) : (
+        <Text style={styles.balanceCta}>+ Yatırım ekle</Text>
+      )}
+    </TouchableOpacity>
+  ) : null;
+
+  // Yükle / İndir sekmesi: önceki "İndir / Yükle" menüsü ve "İSTAÇ'tan Çek" düğmesi
+  const aktarEl = (
+    <View style={styles.aktarCard}>
+      <Text style={styles.aktarHint}>
+        Tarih aralığı: {rangeStart || rangeEnd ? `${rangeStart || '…'} – ${rangeEnd || '…'}` : 'Tüm zamanlar'} (Fişler sekmesindeki tarih)
+      </Text>
+      {(
+        [
+          ["🔄 İSTAÇ'tan Çek (Otomatik)", pullFromIstac, true],
+          ['📥 İSTAÇ Dökümleri indir', () => downloadExcel('Istac'), false],
+          ['📥 Cebeci Dökümü indir', () => downloadExcel('Kig'), false],
+          ['📤 Excel yükle', uploadExcel, false],
+        ] as const
+      ).map(([label, onPress, primary]) => (
+        <TouchableOpacity key={label} style={[styles.aktarBtn, primary && styles.aktarBtnPrimary, busy && styles.istacPullBtnDisabled]} onPress={onPress} disabled={busy} activeOpacity={0.85}>
+          <Text style={[styles.aktarBtnText, primary && styles.aktarBtnTextPrimary]}>{label}</Text>
+        </TouchableOpacity>
+      ))}
+      {busy && <ActivityIndicator size="small" color="#111" style={{ marginTop: 8 }} />}
+    </View>
+  );
 
   const header = (
     <View>
       {/* Üst sayfanın sekmesi (tam genişlik: listenin 12 px yan boşluğu geri alınır) */}
       {topHeader && <View style={styles.topHeader}>{topHeader}</View>}
 
-      {/* Kaynak seçici + İndir/Yükle */}
+      {/* Sekmeler */}
+      <View style={styles.tabRow}>
+        {(
+          [
+            ['fisler', 'Fişler'],
+            ['hesap', 'Hesap'],
+            ['aktar', 'Yükle / İndir'],
+          ] as const
+        ).map(([key, label]) => (
+          <TouchableOpacity key={key} style={[styles.tabBtn, tab === key && styles.tabBtnActive]} onPress={() => setTab(key)} activeOpacity={0.85} accessibilityRole="tab" accessibilityState={{ selected: tab === key }}>
+            <Text style={[styles.tabBtnText, tab === key && styles.tabBtnTextActive]} numberOfLines={1}>
+              {label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Kaynak seçici (Tümü / Cebeci / İSTAÇ) — her sekmede geçerli */}
       <View style={styles.headerRow}>
         <TouchableOpacity style={styles.sourceBtn} onPress={() => setSourceModal(true)} activeOpacity={0.8} accessibilityLabel="Döküm kaynağı seç">
           <Text style={styles.sourceBtnText} numberOfLines={1}>
             {dumpSourceTitle(source)} ▾
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionsBtn} onPress={openActions} activeOpacity={0.8} disabled={downloading || uploading || syncingIstac}>
-          {downloading || uploading || syncingIstac ? <ActivityIndicator size="small" color="#111" /> : <Text style={styles.actionsBtnText}>İndir / Yükle</Text>}
         </TouchableOpacity>
       </View>
 
@@ -549,30 +581,16 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
         <View style={styles.infoCard}>
           <Text style={styles.infoCardText}>Bu özellik için sunucu güncellemesi gerekiyor.</Text>
         </View>
+      ) : tab === 'hesap' ? (
+        balanceEl ?? (
+          <View style={styles.infoCard}>
+            <Text style={styles.infoCardText}>Hesapta Kalan için sunucu güncellemesi gerekiyor.</Text>
+          </View>
+        )
+      ) : tab === 'aktar' ? (
+        aktarEl
       ) : (
         <>
-          {/* Hesapta Kalan (eski API alanları döndürmezse gizli) */}
-          {summary?.balanceSupported && (
-            <TouchableOpacity style={styles.balanceCard} onPress={openDeposits} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Hesapta kalan, para yatırma kayıtlarını aç">
-              <View style={styles.balanceHead}>
-                <Text style={styles.balanceLabel}>Hesapta Kalan{source ? ` · ${dumpSourceLabel(source)}` : ''}</Text>
-                <Text style={styles.balanceChevron}>›</Text>
-              </View>
-              {summary.hasDeposits ? (
-                <>
-                  <Text style={[styles.balanceValue, summary.balance < 0 && styles.balanceNegative]} numberOfLines={1} adjustsFontSizeToFit>
-                    {formatTL(summary.balance)}
-                  </Text>
-                  <Text style={styles.balanceSub} numberOfLines={1} adjustsFontSizeToFit>
-                    {formatBalanceSubtext(summary.totalDeposits, summary.totalFeesAllTime)}
-                  </Text>
-                </>
-              ) : (
-                <Text style={styles.balanceCta}>+ Yatırım ekle</Text>
-              )}
-            </TouchableOpacity>
-          )}
-
           {/* KPI kartları */}
           <View style={styles.kpiRow}>
             <View style={styles.kpiCard}>
@@ -628,7 +646,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
         keyExtractor={item => item.id}
         renderItem={renderItem}
         ListHeaderComponent={header}
-        stickyHeaderIndices={notSupported || !stickySearch ? undefined : STICKY_SEARCH_INDEX}
+        stickyHeaderIndices={notSupported || !stickySearch || !onFisler ? undefined : STICKY_SEARCH_INDEX}
         // Veri dizisinde arama/filtre satırları olduğu için ListEmptyComponent çalışmaz → boş durum altbilgide
         ListFooterComponent={
           <>
@@ -636,7 +654,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
             {showEmpty && (
               <View style={styles.emptyBox}>
                 <Text style={styles.emptyTitle}>{errorText || 'Bu filtreye uygun döküm kaydı yok.'}</Text>
-                {!errorText && <Text style={styles.emptyHint}>"🔄 İSTAÇ'tan Çek" ile verileri otomatik çekebilir veya "İndir / Yükle" → "Excel yükle" ile dosya yükleyebilirsiniz.</Text>}
+                {!errorText && <Text style={styles.emptyHint}>"Yükle / İndir" sekmesinden İSTAÇ'tan otomatik çekebilir veya Excel yükleyebilirsiniz.</Text>}
               </View>
             )}
             {loadingMore && <ActivityIndicator size="small" color="#FFD500" style={{ marginVertical: 14 }} />}
@@ -645,6 +663,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
         onEndReached={loadMore}
         onEndReachedThreshold={0.4}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadAll(true)} />}
+        extraData={`${tab}|${expandedId}|${status}`}
         contentContainerStyle={styles.listContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -670,49 +689,6 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
                 {source === s && <Text style={styles.sheetCheck}>✓</Text>}
               </TouchableOpacity>
             ))}
-          </View>
-        </View>
-      </Modal>
-
-      {/* İndir / Yükle / İSTAÇ'tan Çek menüsü (Android) */}
-      <Modal visible={actionsModal} transparent animationType="fade" onRequestClose={() => setActionsModal(false)}>
-        <View style={styles.overlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setActionsModal(false)} accessibilityLabel="Kapat" />
-          <View style={styles.sheet}>
-            <Text style={styles.sheetTitle}>Döküm İşlemleri</Text>
-            <Text style={styles.sheetSubtitle}>Tarih aralığı: {rangeStart} – {rangeEnd}</Text>
-            <TouchableOpacity
-              style={styles.sheetItem}
-              onPress={() => {
-                setActionsModal(false);
-                pullFromIstac();
-              }}>
-              <Text style={[styles.sheetItemText, { color: '#1B5E20', fontWeight: '800' }]}>🔄 İSTAÇ'tan Çek (Otomatik)</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.sheetItem}
-              onPress={() => {
-                setActionsModal(false);
-                downloadExcel('Istac');
-              }}>
-              <Text style={styles.sheetItemText}>📥 İSTAÇ Dökümleri indir</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.sheetItem}
-              onPress={() => {
-                setActionsModal(false);
-                downloadExcel('Kig');
-              }}>
-              <Text style={styles.sheetItemText}>📥 Cebeci Dökümü indir</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.sheetItem}
-              onPress={() => {
-                setActionsModal(false);
-                uploadExcel();
-              }}>
-              <Text style={styles.sheetItemText}>📤 Excel yükle (İSTAÇ / Cebeci)</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -848,6 +824,17 @@ const styles = StyleSheet.create({
   centerText: { fontSize: 15, color: '#555', fontWeight: '600', textAlign: 'center' },
 
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  tabRow: { flexDirection: 'row', gap: 6, marginBottom: 10 },
+  tabBtn: { flex: 1, paddingVertical: 9, borderRadius: 18, borderWidth: 1.5, borderColor: '#222', backgroundColor: '#fff', alignItems: 'center' },
+  tabBtnActive: { backgroundColor: '#222' },
+  tabBtnText: { fontSize: 13, fontWeight: '800', color: '#222' },
+  tabBtnTextActive: { color: '#fff' },
+  aktarCard: { backgroundColor: '#fff', borderRadius: 14, padding: 12, gap: 8, elevation: 1, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
+  aktarHint: { fontSize: 12, color: '#666', marginBottom: 2 },
+  aktarBtn: { borderRadius: 12, borderWidth: 1.5, borderColor: '#CFCFCF', paddingVertical: 13, paddingHorizontal: 14, backgroundColor: '#fff' },
+  aktarBtnPrimary: { backgroundColor: '#E8F5E9', borderColor: '#43A047' },
+  aktarBtnText: { fontSize: 14, fontWeight: '700', color: '#222' },
+  aktarBtnTextPrimary: { color: '#1B5E20', fontWeight: '800' },
   sourceBtn: { flex: 1, minWidth: 0, backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#CFCFCF', paddingVertical: 12, paddingHorizontal: 14, elevation: 1, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
   sourceBtnText: { fontSize: 16, fontWeight: '800', color: '#111' },
   actionsBtn: { backgroundColor: '#FFD500', borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14, minWidth: 104, alignItems: 'center', justifyContent: 'center', elevation: 2, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
@@ -888,6 +875,7 @@ const styles = StyleSheet.create({
 
   rowWrap: { backgroundColor: '#fff', borderRadius: 10, marginBottom: 6, overflow: 'hidden', elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
   rowWrapOpen: { borderWidth: 1.5, borderColor: '#222' },
+  rowWrapPressed: { backgroundColor: '#F6F5F2' },
   row: { flexDirection: 'row', alignItems: 'stretch', paddingRight: 10 },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
   statusChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1.5, borderColor: '#222', backgroundColor: '#fff' },

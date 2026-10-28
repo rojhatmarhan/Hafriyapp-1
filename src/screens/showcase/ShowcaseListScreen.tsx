@@ -179,7 +179,7 @@ export default function ShowcaseListScreen({ navigation }: any) {
       {/* TODO Faz 3: hikaye şeridi (.serit) — "Hikayen" + aktif hikayesi olan firmalar */}
       <View style={s.giris}>
         <T style={s.h1} accessibilityRole="header">
-          Firmalar
+          Sektör Firmaları
         </T>
         <T style={s.p}>Ocaklar, hafriyat, nakliye ve iş makinesi firmaları. İncelemek için bir firmaya dokunun.</T>
       </View>

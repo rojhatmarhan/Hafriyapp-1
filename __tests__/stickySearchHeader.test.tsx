@@ -67,7 +67,7 @@ describe.each([
     expect(React.isValidElement(header)).toBe(true);
     const headerR = await render(header);
     expect(metinVar(headerR.root, 'FİRMA SAYFALARI')).toBe(true);
-    expect(metinVar(headerR.root, 'Firma Tanıtımları')).toBe(true);
+    expect(metinVar(headerR.root, 'Sektör Firmaları')).toBe(true);
     expect(headerR.root.findAllByType(TextInput)).toHaveLength(0);
 
     // Sabit kısım sadece arama satırı

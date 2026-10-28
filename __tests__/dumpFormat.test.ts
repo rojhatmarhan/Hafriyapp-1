@@ -107,8 +107,8 @@ describe('formatJobDumpSummary', () => {
     });
   });
 
-  it('eşleşen kayıt yoksa ortalama, eksik sefer yoksa not gösterilmez', () => {
-    expect(formatJobDumpSummary({ dumpAvgBrutKg: null, dumpTotalFee: 0, dumpMissingCount: 0 })).toEqual({ avg: null, total: '0,00₺', missing: null });
+  it('eşleşen kayıt yoksa ortalama "-", eksik sefer yoksa not gösterilmez', () => {
+    expect(formatJobDumpSummary({ dumpAvgBrutKg: null, dumpTotalFee: 0, dumpMissingCount: 0 })).toEqual({ avg: '-', total: '0,00₺', missing: null });
   });
 
   it('alan yoksa (eski API / döküm fişi girilmemiş) null', () => {

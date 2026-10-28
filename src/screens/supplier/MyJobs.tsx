@@ -360,8 +360,15 @@ export default function MyJobs() {
             if (!dump) return null;
             return (
               <View style={styles.dumpBox}>
-                {!!dump.avg && <Text style={styles.dumpText}>Ortalama tonaj: <Text style={styles.infoBold}>{dump.avg}</Text></Text>}
-                <Text style={styles.dumpText}>Toplam döküm: <Text style={styles.infoBold}>{dump.total}</Text></Text>
+                <Text style={styles.dumpTitle}>DÖKÜM</Text>
+                <View style={styles.dumpRow}>
+                  <Text style={styles.dumpLabel}>Ort. tonaj</Text>
+                  <Text style={styles.dumpValue}>{dump.avg}</Text>
+                </View>
+                <View style={styles.dumpRow}>
+                  <Text style={styles.dumpLabel}>Toplam</Text>
+                  <Text style={styles.dumpValue} numberOfLines={1} adjustsFontSizeToFit>{dump.total}</Text>
+                </View>
                 {!!dump.missing && <Text style={styles.dumpMissing}>{dump.missing}</Text>}
               </View>
             );
@@ -647,9 +654,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
 
-  dumpBox: { marginTop: 8, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#E0E0E0', borderStyle: 'dashed' },
-  dumpText: { fontSize: 12.5, color: '#333' },
-  dumpMissing: { fontSize: 12, color: '#888', marginTop: 1 },
+  // Döküm özeti: çerçeveli küçük kutu (Kaynak Durumu kutusuyla aynı dil)
+  dumpBox: { marginTop: 10, marginRight: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: '#E0E0E0', backgroundColor: '#FAFAFA' },
+  dumpTitle: { fontSize: 10.5, fontWeight: '800', color: '#888', letterSpacing: 0.6, marginBottom: 4 },
+  dumpRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, paddingVertical: 1 },
+  dumpLabel: { fontSize: 12, color: '#666' },
+  dumpValue: { fontSize: 13, fontWeight: '800', color: '#111', flexShrink: 1, textAlign: 'right' },
+  dumpMissing: { fontSize: 11.5, color: '#C62828', marginTop: 4, fontWeight: '600' },
   info: {
     fontSize: 12,
     color: '#666',

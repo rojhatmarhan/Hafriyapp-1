@@ -118,13 +118,14 @@ export const formatKg = (n: unknown): string => `${Math.round(toNum(n) ?? 0).toL
  * İş kartındaki döküm özeti (API iş listesi: dumpAvgBrutKg, dumpTotalFee, dumpMissingCount).
  * Alan yoksa (eski API / döküm fişi girilmiş sefer yok) null → kartta hiçbir şey gösterilmez.
  */
-export const formatJobDumpSummary = (job?: { dumpAvgBrutKg?: number | null; dumpTotalFee?: number | null; dumpMissingCount?: number | null } | null): { avg: string | null; total: string; missing: string | null } | null => {
+export const formatJobDumpSummary = (job?: { dumpAvgBrutKg?: number | null; dumpTotalFee?: number | null; dumpMissingCount?: number | null } | null): { avg: string; total: string; missing: string | null } | null => {
   const total = toNum(job?.dumpTotalFee);
   if (total === null) return null;
   const avg = toNum(job?.dumpAvgBrutKg);
   const missing = toNum(job?.dumpMissingCount) ?? 0;
   return {
-    avg: avg === null ? null : `${(avg / 1000).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Ton`,
+    // Eşleşen döküm kaydı yoksa ortalama "-" (satır yine görünür)
+    avg: avg === null ? '-' : `${(avg / 1000).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Ton`,
     total: formatTL(total),
     missing: missing > 0 ? `(${missing} seferin verisi alınamadı)` : null,
   };

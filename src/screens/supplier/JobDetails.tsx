@@ -1836,7 +1836,7 @@ export default function JobDetails() {
                       </TouchableOpacity>
                     )}
                     <TouchableOpacity style={[styles.printSubmitBtn, (!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving) && { opacity: 0.4 }]} onPress={() => handleAddHaul(true)} disabled={!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving}>
-                      <Text style={styles.printSubmitBtnText}>{formSaving ? '...' : 'Fiş Kes ve Yazdır'}</Text>
+                      <Text style={styles.printSubmitBtnText}>{formSaving ? '...' : 'Ekle'}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1990,7 +1990,7 @@ export default function JobDetails() {
                       style={[styles.manualSaveBtn, manualSaving && { opacity: 0.4 }]}
                       onPress={() => handleManualHaul(true)}
                       disabled={manualSaving}>
-                      <Text style={styles.manualSaveBtnText}>{manualSaving ? 'Kaydediliyor...' : 'Fiş Kes ve Yazdır'}</Text>
+                      <Text style={styles.manualSaveBtnText}>{manualSaving ? 'Kaydediliyor...' : 'Ekle'}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
