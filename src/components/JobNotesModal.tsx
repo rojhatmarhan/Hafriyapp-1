@@ -6,19 +6,21 @@ import { excelIndir, excelDosyaAdi, excelTarihParcasi } from '../utils/excelDown
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getJobSiteNotes, createJobSiteNote, updateJobSiteNote, deleteJobSiteNote, JobSiteNoteItem } from '../services/jobSiteNewService';
 
-// Not tipleri (backend JobSiteNoteType): 0 Genel Not, 1 Mazot Verildi, 2 Gider
-type NoteKind = 'note' | 'fuel' | 'expense';
+// Not tipleri (backend JobSiteNoteType): 0 Genel Not, 1 Mazot Verildi, 2 Gider, 3 Mesai (süre serbest metin)
+type NoteKind = 'note' | 'fuel' | 'expense' | 'overtime';
 
-const KIND_TO_TYPE: Record<NoteKind, number> = { note: 0, fuel: 1, expense: 2 };
-const typeToKind = (t: number): NoteKind => (t === 1 ? 'fuel' : t === 2 ? 'expense' : 'note');
+const KIND_TO_TYPE: Record<NoteKind, number> = { note: 0, fuel: 1, expense: 2, overtime: 3 };
+const typeToKind = (t: number): NoteKind => (t === 1 ? 'fuel' : t === 2 ? 'expense' : t === 3 ? 'overtime' : 'note');
 
 const KIND_META: Record<NoteKind, { button: string; title: string; amountLabel: string; amountPlaceholder: string; descLabel: string; descPlaceholder: string; color: string; bg: string; border: string }> = {
   note: { button: '📝 Not Ekle', title: '📝 Not', amountLabel: '', amountPlaceholder: '', descLabel: 'İşe Dair Not *', descPlaceholder: 'Örn: Kepçe tam gün mesai', color: '#1565C0', bg: '#E3F2FD', border: '#1E88E5' },
   fuel: { button: '⛽ Mazot Ver', title: '⛽ Mazot', amountLabel: 'Verilen Mazot Miktarı (Litre) *', amountPlaceholder: 'Örn: 150', descLabel: 'Açıklama / Kime / Hangi Araca Verildi *', descPlaceholder: 'Örn: 34 ABC 123 plakalı ekskavatöre verildi', color: '#E65100', bg: '#FFF3E0', border: '#FB8C00' },
   expense: { button: '💵 Gider Ekle', title: '💵 Gider', amountLabel: 'Gider Tutarı (TL) *', amountPlaceholder: 'Örn: 2500', descLabel: 'Gider Açıklaması / Detay *', descPlaceholder: 'Örn: Şantiye yemek/su masrafı', color: '#2E7D32', bg: '#E8F5E9', border: '#43A047' },
+  // Mesai: amount* alanları "Mesai Süresi" metin kutusu için kullanılır (sayı değil, kullanıcı serbest yazar)
+  overtime: { button: '⏱ Mesai', title: '⏱ Mesai', amountLabel: 'Mesai Süresi *', amountPlaceholder: 'Örn: 2 saat', descLabel: 'Açıklama', descPlaceholder: "Örn: Kepçe akşam 7'ye kadar çalıştı", color: '#6A1B9A', bg: '#F3E5F5', border: '#8E24AA' },
 };
 
-const BUTTON_ORDER: NoteKind[] = ['note', 'fuel', 'expense'];
+const BUTTON_ORDER: NoteKind[] = ['note', 'fuel', 'expense', 'overtime'];
 const ACCESSORY_ID = 'jobNotesKeyboardDone';
 
 // Açık kart: yeni kayıt (tipe göre) veya mevcut kaydı düzenleme
@@ -63,7 +65,14 @@ interface NoteCardProps {
 
 const NoteCard = React.memo(({ item, canManage, isEditing, isDeleting, onEdit, onDelete }: NoteCardProps) => {
   const meta = KIND_META[typeToKind(item.noteType)];
-  const badge = item.noteType === 1 ? `⛽ Mazot: ${item.amount ?? 0} Lt` : item.noteType === 2 ? `💵 Gider: ${(item.amount ?? 0).toLocaleString('tr-TR')} ₺` : '📝 Not';
+  const badge =
+    item.noteType === 1
+      ? `⛽ Mazot: ${item.amount ?? 0} Lt`
+      : item.noteType === 2
+      ? `💵 Gider: ${(item.amount ?? 0).toLocaleString('tr-TR')} ₺`
+      : item.noteType === 3
+      ? `⏱ Mesai${item.overtimeDuration ? `: ${item.overtimeDuration}` : ''}`
+      : '📝 Not';
   return (
     <View style={[styles.noteCard, isEditing && styles.noteCardEditing]}>
       <View style={styles.noteCardTop}>
@@ -72,7 +81,7 @@ const NoteCard = React.memo(({ item, canManage, isEditing, isDeleting, onEdit, o
         </View>
         <Text style={styles.noteDateText}>{formatDate(item.createdDate)}</Text>
       </View>
-      <Text style={styles.noteDescText}>{item.description}</Text>
+      {!!item.description && <Text style={styles.noteDescText}>{item.description}</Text>}
       <View style={styles.noteCardBottom}>
         <Text style={styles.noteUserText} numberOfLines={1}>
           👤 {item.userName || 'Bilinmiyor'}
@@ -112,6 +121,7 @@ export default function JobNotesModal({ visible, onClose, jobSiteId, token, jobN
   const [mode, setMode] = useState<FormMode>(null);
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
+  const [overtime, setOvertime] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -130,6 +140,7 @@ export default function JobNotesModal({ visible, onClose, jobSiteId, token, jobN
     setMode(null);
     setAmount('');
     setDescription('');
+    setOvertime('');
     setFormError(null);
   }, []);
 
@@ -208,6 +219,7 @@ export default function JobNotesModal({ visible, onClose, jobSiteId, token, jobN
     }
     setAmount('');
     setDescription('');
+    setOvertime('');
     setMode({ kind: 'create', type });
   };
 
@@ -218,6 +230,7 @@ export default function JobNotesModal({ visible, onClose, jobSiteId, token, jobN
       setFormError(null);
       setAmount(item.amount !== undefined && item.amount !== null ? String(item.amount) : '');
       setDescription(item.description || '');
+      setOvertime(item.overtimeDuration || '');
       setMode({ kind: 'edit', note: item });
       listRef.current?.scrollToOffset({ offset: 0, animated: true });
     },
@@ -232,12 +245,20 @@ export default function JobNotesModal({ visible, onClose, jobSiteId, token, jobN
   const handleSave = async () => {
     if (!mode || saving || !token || !jobSiteId) return;
     const noteType = mode.kind === 'create' ? KIND_TO_TYPE[mode.type] : mode.note.noteType;
-    const amt = noteType !== 0 ? parseAmount(amount) : undefined;
-    if (noteType !== 0 && (!amt || amt <= 0)) {
+    const isOvertime = noteType === 3;
+    const hasAmount = noteType === 1 || noteType === 2;
+    const amt = hasAmount ? parseAmount(amount) : undefined;
+    // Mesai: süre zorunlu, açıklama isteğe bağlı
+    const overtimeDuration = isOvertime ? overtime.trim() : undefined;
+    if (isOvertime && !overtimeDuration) {
+      setFormError('Lütfen mesai süresini girin.');
+      return;
+    }
+    if (hasAmount && (!amt || amt <= 0)) {
       setFormError('Lütfen geçerli bir miktar girin.');
       return;
     }
-    if (!description.trim()) {
+    if (!isOvertime && !description.trim()) {
       setFormError('Lütfen bir açıklama girin.');
       return;
     }
@@ -246,12 +267,12 @@ export default function JobNotesModal({ visible, onClose, jobSiteId, token, jobN
     setSaving(true);
     try {
       if (mode.kind === 'create') {
-        const res = await createJobSiteNote(token, jobSiteId, { noteType, amount: amt, description: description.trim() });
+        const res = await createJobSiteNote(token, jobSiteId, { noteType, amount: amt, description: description.trim(), overtimeDuration });
         applyFuelStock(res);
         if (!mountedRef.current) return;
         showFlash('✓ Kayıt eklendi.');
       } else {
-        const res = await updateJobSiteNote(token, jobSiteId, mode.note.id, { amount: amt, description: description.trim() });
+        const res = await updateJobSiteNote(token, jobSiteId, mode.note.id, { amount: amt, description: description.trim(), overtimeDuration });
         applyFuelStock(res);
         if (!mountedRef.current) return;
         showFlash('✓ Kayıt güncellendi.');
@@ -311,7 +332,13 @@ export default function JobNotesModal({ visible, onClose, jobSiteId, token, jobN
     mode && meta && formKind ? (
       <View style={[styles.formCard, { borderColor: meta.border }]}>
         <Text style={[styles.formTitle, { color: meta.color }]}>{mode.kind === 'edit' ? `✏️ Kaydı Düzenle · ${meta.title}` : meta.button}</Text>
-        {formKind !== 'note' && (
+        {formKind === 'overtime' && (
+          <View style={styles.formField}>
+            <Text style={styles.inputLabel}>{meta.amountLabel}</Text>
+            <TextInput value={overtime} onChangeText={setOvertime} maxLength={100} returnKeyType="done" onSubmitEditing={Keyboard.dismiss} inputAccessoryViewID={accessoryId} placeholder={meta.amountPlaceholder} placeholderTextColor="#9E9E9E" style={styles.amountInput} editable={!saving} />
+          </View>
+        )}
+        {(formKind === 'fuel' || formKind === 'expense') && (
           <View style={styles.formField}>
             <Text style={styles.inputLabel}>{meta.amountLabel}</Text>
             <TextInput value={amount} onChangeText={setAmount} keyboardType="numeric" returnKeyType="done" onSubmitEditing={Keyboard.dismiss} inputAccessoryViewID={accessoryId} placeholder={meta.amountPlaceholder} placeholderTextColor="#9E9E9E" style={styles.amountInput} editable={!saving} />
@@ -568,13 +595,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
   },
+  // 4 düğme: telefonda 2×2
   typeRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginBottom: 12,
   },
   typeBtn: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '45%',
     paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: '#F5F5F5',

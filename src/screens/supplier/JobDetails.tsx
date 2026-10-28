@@ -31,6 +31,8 @@ import { useDateRange, isInDateRange as isInRange, todayDDMMYYYY, ddmmyyyyToKey,
 
 const YELLOW = '#FFD500';
 const DARK = '#222';
+// "Sanal Fiş Kes" düğmeleri geçici olarak gizli (kafa karıştırıyordu). Tekrar açmak için true yapın.
+const SHOW_VIRTUAL_RECEIPT = false;
 
 // ── İnterneti test et (netinfo paketi olmadan)
 const nowTR = (): string => {
@@ -1828,9 +1830,11 @@ export default function JobDetails() {
                     <TouchableOpacity style={styles.cancelBtn} onPress={closeAddModal}>
                       <Text style={styles.cancelBtnText}>İptal</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.sanalBtn, (!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving) && { opacity: 0.4 }]} onPress={() => handleAddHaul(false)} disabled={!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving}>
-                      <Text style={styles.sanalBtnText}>Sanal Fiş Kes</Text>
-                    </TouchableOpacity>
+                    {SHOW_VIRTUAL_RECEIPT && (
+                      <TouchableOpacity style={[styles.sanalBtn, (!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving) && { opacity: 0.4 }]} onPress={() => handleAddHaul(false)} disabled={!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving}>
+                        <Text style={styles.sanalBtnText}>Sanal Fiş Kes</Text>
+                      </TouchableOpacity>
+                    )}
                     <TouchableOpacity style={[styles.printSubmitBtn, (!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving) && { opacity: 0.4 }]} onPress={() => handleAddHaul(true)} disabled={!formPlate || selectedOfferIdx === null || (isKum && !formTonage) || formSaving}>
                       <Text style={styles.printSubmitBtnText}>{formSaving ? '...' : 'Fiş Kes ve Yazdır'}</Text>
                     </TouchableOpacity>
@@ -1974,12 +1978,14 @@ export default function JobDetails() {
                     <TouchableOpacity style={styles.cancelBtn} onPress={closeManualModal}>
                       <Text style={styles.cancelBtnText}>İptal</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.manualReceiptBtn, manualSaving && { opacity: 0.4 }]}
-                      onPress={() => handleManualHaul(false)}
-                      disabled={manualSaving}>
-                      <Text style={styles.manualReceiptBtnText}>{manualSaving ? 'Kaydediliyor...' : 'Sanal Fiş Kes'}</Text>
-                    </TouchableOpacity>
+                    {SHOW_VIRTUAL_RECEIPT && (
+                      <TouchableOpacity
+                        style={[styles.manualReceiptBtn, manualSaving && { opacity: 0.4 }]}
+                        onPress={() => handleManualHaul(false)}
+                        disabled={manualSaving}>
+                        <Text style={styles.manualReceiptBtnText}>{manualSaving ? 'Kaydediliyor...' : 'Sanal Fiş Kes'}</Text>
+                      </TouchableOpacity>
+                    )}
                     <TouchableOpacity
                       style={[styles.manualSaveBtn, manualSaving && { opacity: 0.4 }]}
                       onPress={() => handleManualHaul(true)}

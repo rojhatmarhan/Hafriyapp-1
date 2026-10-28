@@ -2,7 +2,7 @@ import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 import { Text, TextInput } from 'react-native';
 import JobNotesModal from '../src/components/JobNotesModal';
-import { getJobSiteNotes, JobSiteNoteItem } from '../src/services/jobSiteNewService';
+import { getJobSiteNotes, createJobSiteNote, JobSiteNoteItem } from '../src/services/jobSiteNewService';
 
 jest.mock('../src/services/jobSiteNewService', () => ({
   getJobSiteNotes: jest.fn(),
@@ -69,11 +69,12 @@ describe('JobNotesModal', () => {
     (getJobSiteNotes as jest.Mock).mockResolvedValue([]);
   });
 
-  it('shows the three type buttons and no input card by default', async () => {
+  it('shows the four type buttons and no input card by default', async () => {
     const r = await renderModal();
     expect(hasText(r.root, '📝 Not Ekle')).toBe(true);
     expect(hasText(r.root, '⛽ Mazot Ver')).toBe(true);
     expect(hasText(r.root, '💵 Gider Ekle')).toBe(true);
+    expect(hasText(r.root, '⏱ Mesai')).toBe(true);
     expect(r.root.findAllByType(TextInput)).toHaveLength(0);
     expect(hasText(r.root, 'Kaydet')).toBe(false);
     expect(hasText(r.root, 'Kartal Şantiye')).toBe(true);
@@ -165,5 +166,42 @@ describe('JobNotesModal', () => {
     (getJobSiteNotes as jest.Mock).mockRejectedValue(new Error('500'));
     const r = await renderModal();
     expect(hasText(r.root, 'Kayıtlar yüklenemedi.')).toBe(true);
+  });
+
+  it('"Mesai" opens a card with a free-text duration field and an optional description', async () => {
+    const r = await renderModal();
+    expect(hasText(r.root, '⏱ Mesai')).toBe(true);
+    await pressByText(r.root, '⏱ Mesai');
+    expect(hasText(r.root, 'Mesai Süresi *')).toBe(true);
+    const inputs = r.root.findAllByType(TextInput);
+    expect(inputs.map(i => i.props.placeholder)).toEqual(['Örn: 2 saat', "Örn: Kepçe akşam 7'ye kadar çalıştı"]);
+    expect(inputs[0].props.keyboardType).toBeUndefined(); // sayı değil, serbest metin
+  });
+
+  it('saves Mesai with noteType 3 and the duration text; description may be empty', async () => {
+    (createJobSiteNote as jest.Mock).mockReset();
+    (createJobSiteNote as jest.Mock).mockResolvedValue({ message: 'ok' });
+    const r = await renderModal();
+    await pressByText(r.root, '⏱ Mesai');
+
+    await pressByText(r.root, '💾 Kaydet');
+    expect(hasText(r.root, 'Lütfen mesai süresini girin.')).toBe(true);
+    expect(createJobSiteNote).not.toHaveBeenCalled();
+
+    const durationInput = r.root.findAllByType(TextInput)[0];
+    await ReactTestRenderer.act(async () => {
+      durationInput.props.onChangeText('  yarım gün ');
+    });
+    await pressByText(r.root, '💾 Kaydet');
+    expect(createJobSiteNote).toHaveBeenCalledWith('tkn', 'js-1', { noteType: 3, amount: undefined, description: '', overtimeDuration: 'yarım gün' });
+  });
+
+  it('renders a Mesai note with its duration and prefills it when editing', async () => {
+    (getJobSiteNotes as jest.Mock).mockResolvedValue([note({ id: 'n1', noteType: 3, overtimeDuration: '2 saat', description: 'Akşam' })]);
+    const r = await renderModal();
+    expect(hasText(r.root, '⏱ Mesai: 2 saat')).toBe(true);
+    await pressByText(r.root, 'Düzenle');
+    expect(hasText(r.root, '✏️ Kaydı Düzenle · ⏱ Mesai')).toBe(true);
+    expect(r.root.findAllByType(TextInput).map(i => i.props.value)).toEqual(['2 saat', 'Akşam']);
   });
 });

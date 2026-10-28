@@ -6,6 +6,19 @@ Biçim: `## [Mobil versionName (versionCode/build)] — tarih` → Eklendi / Dü
 
 ## [Yayınlanmadı]
 
+### İş Notları: "Mesai" düğmesi · "Sanal Fiş Kes" gizlendi
+#### Eklendi
+- **İş Notları (`JobNotesModal`):** 4. düğme "⏱ Mesai" (düğmeler 2×2). Basınca **Mesai Süresi** (serbest metin, zorunlu) ve
+  **Açıklama** (isteğe bağlı) kutuları açılır. Listede "⏱ Mesai: 2 saat" rozeti; düzenlemede süre dolu gelir.
+  API: `noteType: 3` + `overtimeDuration` (`jobSiteNewService`).
+#### Değişti
+- **Sefer Gir ve Manuel Sefer (`JobDetails`):** "Sanal Fiş Kes" düğmeleri gizlendi (`SHOW_VIRTUAL_RECEIPT = false`); sadece
+  "Fiş Kes ve Yazdır" kalır. Sefer önce kaydedilir, yazdırma fiş penceresindeki "Yazdır" ile → yazıcısız da kayıt yapılabilir.
+  Bundan sonra seferler `isPrintedReceipt: true` kaydedilir.
+#### Uyumluluk
+- Gereken en düşük API: mesai için API 2026.10.28 (`AddJobSiteNoteOvertime` migration'ı). Eski API'de mesai kaydı
+  "Geçersiz kayıt tipi." hatası alır; diğer not türleri etkilenmez. Native değişiklik yok, yerel veri değişmedi.
+
 ### İSTAÇ Entegrasyonları (Profil → Entegrasyonlar & Döküm → İSTAÇ'tan Çek)
 #### Eklendi
 - **Profil → Entegrasyonlar (`src/screens/supplier/IntegrationsScreen.tsx`):** Firma/araç sahipleri için İSTAÇ Hafriyat Online kullanıcı adı ve şifresini kaydetme, bağlantı durumunu ve son senkron bilgisini görme, "🔄 Şimdi Güncelle" ile güvenlik kodu girmeden (sunucuda Tesseract OCR ile otomatik çözülerek) tüm sahaların döküm verilerini çekme ve entegrasyonu silme ekranı.

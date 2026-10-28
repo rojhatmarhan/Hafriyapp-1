@@ -123,9 +123,11 @@ export interface JobSiteNoteItem {
   jobSiteId: string;
   userId: string;
   userName: string;
-  noteType: number; // 0 = General, 1 = FuelGiven, 2 = Expense
+  noteType: number; // 0 = General, 1 = FuelGiven, 2 = Expense, 3 = Overtime (Mesai)
   amount?: number;
   description: string;
+  /** Mesai süresi (sadece noteType 3; serbest metin). Eski API'de yok. */
+  overtimeDuration?: string | null;
   createdDate: string;
   canManage: boolean;
 }
@@ -140,7 +142,7 @@ export const getJobSiteNotes = async (token: string, jobSiteId: string): Promise
 export const createJobSiteNote = async (
   token: string,
   jobSiteId: string,
-  data: { noteType: number; amount?: number; description: string },
+  data: { noteType: number; amount?: number; description: string; overtimeDuration?: string },
 ) => {
   const res = await api.post(`/JobSite/${jobSiteId}/notes`, data, {
     headers: { Authorization: `Bearer ${token}` },
@@ -152,7 +154,7 @@ export const updateJobSiteNote = async (
   token: string,
   jobSiteId: string,
   noteId: string,
-  data: { amount?: number; description: string },
+  data: { amount?: number; description: string; overtimeDuration?: string },
 ) => {
   const res = await api.put(`/JobSite/${jobSiteId}/notes/${noteId}`, data, {
     headers: { Authorization: `Bearer ${token}` },
