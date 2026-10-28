@@ -57,7 +57,8 @@ export default function DumpRecordDetail({ item }: { item: DumpRecord }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { borderTopWidth: 1, borderTopColor: '#ccc', borderStyle: 'dashed', marginHorizontal: 10, paddingTop: 8, paddingBottom: 10 },
+  // Android'de tek kenarda kesikli çizgi (borderStyle: 'dashed') düzgün çizilmiyor → düz ince çizgi
+  wrap: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#BDBDBD', marginHorizontal: 10, paddingTop: 8, paddingBottom: 10 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   item: { width: '50%', fontSize: 12.5, color: '#222', paddingVertical: 2, paddingRight: 6 },
   full: { width: '100%' },

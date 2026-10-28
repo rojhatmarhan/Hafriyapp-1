@@ -6,6 +6,18 @@ Biçim: `## [Mobil versionName (versionCode/build)] — tarih` → Eklendi / Dü
 
 ## [Yayınlanmadı]
 
+### Döküm listesinde farklı plaka
+- "Yükleme" sütunu "Farklı plaka: 34ABC123" (Web ile aynı); plaka sütunundaki tekrar eden "Sefer: …" satırı kalktı.
+
+
+### Düzeltildi: döküm satırı yazıları · Entegrasyonlar üst barı
+- **Android: döküm satırını açıp kapatınca yazılar hâlâ kayboluyordu.** Asıl sebep: `overflow: 'hidden'` + gölgeli kutuda kenarlık
+  kalınlığının değişmesi ve FlatList'in satır kırpması. Kenarlık artık hep aynı kalınlıkta (kapalıyken şeffaf), `overflow` yok,
+  `removeClippedSubviews={false}`; detaydaki tek kenarlı kesikli çizgi düz çizgi oldu. Telefonda açıp kapatarak denendi.
+- **Entegrasyonlar:** standart sarı uygulama başlığı açık (diğer ekranlar gibi); sayfa başlığı ve "← Geri" onun altında
+  (önceden başlık gizliydi, bar durum çubuğuna yapışıyordu).
+
+
 ### "Fiş Kes ve Yazdır" → "Ekle"
 - Sefer Gir ve Manuel Sefer pencerelerinde kaydet düğmesinin adı "Ekle" (`JobDetails`); davranış aynı (kaydeder, fiş penceresi açılır).
 

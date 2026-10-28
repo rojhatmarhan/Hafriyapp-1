@@ -120,7 +120,8 @@ export default function AppNavigator() {
         name="Integrations"
         component={IntegrationsScreen}
         options={{
-          headerShown: false,
+          // Standart sarı başlık açık (diğer profil ekranları gibi); önceden gizliydi ve sayfa barı durum çubuğuna yapışıyordu
+          title: 'ENTEGRASYONLAR',
           drawerItemStyle: { display: 'none' },
         }}
       />

@@ -423,11 +423,6 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
               {ticket}
             </Text>
           )}
-          {status === 'plateMismatch' && !!item.haulPlateNumber && (
-            <Text style={styles.mismatchText} numberOfLines={1}>
-              Sefer: {item.haulPlateNumber}
-            </Text>
-          )}
         </View>
         <View style={[styles.cell, styles.colDate]}>
           <Text style={styles.cellText}>{dt.date}</Text>
@@ -439,7 +434,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
           ) : (
             <>
               <Text style={[styles.cellText, status === 'plateMismatch' && styles.mismatchText]} numberOfLines={2}>
-                {status === 'plateMismatch' ? 'Farklı plaka' : item.jobSiteName}
+                {status === 'plateMismatch' ? `Farklı plaka${item.haulPlateNumber ? `: ${item.haulPlateNumber}` : ''}` : item.jobSiteName}
               </Text>
               <Text style={styles.subText} numberOfLines={1}>
                 {status === 'plateMismatch' ? item.jobSiteName : item.haulSerialNumber ? `Seri ${item.haulSerialNumber}` : ''}
@@ -668,6 +663,8 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         initialNumToRender={15}
+        // Android'de satır boyu değişince (detay açılınca) kırpılan satırlar boş çiziliyordu
+        removeClippedSubviews={false}
         windowSize={7}
       />
 
@@ -873,8 +870,10 @@ const styles = StyleSheet.create({
   headText: { fontSize: 12, fontWeight: '800', color: '#555', paddingHorizontal: 4 },
   stripSpace: { width: 6 },
 
-  rowWrap: { backgroundColor: '#fff', borderRadius: 10, marginBottom: 6, overflow: 'hidden', elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
-  rowWrapOpen: { borderWidth: 1.5, borderColor: '#222' },
+  // Android: satır açılıp kapanınca yazılar kayboluyordu. Sebep: overflow:'hidden' + gölge (elevation) olan kutuda kenarlık
+  // kalınlığının değişmesi. Kenarlık hep aynı kalınlıkta (kapalıyken şeffaf), overflow yok; şeridin köşeleri ayrıca yuvarlak.
+  rowWrap: { backgroundColor: '#fff', borderRadius: 10, marginBottom: 6, borderWidth: 1.5, borderColor: 'transparent', elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
+  rowWrapOpen: { borderColor: '#222' },
   rowWrapPressed: { backgroundColor: '#F6F5F2' },
   row: { flexDirection: 'row', alignItems: 'stretch', paddingRight: 10 },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
@@ -882,7 +881,7 @@ const styles = StyleSheet.create({
   statusChipActive: { backgroundColor: '#222' },
   statusChipText: { fontSize: 12, fontWeight: '700', color: '#222' },
   statusChipTextActive: { color: '#fff' },
-  strip: { width: 6 },
+  strip: { width: 6, borderTopLeftRadius: 9, borderBottomLeftRadius: 9 },
   cell: { paddingVertical: 9, paddingHorizontal: 4, justifyContent: 'center' },
   colPlate: { flex: 1.3 },
   colDate: { flex: 1 },

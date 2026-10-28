@@ -224,6 +224,7 @@ export default function IntegrationsScreen() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       {/* Üst başlık */}
+      {/* Standart sarı uygulama başlığı (CustomHeader, AppNavigator) üstte; bu bar onun altında sayfa başlığı + geri */}
       <View style={styles.topBar}>
         <View style={styles.topBarRow}>
           <TouchableOpacity style={styles.btnBack} onPress={handleBack} activeOpacity={0.8}>
@@ -413,7 +414,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F3F2F3' },
   topBar: {
     backgroundColor: '#FFF',
-    paddingTop: Platform.OS === 'ios' ? 54 : 20,
+    paddingTop: 14,
     paddingBottom: 14,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
