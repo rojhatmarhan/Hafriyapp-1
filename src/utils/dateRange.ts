@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 
 // ── Tarih aralığı filtresi (İş detayı ve Araç Yönetimi sefer listeleri ortak kullanır)
 // Tarihler "DD.MM.YYYY" metni olarak tutulur; varsayılan aralık bu ayın tamamıdır.
+// İş detayı "tüm zamanlar" ile açılır (defaultAllTime): iki uç da boş ("") = filtre yok.
 
 /** Bugünün TR (UTC+3) tarihi, "DD.MM.YYYY" */
 export const todayDDMMYYYY = (): string => {
@@ -53,17 +54,26 @@ export const isInDateRange = (timeOfHaul: string | undefined, startKey: number |
 
 /**
  * Tarih aralığı durumu: başlangıç bitişten sonra olamaz (gerekirse diğer ucu eşitler), varsayılan bu ayın tamamı.
+ * defaultAllTime: varsayılan "tüm zamanlar" (iki uç boş). Boşken bir uç seçilirse diğeri de doldurulur
+ * (başlangıç → bitiş bugün, bitiş → başlangıç aynı gün) ki ekran ve Excel aynı aralığı kullansın.
  */
-export const useDateRange = () => {
-  const [rangeStart, setRangeStart] = useState<string>(monthStartDDMMYYYY);
-  const [rangeEnd, setRangeEnd] = useState<string>(monthEndDDMMYYYY);
+export const useDateRange = (options?: { defaultAllTime?: boolean }) => {
+  const allTime = options?.defaultAllTime === true;
+  const defaultStart = useCallback(() => (allTime ? '' : monthStartDDMMYYYY()), [allTime]);
+  const defaultEnd = useCallback(() => (allTime ? '' : monthEndDDMMYYYY()), [allTime]);
+  const [rangeStart, setRangeStart] = useState<string>(defaultStart);
+  const [rangeEnd, setRangeEnd] = useState<string>(defaultEnd);
 
   const changeStart = useCallback((v: string) => {
     setRangeStart(v);
     setRangeEnd(prevEnd => {
       const s = ddmmyyyyToKey(v);
       const e = ddmmyyyyToKey(prevEnd);
-      return s !== null && e !== null && s > e ? v : prevEnd;
+      if (e === null) {
+        const today = todayDDMMYYYY();
+        return s !== null && s > (ddmmyyyyToKey(today) ?? 0) ? v : today;
+      }
+      return s !== null && s > e ? v : prevEnd;
     });
   }, []);
 
@@ -72,21 +82,22 @@ export const useDateRange = () => {
     setRangeStart(prevStart => {
       const s = ddmmyyyyToKey(prevStart);
       const e = ddmmyyyyToKey(v);
-      return s !== null && e !== null && e < s ? v : prevStart;
+      if (s === null) return v;
+      return e !== null && e < s ? v : prevStart;
     });
   }, []);
 
   const resetRange = useCallback(() => {
-    setRangeStart(monthStartDDMMYYYY());
-    setRangeEnd(monthEndDDMMYYYY());
-  }, []);
+    setRangeStart(defaultStart());
+    setRangeEnd(defaultEnd());
+  }, [defaultStart, defaultEnd]);
 
   const setRange = useCallback((start: string, end: string) => {
     setRangeStart(start);
     setRangeEnd(end);
   }, []);
 
-  const isDefaultRange = rangeStart === monthStartDDMMYYYY() && rangeEnd === monthEndDDMMYYYY();
+  const isDefaultRange = rangeStart === defaultStart() && rangeEnd === defaultEnd();
   const startKey = ddmmyyyyToKey(rangeStart);
   const endKey = ddmmyyyyToKey(rangeEnd);
 

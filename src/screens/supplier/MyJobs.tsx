@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useCallback, useRef } from 'react';
 import { API_BASE_URL } from '../../services/api';
 import { excelIndir, excelDosyaAdi, excelTarihParcasi } from '../../utils/excelDownload';
+import { formatJobDumpSummary } from '../../utils/dumpFormat';
 import {
   View,
   Text,
@@ -55,6 +56,10 @@ type Job = {
   showHaulsToVehicleOwners: boolean;
   fuelLiters: number;
   sandFuelLiters: number;
+  // Döküm özeti (yeni API; eski API'de yok → kartta gösterilmez)
+  dumpAvgBrutKg?: number | null;
+  dumpTotalFee?: number | null;
+  dumpMissingCount?: number | null;
 };
 
 type JobUI = {
@@ -349,6 +354,19 @@ export default function MyJobs() {
             <Text style={styles.info}>Ödemesi yapılmayan: <Text style={[styles.infoBold, { color: '#E53935' }]}>{item.unpaid}</Text></Text>
           </View>
 
+          {/* Döküm özeti: sadece döküm fişi girilmiş seferi olan işlerde (ortalama dolu tonaj) */}
+          {(() => {
+            const dump = formatJobDumpSummary(item.raw);
+            if (!dump) return null;
+            return (
+              <View style={styles.dumpBox}>
+                {!!dump.avg && <Text style={styles.dumpText}>Ortalama tonaj: <Text style={styles.infoBold}>{dump.avg}</Text></Text>}
+                <Text style={styles.dumpText}>Toplam döküm: <Text style={styles.infoBold}>{dump.total}</Text></Text>
+                {!!dump.missing && <Text style={styles.dumpMissing}>{dump.missing}</Text>}
+              </View>
+            );
+          })()}
+
         </View>
 
         <View style={styles.right}>
@@ -629,6 +647,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
 
+  dumpBox: { marginTop: 8, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#E0E0E0', borderStyle: 'dashed' },
+  dumpText: { fontSize: 12.5, color: '#333' },
+  dumpMissing: { fontSize: 12, color: '#888', marginTop: 1 },
   info: {
     fontSize: 12,
     color: '#666',

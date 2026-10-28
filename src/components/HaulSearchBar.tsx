@@ -4,7 +4,7 @@ import CalendarDateButton from './CalendarDateButton';
 import { QrScanIcon } from './MiniIcons';
 
 // ── Sefer listesi arama çubuğu (İş detayı ve Araç Yönetimi ortak): solda QR, ortada arama, sağda başlangıç ▸ bitiş tarihi.
-// Altında seçili aralık; varsayılan aralıktan farklıysa mavi ve ✕ ile sıfırlanır.
+// Altında seçili aralık ("Tüm zamanlar" = iki uç boş); varsayılan aralıktan farklıysa mavi ve ✕ ile sıfırlanır.
 // Not: CalendarDateButton iOS'ta Modal kullanır — bu bileşeni başka bir Modal'ın içinde kullanmayın.
 type Props = {
   query: string;
@@ -40,7 +40,7 @@ export default function HaulSearchBar({ query, onQueryChange, onQrPress, placeho
       </View>
       <View style={styles.infoRow}>
         <Text style={[styles.infoText, !isDefaultRange && styles.infoTextActive]}>
-          {rangeStart} – {rangeEnd}
+          {rangeStart || rangeEnd ? `${rangeStart || '…'} – ${rangeEnd || '…'}` : 'Tüm zamanlar'}
         </Text>
         {!isDefaultRange && (
           <TouchableOpacity onPress={onResetRange} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Tarih aralığını sıfırla">

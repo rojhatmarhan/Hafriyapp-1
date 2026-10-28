@@ -4,6 +4,7 @@ import RNBlobUtil from 'react-native-blob-util';
 import { useNavigation } from '@react-navigation/native';
 
 import HaulSearchBar from '../../components/HaulSearchBar';
+import DumpRecordDetail from '../../components/DumpRecordDetail';
 import { QRScannerModal, ScannedQRData } from '../../components/QRScannerModal';
 import { extractDumpTicketNo } from '../../components/DumpTicketInput';
 import { useAppSelector } from '../../hooks';
@@ -46,6 +47,9 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
   const [source, setSource] = useState<DumpSource>('');
   const [jobSiteId, setJobSiteId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  // Eşleşme filtresi ('' = tümü) ve açık satır (tıklayınca detay)
+  const [status, setStatus] = useState<'' | 'matched' | 'unmatched' | 'plateMismatch'>('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const { rangeStart, rangeEnd, isDefaultRange, changeStart, changeEnd, resetRange } = useDateRange();
 
@@ -98,8 +102,9 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
       endDate: ddmmyyyyToYMD(rangeEnd),
       jobSiteId,
       search: debouncedSearch,
+      status: status || undefined,
     }),
-    [companyId, source, rangeStart, rangeEnd, jobSiteId, debouncedSearch],
+    [companyId, source, rangeStart, rangeEnd, jobSiteId, debouncedSearch, status],
   );
 
   const errorMessage = (e: any): string => e?.response?.data?.errors?.[0] || e?.response?.data?.message || 'Döküm verileri yüklenemedi. Lütfen tekrar deneyin.';
@@ -422,7 +427,11 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
     const status = getDumpMatchStatus(item.matchStatus);
     const dt = formatDumpDateTime(item.islemTarihi);
     const ticket = item.etiketNo || item.kartKodu || item.fisNo || '';
+    const expanded = expandedId === item.id;
+    // Ton sütunu: dolu (brüt) ağırlık, yoksa (eski API) net
+    const listKg = item.brutKg ?? item.netKg;
     return (
+      <TouchableOpacity activeOpacity={0.8} onPress={() => setExpandedId(expanded ? null : item.id)} style={[styles.rowWrap, expanded && styles.rowWrapOpen]} accessibilityLabel="Fiş detayını aç/kapat">
       <View style={styles.row}>
         <View style={[styles.strip, { backgroundColor: dumpStatusColor(status) }]} />
         <View style={[styles.cell, styles.colPlate]}>
@@ -445,19 +454,26 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
           {!!dt.time && <Text style={styles.subText}>{dt.time}</Text>}
         </View>
         <View style={[styles.cell, styles.colJob]}>
-          {item.jobSiteName ? (
-            <Text style={styles.cellText} numberOfLines={2}>
-              {item.jobSiteName}
-            </Text>
+          {status === 'unmatched' || !item.jobSiteName ? (
+            <Text style={styles.unmatchedText}>Bulunamadı</Text>
           ) : (
-            <Text style={styles.unmatchedText}>Eşleşmedi</Text>
+            <>
+              <Text style={[styles.cellText, status === 'plateMismatch' && styles.mismatchText]} numberOfLines={2}>
+                {status === 'plateMismatch' ? 'Farklı plaka' : item.jobSiteName}
+              </Text>
+              <Text style={styles.subText} numberOfLines={1}>
+                {status === 'plateMismatch' ? item.jobSiteName : item.haulSerialNumber ? `Seri ${item.haulSerialNumber}` : ''}
+              </Text>
+            </>
           )}
         </View>
         <View style={[styles.cell, styles.colAmount]}>
-          <Text style={styles.tonText}>{formatTonnes(item.netKg)}</Text>
-          <Text style={styles.subText}>({formatFee(item.fisBedeli)})</Text>
+          <Text style={styles.tonText}>{formatTonnes(listKg)} Ton</Text>
+          <Text style={styles.subText}>{formatFee(item.fisBedeli)} ₺</Text>
         </View>
       </View>
+      {expanded && <DumpRecordDetail item={item} />}
+      </TouchableOpacity>
     );
   };
 
@@ -574,14 +590,29 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
             <View style={styles.kpiCard}>
               <Text style={styles.kpiLabel}>Ortalama Tonaj</Text>
               <Text style={styles.kpiValue} numberOfLines={1} adjustsFontSizeToFit>
-                {formatKg(summary?.averageNetKg ?? 0)}
+                {formatKg(summary?.averageBrutKg || summary?.averageNetKg || 0)}
               </Text>
             </View>
           </View>
+          {/* Eşleşme filtresi: kesilen seferlerle eşleşen / eşleşmeyen fişler */}
           {summary && (
-            <Text style={styles.kpiSub}>
-              <Text style={{ color: '#2E7D32' }}>✓ eşleşen {summary.matchedCount}</Text> · <Text style={{ color: '#C62828' }}>⚠ farklı plaka {summary.plateMismatchCount}</Text> · <Text style={{ color: '#888' }}>sefer yok {summary.unmatchedCount}</Text>
-            </Text>
+            <View style={styles.statusRow}>
+              {(
+                [
+                  ['', 'Tümü', null],
+                  ['matched', 'Eşleşen', summary.matchedCount],
+                  ['unmatched', 'Eşleşmeyen', summary.unmatchedCount],
+                  ['plateMismatch', 'Farklı plaka', summary.plateMismatchCount],
+                ] as const
+              ).map(([key, label, count]) => (
+                <TouchableOpacity key={key || 'all'} style={[styles.statusChip, status === key && styles.statusChipActive]} onPress={() => setStatus(key)} activeOpacity={0.8}>
+                  <Text style={[styles.statusChipText, status === key && styles.statusChipTextActive]}>
+                    {label}
+                    {count !== null ? ` (${count})` : ''}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           )}
 
           <Text style={styles.sectionTitle}>Son Giriş Yapan Araçlar</Text>
@@ -855,7 +886,14 @@ const styles = StyleSheet.create({
   headText: { fontSize: 12, fontWeight: '800', color: '#555', paddingHorizontal: 4 },
   stripSpace: { width: 6 },
 
-  row: { flexDirection: 'row', alignItems: 'stretch', backgroundColor: '#fff', borderRadius: 10, marginBottom: 6, overflow: 'hidden', paddingRight: 10, elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
+  rowWrap: { backgroundColor: '#fff', borderRadius: 10, marginBottom: 6, overflow: 'hidden', elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
+  rowWrapOpen: { borderWidth: 1.5, borderColor: '#222' },
+  row: { flexDirection: 'row', alignItems: 'stretch', paddingRight: 10 },
+  statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  statusChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1.5, borderColor: '#222', backgroundColor: '#fff' },
+  statusChipActive: { backgroundColor: '#222' },
+  statusChipText: { fontSize: 12, fontWeight: '700', color: '#222' },
+  statusChipTextActive: { color: '#fff' },
   strip: { width: 6 },
   cell: { paddingVertical: 9, paddingHorizontal: 4, justifyContent: 'center' },
   colPlate: { flex: 1.3 },
@@ -866,7 +904,7 @@ const styles = StyleSheet.create({
   cellText: { fontSize: 12.5, fontWeight: '600', color: '#222' },
   subText: { fontSize: 11.5, color: '#777', marginTop: 2 },
   mismatchText: { fontSize: 11, color: '#C62828', fontWeight: '700', marginTop: 2 },
-  unmatchedText: { fontSize: 12.5, color: '#9E9E9E', fontWeight: '600' },
+  unmatchedText: { fontSize: 12.5, color: '#C62828', fontWeight: '800' },
   tonText: { fontSize: 13.5, fontWeight: '800', color: '#111' },
 
   emptyBox: { alignItems: 'center', paddingVertical: 30, paddingHorizontal: 16 },

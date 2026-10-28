@@ -225,7 +225,7 @@ export default function JobDetails() {
   const [hauls, setHauls] = useState<HaulApi[]>([]);
   const [plateFilter, setPlateFilter] = useState('');
   // Tarih aralığı filtresi (DD.MM.YYYY, dahil). Varsayılan: bu ayın 1'i → ayın son günü
-  const { rangeStart, rangeEnd, startKey: rangeStartKey, endKey: rangeEndKey, isDefaultRange, changeStart: handleRangeStartChange, changeEnd: handleRangeEndChange, resetRange: resetDateRange, setRange } = useDateRange();
+  const { rangeStart, rangeEnd, startKey: rangeStartKey, endKey: rangeEndKey, isDefaultRange, changeStart: handleRangeStartChange, changeEnd: handleRangeEndChange, resetRange: resetDateRange, setRange } = useDateRange({ defaultAllTime: true }); // iş içinde varsayılan: tüm zamanlar
   const [cachedCompanyLogoPath, setCachedCompanyLogoPath] = useState<string | null>(null);
   const [showHaulsToOwners, setShowHaulsToOwners] = useState<boolean>(job?.isHaulVisibleToVehicleOwners ?? job?.showHaulsToVehicleOwners ?? true);
   const [loading, setLoading] = useState(true);

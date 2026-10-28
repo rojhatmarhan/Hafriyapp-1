@@ -435,15 +435,16 @@ export default function JobNotesModal({ visible, onClose, jobSiteId, token, jobN
       }
       const path = res.path();
       if (Platform.OS === 'ios') {
-        // openDocument ana ekrandan sunulur; bu pencere (Modal) açıkken iOS onu sessizce yutar ve "hiçbir şey olmaz".
-        // Paylaş penceresi en üstteki ekrandan açılır: Modal açık kalır, kullanıcı Dosyalar'a kaydeder / Excel'de açar / gönderir.
+        // Önizleme (openDocument) ana ekrandan sunulur; bu pencere (Modal) açıkken iOS onu sessizce yutar.
+        // Önce pencereyi kapat, kapanma animasyonu bitince önizlemeyi aç (JobDetails Excel'iyle aynı yöntem).
+        // Kaydetme/gönderme önizlemenin paylaş düğmesinden yapılır.
+        handleClose();
+        await new Promise<void>(r => setTimeout(r, 450));
         try {
-          await Share.share({ url: path.startsWith('file://') ? path : `file://${path}` });
-        } catch {
-          // Paylaş açılamazsa: pencereyi kapat, kapanma animasyonu bitince belgeyi aç (JobDetails Excel'iyle aynı yöntem)
-          handleClose();
-          await new Promise<void>(r => setTimeout(r, 450));
           await RNBlobUtil.ios.openDocument(path);
+        } catch {
+          // Önizleme açılamazsa Paylaş penceresi (Dosyalar'a kaydet / Excel'de aç / gönder)
+          await Share.share({ url: path.startsWith('file://') ? path : `file://${path}` });
         }
       } else {
         await RNBlobUtil.android.actionViewIntent(path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

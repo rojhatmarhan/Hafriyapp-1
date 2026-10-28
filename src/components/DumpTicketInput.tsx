@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, TextInput, TouchableOpacity, StyleSheet, StyleProp, ViewStyle } from 'react-native';
+import React, { useRef } from 'react';
+import { TextInput, TouchableOpacity, Pressable, StyleSheet, StyleProp, ViewStyle } from 'react-native';
 import { QrScanIcon } from './MiniIcons';
 
 // ── Döküm fişi numarası: Aztec kodlarda "12345-..." biçiminden numarayı ayıklar
@@ -21,14 +21,19 @@ type Props = {
 };
 
 // ── Kompakt "Döküm fişi…" alanı + QR/barkod tarama butonu
-const DumpTicketInput: React.FC<Props> = ({ value, onChangeText, onScanPress, editable = true, style }) => (
-  <View style={[styles.wrap, !editable && styles.disabled, style]}>
-    <TextInput value={value} onChangeText={onChangeText} style={styles.input} placeholder="Döküm fişi…" placeholderTextColor="#AAA" maxLength={50} autoCapitalize="characters" autoCorrect={false} editable={editable} />
-    <TouchableOpacity style={styles.scanBtn} onPress={onScanPress} disabled={!editable} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }} accessibilityLabel="Döküm fişi tara">
-      <QrScanIcon size={26} color="#222" />
-    </TouchableOpacity>
-  </View>
-);
+// iOS: yazı alanı kutunun tamamını kaplar ve kutunun boş yerine dokunmak da odaklar. Önceden alan tek satır yüksekliğindeydi;
+// üstüne/altına dokunuş pencerenin "klavyeyi kapat" alanına gidiyor, klavye ancak birkaç denemede açılıyordu.
+const DumpTicketInput: React.FC<Props> = ({ value, onChangeText, onScanPress, editable = true, style }) => {
+  const inputRef = useRef<TextInput>(null);
+  return (
+    <Pressable style={[styles.wrap, !editable && styles.disabled, style]} onPress={() => editable && inputRef.current?.focus()} accessible={false}>
+      <TextInput ref={inputRef} value={value} onChangeText={onChangeText} style={styles.input} placeholder="Döküm fişi…" placeholderTextColor="#AAA" maxLength={50} autoCapitalize="characters" autoCorrect={false} editable={editable} />
+      <TouchableOpacity style={styles.scanBtn} onPress={onScanPress} disabled={!editable} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }} accessibilityLabel="Döküm fişi tara">
+        <QrScanIcon size={26} color="#222" />
+      </TouchableOpacity>
+    </Pressable>
+  );
+};
 
 export default DumpTicketInput;
 
@@ -48,6 +53,7 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.5, backgroundColor: '#f0f0f0' },
   input: {
     flex: 1,
+    alignSelf: 'stretch',
     fontSize: 13.5,
     fontWeight: '600',
     color: '#222',

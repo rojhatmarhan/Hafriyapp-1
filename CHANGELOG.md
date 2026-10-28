@@ -6,6 +6,29 @@ Biçim: `## [Mobil versionName (versionCode/build)] — tarih` → Eklendi / Dü
 
 ## [Yayınlanmadı]
 
+### Döküm listesi sade ve açılır · iş kartında döküm özeti · iOS döküm fişi kutusu
+#### Değişti
+- **İşlerim → Döküm (`DumpOverview`):** satıra dokununca detay açılır (`DumpRecordDetail`: kabul belgesi, toplam/dara/net, bedel, kart
+  kodu, fiş no, çıkış, saha, yük tipi, ATS, operatör, eşleşen sefer). "Yükleme" sütunu iş + seri no, eşleşmeyende kırmızı "Bulunamadı".
+  Ton sütunu ve Ortalama Tonaj dolu (brüt) ağırlık (eski API'de net). Eşleşme filtresi: Tümü / Eşleşen / Eşleşmeyen / Farklı plaka.
+- **İşlerim kartı:** "Ortalama tonaj · Toplam döküm · (N seferin verisi alınamadı)" (`formatJobDumpSummary`; sadece döküm fişi girilmiş
+  seferi olan işlerde).
+#### Düzeltildi
+- **iOS: Döküm fişi kutusu bazen dokunuşa cevap vermiyordu** (`DumpTicketInput`): yazı alanı tek satır yüksekliğindeydi, kutunun
+  üstüne/altına dokunuş "klavyeyi kapat" alanına gidiyordu. Artık alan kutuyu kaplar, kutunun boş yerine dokunmak da odaklar.
+#### Uyumluluk
+- Gereken en düşük API: yeni alanlar için API 2026.10.28; eski API'de detayda sadece eski alanlar, kartta özet görünmez. Native değişiklik yok.
+
+### İş içi tarih filtresi "Tüm zamanlar" · İş Notları Excel'i yine önizlemeyle açılır
+#### Değişti
+- **İş detayı (`JobDetails`):** sefer listesinin tarih filtresi varsayılan olarak **Tüm zamanlar** (önceden bu ay). Bir uç seçilince
+  diğeri doldurulur (başlangıç → bitiş bugün; bitiş → başlangıç aynı gün), ✕ tüm zamanlara döner. Excel tarih boşken tüm seferleri indirir.
+  Araç Yönetimi ve Döküm ekranları bu ay varsayılanıyla kaldı (`useDateRange({ defaultAllTime })`, `HaulSearchBar` "Tüm zamanlar").
+- **İş Notları → Excel (iOS):** Paylaş penceresi yerine yine **önizleme** açılır (önce notlar penceresi kapanır, sonra önizleme);
+  kaydet/gönder önizlemenin paylaş düğmesinden. Önizleme açılamazsa Paylaş penceresi. Android değişmedi.
+#### Uyumluluk
+- API değişmedi; native değişiklik yok, yerel veri değişmedi.
+
 ### İş Notları: "Mesai" düğmesi · "Sanal Fiş Kes" gizlendi
 #### Eklendi
 - **İş Notları (`JobNotesModal`):** 4. düğme "⏱ Mesai" (düğmeler 2×2). Basınca **Mesai Süresi** (serbest metin, zorunlu) ve

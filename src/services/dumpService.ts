@@ -8,6 +8,8 @@ export type DumpSummary = {
   totalNetKg: number;
   totalFee: number;
   averageNetKg: number;
+  /** Ortalama dolu (brüt) kg; eski API'de 0 → ekran net ortalamaya düşer */
+  averageBrutKg: number;
   matchedCount: number;
   plateMismatchCount: number;
   unmatchedCount: number;
@@ -57,6 +59,15 @@ export type DumpRecord = {
   haulTimeOfHaul?: string | null;
   jobSiteId?: string | null;
   jobSiteName?: string | null;
+  // Satır detayı (yeni API; eski API'de yok)
+  kabulBelgesiNo?: string | null;
+  brutKg?: number | null;
+  daraKg?: number | null;
+  cikisTarihi?: string | null;
+  yukTipi?: string | null;
+  ats?: string | null;
+  operator?: string | null;
+  sourceSite?: string | null;
 };
 
 export type DumpRecordPage = {
@@ -80,6 +91,7 @@ export const getDumpSummary = async (params: DumpQueryParams): Promise<DumpSumma
     totalNetKg: num(d.totalNetKg),
     totalFee: num(d.totalFee),
     averageNetKg: num(d.averageNetKg),
+    averageBrutKg: num(d.averageBrutKg),
     matchedCount: num(d.matchedCount),
     plateMismatchCount: num(d.plateMismatchCount),
     unmatchedCount: num(d.unmatchedCount),

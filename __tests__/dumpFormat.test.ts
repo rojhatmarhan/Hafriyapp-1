@@ -1,4 +1,4 @@
-import { getDumpStatus, formatDumpAmounts, formatDumpLine, formatDumpReceiptValue } from '../src/utils/dumpFormat';
+import { getDumpStatus, formatDumpAmounts, formatDumpLine, formatDumpReceiptValue, formatJobDumpSummary } from '../src/utils/dumpFormat';
 
 describe('getDumpStatus', () => {
   it('maps known statuses case/whitespace-insensitively', () => {
@@ -95,5 +95,24 @@ describe('formatDumpReceiptValue', () => {
     expect(formatDumpReceiptValue({ dumpStatus: 'x' })).toBeNull();
     expect(formatDumpReceiptValue({})).toBeNull();
     expect(formatDumpReceiptValue(null)).toBeNull();
+  });
+});
+
+describe('formatJobDumpSummary', () => {
+  it('iş kartı satırları: ortalama dolu tonaj, toplam döküm, verisi alınamayan sefer', () => {
+    expect(formatJobDumpSummary({ dumpAvgBrutKg: 42210, dumpTotalFee: 1243765.78, dumpMissingCount: 7 })).toEqual({
+      avg: '42,2 Ton',
+      total: '1.243.765,78₺',
+      missing: '(7 seferin verisi alınamadı)',
+    });
+  });
+
+  it('eşleşen kayıt yoksa ortalama, eksik sefer yoksa not gösterilmez', () => {
+    expect(formatJobDumpSummary({ dumpAvgBrutKg: null, dumpTotalFee: 0, dumpMissingCount: 0 })).toEqual({ avg: null, total: '0,00₺', missing: null });
+  });
+
+  it('alan yoksa (eski API / döküm fişi girilmemiş) null', () => {
+    expect(formatJobDumpSummary({})).toBeNull();
+    expect(formatJobDumpSummary(null)).toBeNull();
   });
 });
