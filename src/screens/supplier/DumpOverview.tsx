@@ -483,6 +483,14 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
             <Text style={styles.jobFilterClear}>✕</Text>
           </TouchableOpacity>
         )}
+        <TouchableOpacity
+          style={[styles.istacPullBtn, syncingIstac && styles.istacPullBtnDisabled]}
+          onPress={pullFromIstac}
+          disabled={syncingIstac || downloading || uploading}
+          activeOpacity={0.85}
+          accessibilityLabel="İSTAÇ'tan döküm verilerini çek">
+          {syncingIstac ? <ActivityIndicator size="small" color="#1B5E20" /> : <Text style={styles.istacPullBtnText}>🔄 İSTAÇ'tan Çek</Text>}
+        </TouchableOpacity>
       </View>
 
       {/* Sütun başlıkları */}

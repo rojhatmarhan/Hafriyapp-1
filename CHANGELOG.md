@@ -6,6 +6,10 @@ Biçim: `## [Mobil versionName (versionCode/build)] — tarih` → Eklendi / Dü
 
 ## [Yayınlanmadı]
 
+### Döküm → Fişler: "İSTAÇ'tan Çek" düğmesi geri geldi
+- "İşe Göre Filtrele"nin hemen sağında yine "🔄 İSTAÇ'tan Çek" düğmesi var (sekmeli düzende sadece "Yükle / İndir" sekmesinde kalmıştı;
+  orada da duruyor). Native değişiklik yok. iOS build 16 → 17.
+
 ### Döküm listesinde farklı plaka
 - "Yükleme" sütunu "Farklı plaka: 34ABC123" (Web ile aynı); plaka sütunundaki tekrar eden "Sefer: …" satırı kalktı.
 
