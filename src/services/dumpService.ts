@@ -122,6 +122,10 @@ export const buildDumpExportUrl = (params: DumpQueryParams): string => `${API_BA
 /** Eski API (uç yok) mu? */
 export const isEndpointMissing = (e: any): boolean => e?.response?.status === 404;
 
+// İSTAÇ bilgileri kayıtlı değil: API 404 + Türkçe mesaj döner ("Önce İSTAÇ kullanıcı adı ve şifresini kaydediniz.").
+// Uç hiç yoksa (eski sunucu) 404'ün gövdesinde mesaj olmaz → isEndpointMissing.
+export const isIstacNotConfigured = (e: any): boolean => e?.response?.status === 404 && !!e?.response?.data?.errors?.[0];
+
 // ── Para yatırma (Hesapta Kalan). Eski API'de uçlar yok (404) → isEndpointMissing ile yakalanır.
 
 /** 200 dönüp isSuccess:false gelirse de API mesajıyla hata fırlat (ekran errors[0]'ı gösterir). */

@@ -11,7 +11,7 @@ import { useAppSelector } from '../../hooks';
 import { useStickySearch } from '../../hooks/useStickySearch';
 import { useDateRange, ddmmyyyyToYMD, todayDDMMYYYY } from '../../utils/dateRange';
 import { DumpSource, dumpSourceTitle, formatTL, formatKg, formatTonnes, formatFee, formatDumpDateTime, getDumpMatchStatus, dumpStatusColor, DumpQueryParams, dumpSourceLabel, parseTurkishAmount, isValidDDMMYYYY, depositDateToIso, formatBalanceSubtext } from '../../utils/dumpFormat';
-import { getDumpSummary, getDumpRecords, buildDumpExportUrl, isEndpointMissing, DumpSummary, DumpRecord, getDeposits, addDeposit, deleteDeposit, DumpDeposit, uploadDumpExcel, formatImportResult, syncIstac, formatIstacSyncSummary } from '../../services/dumpService';
+import { getDumpSummary, getDumpRecords, buildDumpExportUrl, isEndpointMissing, DumpSummary, DumpRecord, getDeposits, addDeposit, deleteDeposit, DumpDeposit, uploadDumpExcel, formatImportResult, syncIstac, formatIstacSyncSummary, isIstacNotConfigured } from '../../services/dumpService';
 
 // ── İşlerim → Döküm: döküm sahası (Cebeci/KİG, İSTAÇ) Excel verilerinin özeti ve listesi.
 // Ekran Modal içinde değil; kaynak/iş seçimi ve QR tarama ekran seviyesinde Modal kullanır.
@@ -282,6 +282,16 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
       Alert.alert(res.plateMismatchRows > 0 ? '⚠️ İSTAÇ Güncellendi' : '✅ İSTAÇ Güncellendi', formatIstacSyncSummary(res));
       loadAll();
     } catch (e: any) {
+      // İSTAÇ bilgileri kayıtlı değil: API mesajlı 404 döner (uç yoksa gövdesiz 404 → aşağıdaki eski mesaj)
+      if (isIstacNotConfigured(e)) {
+        Alert.alert('İSTAÇ Bilgileri Gerekli', `${e.response.data.errors[0]}
+
+İSTAÇ Hafriyat Online kullanıcı adı ve şifrenizi girdikten sonra verileriniz otomatik çekilir.`, [
+          { text: 'Vazgeç', style: 'cancel' },
+          { text: 'Bilgileri Gir', onPress: () => navigation.navigate('Integrations', { companyId, from: 'Dump' }) },
+        ]);
+        return;
+      }
       if (isEndpointMissing(e)) {
         Alert.alert('Bilgi', 'Bu özellik için sunucu güncellemesi gerekiyor.');
         return;
@@ -292,7 +302,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
           { text: 'Vazgeç', style: 'cancel' },
           {
             text: 'Entegrasyonlara Git',
-            onPress: () => navigation.navigate('Integrations', { companyId }),
+            onPress: () => navigation.navigate('Integrations', { companyId, from: 'Dump' }),
           },
         ]);
       } else {
