@@ -84,3 +84,4 @@ build_outputs/
 # Yerel cihaz/simülatör derleme çıktıları (xcodebuild -derivedDataPath)
 ios/build_device/
 ios/build_sim/
+ios/build_sim_arm64/

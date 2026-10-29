@@ -10,7 +10,7 @@ import { useAppSelector } from '../../hooks';
 import { useStickySearch } from '../../hooks/useStickySearch';
 import { useDateRange, ddmmyyyyToYMD, todayDDMMYYYY } from '../../utils/dateRange';
 import { DumpSource, dumpSourceTitle, formatTL, formatKg, formatTonnes, formatFee, formatDumpDateTime, getDumpMatchStatus, dumpStatusColor, DumpQueryParams, dumpSourceLabel, parseTurkishAmount, isValidDDMMYYYY, depositDateToIso, formatBalanceSubtext } from '../../utils/dumpFormat';
-import { getDumpSummary, getDumpRecords, buildDumpExportUrl, isEndpointMissing, DumpSummary, DumpRecord, getDeposits, addDeposit, deleteDeposit, DumpDeposit, uploadDumpExcel, formatImportResult, syncIstac, formatIstacSyncSummary } from '../../services/dumpService';
+import { getDumpSummary, getDumpRecords, buildDumpExportUrl, isEndpointMissing, DumpSummary, DumpRecord, getDeposits, addDeposit, deleteDeposit, DumpDeposit, uploadDumpExcel, formatImportResult, syncIstac, formatIstacSyncSummary, isIstacNotConfigured } from '../../services/dumpService';
 
 // ── İşlerim → Döküm: döküm sahası (Cebeci/KİG, İSTAÇ) Excel verilerinin özeti ve listesi.
 // Ekran Modal içinde değil; kaynak/iş seçimi ve QR tarama ekran seviyesinde Modal kullanır.
@@ -45,6 +45,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
 
   const [source, setSource] = useState<DumpSource>('');
   const [jobSiteId, setJobSiteId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const { rangeStart, rangeEnd, isDefaultRange, changeStart, changeEnd, resetRange } = useDateRange();
@@ -276,6 +277,13 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
       Alert.alert(res.plateMismatchRows > 0 ? '⚠️ İSTAÇ Güncellendi' : '✅ İSTAÇ Güncellendi', formatIstacSyncSummary(res));
       loadAll();
     } catch (e: any) {
+      if (isIstacNotConfigured(e)) {
+        Alert.alert('İSTAÇ Bilgileri Gerekli', `${e.response.data.errors[0]}\n\nİSTAÇ Hafriyat Online kullanıcı adı ve şifrenizi girdikten sonra verileriniz otomatik çekilir.`, [
+          { text: 'Vazgeç', style: 'cancel' },
+          { text: 'Bilgileri Gir', onPress: () => navigation.navigate('Integrations', { companyId, from: 'Dump' }) },
+        ]);
+        return;
+      }
       if (isEndpointMissing(e)) {
         Alert.alert('Bilgi', 'Bu özellik için sunucu güncellemesi gerekiyor.');
         return;
@@ -286,7 +294,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
           { text: 'Vazgeç', style: 'cancel' },
           {
             text: 'Entegrasyonlara Git',
-            onPress: () => navigation.navigate('Integrations', { companyId }),
+            onPress: () => navigation.navigate('Integrations', { companyId, from: 'Dump' }),
           },
         ]);
       } else {
@@ -418,46 +426,101 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
     );
   }
 
+  // Satıra dokununca altında fiş detayı açılır (web'deki döküm listesiyle aynı); tekrar dokununca kapanır
+  const renderRecordDetail = (item: DumpRecord) => {
+    const exit = formatDumpDateTime(item.cikisTarihi);
+    const haulAt = formatDumpDateTime(item.haulTimeOfHaul);
+    const lines: [string, string][] = [];
+    if (item.kabulBelgesiNo) lines.push(['Kabul belgesi', item.kabulBelgesiNo]);
+    if (item.brutKg != null) lines.push(['Toplam', formatKg(item.brutKg)]);
+    if (item.daraKg != null) lines.push(['Dara', formatKg(item.daraKg)]);
+    lines.push(['Net', formatKg(item.netKg)]);
+    lines.push(['Bedel', formatTL(item.fisBedeli)]);
+    if (item.etiketNo) lines.push(['Etiket no', item.etiketNo]);
+    if (item.kartKodu) lines.push(['Kart kodu', item.kartKodu]);
+    if (item.fisNo) lines.push(['Fiş no', item.fisNo]);
+    if (exit.date) lines.push(['Çıkış', `${exit.date} ${exit.time}`.trim()]);
+    lines.push(['Saha', item.sourceSite || dumpSourceLabel(item.sourceFormat) || '-']);
+    if (item.yukTipi) lines.push(['Yük tipi', item.yukTipi]);
+    if (item.ats) lines.push(['ATS', item.ats]);
+    if (item.operator) lines.push(['Operatör', item.operator]);
+    return (
+      <View style={styles.detail}>
+        {lines.map(([label, value]) => (
+          <View key={label} style={styles.detailLine}>
+            <Text style={styles.detailLabel}>{label}</Text>
+            <Text style={styles.detailValue} selectable>
+              {value}
+            </Text>
+          </View>
+        ))}
+        {item.haulId ? (
+          <View style={styles.detailHaul}>
+            <Text style={styles.detailHaulTitle}>
+              Sefer: <Text style={getDumpMatchStatus(item.matchStatus) === 'plateMismatch' ? styles.mismatchText : undefined}>{item.haulPlateNumber || '-'}</Text>
+              {item.jobSiteName ? ` · ${item.jobSiteName}` : ''}
+            </Text>
+            <Text style={styles.detailHaulSub}>
+              Seri no: {item.haulSerialNumber || '-'} · Saat: {haulAt.date ? `${haulAt.date} ${haulAt.time}`.trim() : '-'}
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.detailNoHaul}>Bu fişle eşleşen sefer yok.</Text>
+        )}
+      </View>
+    );
+  };
+
   const renderRecord = (item: DumpRecord) => {
     const status = getDumpMatchStatus(item.matchStatus);
     const dt = formatDumpDateTime(item.islemTarihi);
     const ticket = item.etiketNo || item.kartKodu || item.fisNo || '';
+    const expanded = expandedId === item.id;
     return (
-      <View style={styles.row}>
-        <View style={[styles.strip, { backgroundColor: dumpStatusColor(status) }]} />
-        <View style={[styles.cell, styles.colPlate]}>
-          <Text style={styles.plateText} numberOfLines={1}>
-            {item.plateNumber || '-'}
-          </Text>
-          {!!ticket && (
-            <Text style={styles.subText} numberOfLines={1}>
-              {ticket}
+      <TouchableOpacity
+        style={styles.rowCard}
+        onPress={() => setExpandedId(expanded ? null : item.id)}
+        activeOpacity={0.75}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={`${item.plateNumber || 'Plakasız'} döküm fişi, detayı ${expanded ? 'kapat' : 'aç'}`}>
+        <View style={styles.row}>
+          <View style={[styles.strip, { backgroundColor: dumpStatusColor(status) }]} />
+          <View style={[styles.cell, styles.colPlate]}>
+            <Text style={styles.plateText} numberOfLines={1}>
+              {item.plateNumber || '-'}
             </Text>
-          )}
-          {status === 'plateMismatch' && !!item.haulPlateNumber && (
-            <Text style={styles.mismatchText} numberOfLines={1}>
-              Sefer: {item.haulPlateNumber}
-            </Text>
-          )}
+            {!!ticket && (
+              <Text style={styles.subText} numberOfLines={1}>
+                {ticket}
+              </Text>
+            )}
+            {status === 'plateMismatch' && !!item.haulPlateNumber && (
+              <Text style={styles.mismatchText} numberOfLines={1}>
+                Sefer: {item.haulPlateNumber}
+              </Text>
+            )}
+          </View>
+          <View style={[styles.cell, styles.colDate]}>
+            <Text style={styles.cellText}>{dt.date}</Text>
+            {!!dt.time && <Text style={styles.subText}>{dt.time}</Text>}
+          </View>
+          <View style={[styles.cell, styles.colJob]}>
+            {item.jobSiteName ? (
+              <Text style={styles.cellText} numberOfLines={2}>
+                {item.jobSiteName}
+              </Text>
+            ) : (
+              <Text style={styles.unmatchedText}>Eşleşmedi</Text>
+            )}
+          </View>
+          <View style={[styles.cell, styles.colAmount]}>
+            <Text style={styles.tonText}>{formatTonnes(item.netKg)}</Text>
+            <Text style={styles.subText}>({formatFee(item.fisBedeli)})</Text>
+          </View>
         </View>
-        <View style={[styles.cell, styles.colDate]}>
-          <Text style={styles.cellText}>{dt.date}</Text>
-          {!!dt.time && <Text style={styles.subText}>{dt.time}</Text>}
-        </View>
-        <View style={[styles.cell, styles.colJob]}>
-          {item.jobSiteName ? (
-            <Text style={styles.cellText} numberOfLines={2}>
-              {item.jobSiteName}
-            </Text>
-          ) : (
-            <Text style={styles.unmatchedText}>Eşleşmedi</Text>
-          )}
-        </View>
-        <View style={[styles.cell, styles.colAmount]}>
-          <Text style={styles.tonText}>{formatTonnes(item.netKg)}</Text>
-          <Text style={styles.subText}>({formatFee(item.fisBedeli)})</Text>
-        </View>
-      </View>
+        {expanded && renderRecordDetail(item)}
+      </TouchableOpacity>
     );
   };
 
@@ -596,6 +659,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
         data={listData}
         keyExtractor={item => item.id}
         renderItem={renderItem}
+        extraData={expandedId}
         ListHeaderComponent={header}
         stickyHeaderIndices={notSupported || !stickySearch ? undefined : STICKY_SEARCH_INDEX}
         // Veri dizisinde arama/filtre satırları olduğu için ListEmptyComponent çalışmaz → boş durum altbilgide
@@ -855,7 +919,16 @@ const styles = StyleSheet.create({
   headText: { fontSize: 12, fontWeight: '800', color: '#555', paddingHorizontal: 4 },
   stripSpace: { width: 6 },
 
-  row: { flexDirection: 'row', alignItems: 'stretch', backgroundColor: '#fff', borderRadius: 10, marginBottom: 6, overflow: 'hidden', paddingRight: 10, elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
+  rowCard: { backgroundColor: '#fff', borderRadius: 10, marginBottom: 6, overflow: 'hidden', elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
+  row: { flexDirection: 'row', alignItems: 'stretch', paddingRight: 10 },
+  detail: { borderTopWidth: 1.5, borderStyle: 'dashed', borderColor: '#BBB', marginHorizontal: 12, paddingTop: 8, paddingBottom: 10, flexDirection: 'row', flexWrap: 'wrap' },
+  detailLine: { width: '50%', flexDirection: 'row', paddingVertical: 2, paddingRight: 8 },
+  detailLabel: { fontSize: 12, color: '#777', marginRight: 4 },
+  detailValue: { flexShrink: 1, fontSize: 12, fontWeight: '600', color: '#222' },
+  detailHaul: { width: '100%', marginTop: 6, padding: 8, backgroundColor: '#F7F7F7', borderRadius: 8 },
+  detailHaulTitle: { fontSize: 12.5, fontWeight: '700', color: '#222' },
+  detailHaulSub: { fontSize: 12, color: '#555', marginTop: 2 },
+  detailNoHaul: { width: '100%', marginTop: 6, fontSize: 12, color: '#9E9E9E' },
   strip: { width: 6 },
   cell: { paddingVertical: 9, paddingHorizontal: 4, justifyContent: 'center' },
   colPlate: { flex: 1.3 },

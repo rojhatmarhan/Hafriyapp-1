@@ -6,6 +6,19 @@ Biçim: `## [Mobil versionName (versionCode/build)] — tarih` → Eklendi / Dü
 
 ## [Yayınlanmadı]
 
+### Döküm → İSTAÇ'tan Çek: bilgiler girilmemişse doğru uyarı
+#### Düzeltildi
+- **İSTAÇ kullanıcı adı/şifresi kayıtlı değilken "Bu özellik için sunucu güncellemesi gerekiyor." diyordu.** API bu durumda 404 + Türkçe mesaj
+  ("Önce İSTAÇ kullanıcı adı ve şifresini kaydediniz.") döner; ekran her 404'ü "eski sunucu" sanıyordu. Artık mesajlı 404 ayrılıyor
+  (`isIstacNotConfigured`, `dumpService.ts`): "İSTAÇ Bilgileri Gerekli" uyarısı + "Bilgileri Gir" → Entegrasyonlar. Uç hiç yoksa (gövdesiz 404) eski mesaj aynı.
+- Döküm'den açılan Entegrasyonlar ekranında geri tuşu Profil'e gidiyordu; artık `from: 'Dump'` ile Döküm'e döner.
+#### Eklendi
+- **Döküm tablosunda satıra dokununca fiş detayı** (iOS + Android aynı kod; web'deki döküm listesiyle aynı): satırın altında açılır, tekrar
+  dokununca kapanır. Kabul belgesi, toplam/dara/net kg, bedel, etiket/kart kodu/fiş no, çıkış saati, saha, yük tipi, ATS, operatör ve
+  eşleşen sefer (plaka · iş, seri no, saat; farklı plaka kırmızı). `DumpRecord`'a opsiyonel detay alanları eklendi (API zaten döndürüyordu).
+#### Uyumluluk
+- API değişmedi; yerel veri değişmedi. Native değişiklik yok. Eski API detay alanlarını döndürmezse o satırlar gizlenir.
+
 ### İSTAÇ Entegrasyonları (Profil → Entegrasyonlar & Döküm → İSTAÇ'tan Çek)
 #### Eklendi
 - **Profil → Entegrasyonlar (`src/screens/supplier/IntegrationsScreen.tsx`):** Firma/araç sahipleri için İSTAÇ Hafriyat Online kullanıcı adı ve şifresini kaydetme, bağlantı durumunu ve son senkron bilgisini görme, "🔄 Şimdi Güncelle" ile güvenlik kodu girmeden (sunucuda Tesseract OCR ile otomatik çözülerek) tüm sahaların döküm verilerini çekme ve entegrasyonu silme ekranı.

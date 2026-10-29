@@ -57,6 +57,15 @@ export type DumpRecord = {
   haulTimeOfHaul?: string | null;
   jobSiteId?: string | null;
   jobSiteName?: string | null;
+  // Detay alanları (satıra dokununca açılır; eski API döndürmezse ilgili satır gizlenir)
+  kabulBelgesiNo?: string | null;
+  brutKg?: number | null;
+  daraKg?: number | null;
+  cikisTarihi?: string | null;
+  yukTipi?: string | null;
+  ats?: string | null;
+  operator?: string | null;
+  sourceSite?: string | null;
 };
 
 export type DumpRecordPage = {
@@ -109,6 +118,10 @@ export const buildDumpExportUrl = (params: DumpQueryParams): string => `${API_BA
 
 /** Eski API (uç yok) mu? */
 export const isEndpointMissing = (e: any): boolean => e?.response?.status === 404;
+
+// İSTAÇ bilgileri kayıtlı değil: API 404 + Türkçe mesaj döner ("Önce İSTAÇ kullanıcı adı ve şifresini kaydediniz.").
+// Uç hiç yoksa (eski sunucu) 404'ün gövdesinde mesaj olmaz → isEndpointMissing.
+export const isIstacNotConfigured = (e: any): boolean => e?.response?.status === 404 && !!e?.response?.data?.errors?.[0];
 
 // ── Para yatırma (Hesapta Kalan). Eski API'de uçlar yok (404) → isEndpointMissing ile yakalanır.
 
