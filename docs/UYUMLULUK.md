@@ -23,7 +23,7 @@ güncelleme olmadığı için eski sürümler aylarca sahada kalır. Bu yüzden:
 6. **Native değişiklik = yeni mağaza sürümü.** Yeni native paket, izin (Info.plist / AndroidManifest), patch güncellemesi CHANGELOG'da
    "Native" başlığıyla yazılır; iOS için `pod install` gerektiği belirtilir.
 7. **Sürüm numarası her mağaza yüklemesinde artar:** Android `versionCode` +1 (`android/app/build.gradle`), iOS `CURRENT_PROJECT_VERSION` +1.
-   `versionName` / `MARKETING_VERSION` özellik sürümünde artar. Mevcut: Android 1.7.2 (17), iOS 1.0.7 (14).
+   `versionName` / `MARKETING_VERSION` özellik sürümünde artar. Mevcut: Android 1.7.2 (17), iOS 1.0.7 (18).
 8. **Hata mesajı API'den gelir:** `errors[0]` veya `message` gösterilir; yeni hata metinleri mobilde sabitlenmez.
 
 ## Her değişiklik için kontrol listesi

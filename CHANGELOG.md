@@ -6,6 +6,8 @@ Biçim: `## [Mobil versionName (versionCode/build)] — tarih` → Eklendi / Dü
 
 ## [Yayınlanmadı]
 
+- iOS build 17 → 18 (1.0.7), 12.11.2026 TestFlight'a yüklendi.
+
 ### Döküm: Cebeci bağlantısı, fiş silme, saha bazında Hesap, sade filtre · Excel önizleme
 #### Eklendi
 - **Cebeci kartı admin iznine bağlı**: `GET api/Cebeci` cevabındaki `allowed === false` ya da 403 → kart hiç gösterilmez (Döküm → Yükle / İndir ve Hesap Bağlantısı); `connect` / `request-data` 403 dönerse API mesajı gösterilip kart gizlenir. `allowed` yoksa (eski API) kart eskisi gibi görünür.
