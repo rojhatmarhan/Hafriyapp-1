@@ -8,6 +8,7 @@ Biçim: `## [Mobil versionName (versionCode/build)] — tarih` → Eklendi / Dü
 
 ### Döküm: Cebeci bağlantısı, fiş silme, saha bazında Hesap, sade filtre · Excel önizleme
 #### Eklendi
+- **Cebeci kartı admin iznine bağlı**: `GET api/Cebeci` cevabındaki `allowed === false` ya da 403 → kart hiç gösterilmez (Döküm → Yükle / İndir ve Hesap Bağlantısı); `connect` / `request-data` 403 dönerse API mesajı gösterilip kart gizlenir. `allowed` yoksa (eski API) kart eskisi gibi görünür.
 - **Hesap Bağlantısı ekranı iki kart**: "Otomatik Veri Çekme · Döküm sahası: İSTAÇ (kullanıcı adı / şifre)" (Aktif anahtarı + "Aktif (otomatik çekilir)" / "Pasif (çekilmez)" metni) ve "… CEBECİ (döküm maili)" (`CebeciConnectionCard`, opsiyonel `title`; Döküm → Yükle / İndir'de de durur). Profil kartı alt metni güncellendi (Web ile aynı düzen).
 - **Cebeci Döküm Bağlantısı kartı** (Döküm → Yükle / İndir, en üstte; `CebeciConnectionCard`, `api/Cebeci`): bağlı değilken Cebeci'de
   kayıtlı mail + firma adı ile **Kaydet**; beklemede / kesme bekleniyor mesajları; aktifken "Son veri: …" (İstanbul saati),

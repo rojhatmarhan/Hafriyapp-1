@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert, Platform, Keyboard } from 'react-native';
 import CalendarDateButton from './CalendarDateButton';
-import { getCebeci, connectCebeci, disconnectCebeci, requestCebeciData, CebeciConnection } from '../services/dumpService';
+import { isForbidden, getCebeci, connectCebeci, disconnectCebeci, requestCebeciData, CebeciConnection } from '../services/dumpService';
 import { formatCebeciLastData, buildCebeciRequestRange, CebeciRequestMode } from '../utils/dumpFormat';
 import { todayDDMMYYYY } from '../utils/dateRange';
 
 // ── Döküm → Yükle / İndir: Cebeci döküm bağlantısı kartı (api/Cebeci).
 // Dört durum: notConnected (kayıt formu) · pending · active (son veri, veri talebi, bağlantıyı kes) · disconnectPending.
-// Eski API'de uç yok (404) ya da yetki yok → kart hiç gösterilmez. Talep adresi kullanıcıya gösterilmez.
+// Eski API'de uç yok (404), yetki yok (403) ya da cevapta allowed === false (admin izni yok) → kart hiç gösterilmez. Talep adresi kullanıcıya gösterilmez.
 // Tarih seçimi kartın içinde (CalendarDateButton kendi Modal'ını açar; bu kart Modal içinde değil → iOS'ta üst üste Modal yok).
 
 type Props = { companyId: string; reloadKey?: number; title?: string };
@@ -48,7 +48,7 @@ export default function CebeciConnectionCard({ companyId, reloadKey = 0, title }
       const c = await getCebeci(companyId);
       if (reqId !== reqRef.current) return;
       setConn(c);
-      setHidden(false);
+      setHidden(c.allowed === false);
     } catch {
       // 404 (eski API), 403 (yetki yok) ya da ağ hatası → kart gösterilmez; yenilemede tekrar denenir
       if (reqId !== reqRef.current) return;
@@ -85,10 +85,17 @@ export default function CebeciConnectionCard({ companyId, reloadKey = 0, title }
     try {
       const res = await connectCebeci({ companyId, companyEmail: mail, companyName: company });
       setConn(res);
+      if (res.allowed === false) {
+        setHidden(true);
+        return;
+      }
       if (res.status === 'active') Alert.alert('Cebeci', 'Cebeci bağlantınız aktif. Veriler geldikçe Döküm ekranında görünecek.');
       else if (res.status === 'pending') Alert.alert('Cebeci', 'Kaydınız alındı, kısa süre içinde aktif edilecek.');
     } catch (e: any) {
-      setError(errText(e, 'Kaydedilemedi. Lütfen tekrar deneyin.'));
+      if (isForbidden(e)) {
+        Alert.alert('Cebeci', errText(e, 'Bu özellik için izniniz yok.'));
+        setHidden(true);
+      } else setError(errText(e, 'Kaydedilemedi. Lütfen tekrar deneyin.'));
     } finally {
       setBusy(false);
     }
@@ -137,7 +144,10 @@ export default function CebeciConnectionCard({ companyId, reloadKey = 0, title }
       load();
     } catch (e: any) {
       setRequestMsg(null);
-      setError(errText(e, 'Talep gönderilemedi.'));
+      if (isForbidden(e)) {
+        Alert.alert('Cebeci', errText(e, 'Bu özellik için izniniz yok.'));
+        setHidden(true);
+      } else setError(errText(e, 'Talep gönderilemedi.'));
     } finally {
       setBusy(false);
     }

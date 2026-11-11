@@ -369,6 +369,8 @@ export type CebeciConnection = {
   lastManualRequestAt: string | null;
   manualRequestUsedToday: boolean;
   canRequestData: boolean;
+  /** Admin otomatik veri çekme izni (İSTAÇ ile aynı). false → kart gösterilmez; alan yoksa (eski API) null → gösterilir. */
+  allowed?: boolean | null;
 };
 
 export type CebeciRequestResult = { ok: boolean; mesaj: string; sonraki: string | null };
@@ -386,6 +388,7 @@ const normalizeCebeci = (d: any, fallbackCompanyId: string): CebeciConnection =>
   lastManualRequestAt: d?.lastManualRequestAt ?? null,
   manualRequestUsedToday: d?.manualRequestUsedToday === true,
   canRequestData: d?.canRequestData === true,
+  allowed: typeof d?.allowed === 'boolean' ? d.allowed : null,
 });
 
 export const getCebeci = async (companyId: string): Promise<CebeciConnection> => {
