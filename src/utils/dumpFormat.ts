@@ -242,3 +242,109 @@ export const depositDateToIso = (str: string): string | undefined => {
 
 /** Hesapta Kalan kartı alt yazısı: "Yatırılan 150.000,00₺ · Harcanan 4.376,81₺" */
 export const formatBalanceSubtext = (totalDeposits: unknown, totalFees: unknown): string => `Yatırılan ${formatTL(totalDeposits)} · Harcanan ${formatTL(totalFees)}`;
+
+// ── Hesap sekmesi: saha bazında kalan (summary.balances; eski API döndürmez → null, tek kart davranışı sürer)
+
+export type DumpBalance = {
+  source: 'Kig' | 'Istac';
+  sourceName: string;
+  hasDeposits: boolean;
+  totalDeposits: number;
+  totalFees: number;
+  balance: number;
+  since: string | null; // ISO UTC; yatırım yoksa null
+};
+
+/** summary.balances → kartlar (Cebeci önce, İSTAÇ sonra). Alan yoksa/dizi değilse null; bilinmeyen sahalar atlanır. */
+export const normalizeDumpBalances = (raw: unknown): DumpBalance[] | null => {
+  if (!Array.isArray(raw)) return null;
+  const list: DumpBalance[] = [];
+  for (const b of raw) {
+    const s = String(b?.source ?? '')
+      .trim()
+      .toLowerCase();
+    const source = s === 'kig' ? 'Kig' : s === 'istac' ? 'Istac' : null;
+    if (!source || list.some(x => x.source === source)) continue;
+    list.push({
+      source,
+      sourceName: String(b?.sourceName ?? '').trim() || dumpSourceLabel(source),
+      hasDeposits: b?.hasDeposits === true,
+      totalDeposits: toNum(b?.totalDeposits) ?? 0,
+      totalFees: toNum(b?.totalFees) ?? 0,
+      balance: toNum(b?.balance) ?? 0,
+      since: b?.since ? String(b.since) : null,
+    });
+  }
+  return list.sort((a, b) => (a.source === 'Kig' ? 0 : 1) - (b.source === 'Kig' ? 0 : 1));
+};
+
+/** UTC zaman (saat dilimi yazılmamışsa da UTC sayılır) → İstanbul saati { date, time }. Boş/geçersizse null. */
+export const utcToIstanbul = (value?: string | null): { date: string; time: string } | null => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const withZone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(raw) || !/T|\s\d/.test(raw) ? raw : `${raw.replace(' ', 'T')}Z`;
+  const d = new Date(withZone);
+  if (isNaN(d.getTime())) return null;
+  return formatDumpDateTime(d.toISOString());
+};
+
+/** Kalan kartı notu: "05.11.2026 tarihinden itibaren"; since yoksa ''. */
+export const formatSinceNote = (since?: string | null): string => {
+  const dt = utcToIstanbul(since);
+  return dt ? `${dt.date} tarihinden itibaren` : '';
+};
+
+// ── Fişler sekmesi: "İşe Göre Filtrele" menüsünün en üstündeki sabit eşleşme seçenekleri
+
+export type DumpStatusFilter = '' | 'unmatched' | 'plateMismatch';
+
+/** Menü başlığı: durum seçiliyse "Eşleşmeyen" / "Farklı plaka", iş seçiliyse "İş: …", hiçbiri yoksa "İşe Göre Filtrele". */
+export const dumpFilterTitle = (status: DumpStatusFilter | string | null | undefined, jobName?: string | null): string => {
+  if (status === 'unmatched') return 'Eşleşmeyen';
+  if (status === 'plateMismatch') return 'Farklı plaka';
+  return jobName ? `İş: ${jobName}` : 'İşe Göre Filtrele';
+};
+
+// ── Cebeci döküm bağlantısı (api/Cebeci)
+
+export type CebeciStatus = 'notConnected' | 'pending' | 'active' | 'disconnectPending';
+
+/** API durum anahtarı → bilinen durum; bilinmeyen/boş → notConnected. */
+export const normalizeCebeciStatus = (status: unknown): CebeciStatus => {
+  const s = String(status ?? '')
+    .trim()
+    .toLowerCase();
+  if (s === 'pending') return 'pending';
+  if (s === 'active') return 'active';
+  if (s === 'disconnectpending') return 'disconnectPending';
+  return 'notConnected';
+};
+
+/** "Son veri: 11.11.2026 14:05" (İstanbul saati) ya da "Henüz veri gelmedi". */
+export const formatCebeciLastData = (lastDataAt?: string | null): string => {
+  const dt = utcToIstanbul(lastDataAt);
+  return dt ? `Son veri: ${dt.date}${dt.time ? ` ${dt.time}` : ''}` : 'Henüz veri gelmedi';
+};
+
+export type CebeciRequestMode = 'today' | 'day' | 'range';
+
+/**
+ * Veri talebi tarihleri (YYYY-MM-DD). "Bugün" → boş gövde (API bugünü alır). Tek gün → start = end = gün.
+ * Aralık → başlangıç/bitiş (ters girilmişse yer değiştirir). Geçersiz tarih → { error }.
+ */
+export const buildCebeciRequestRange = (mode: CebeciRequestMode, day: string, start: string, end: string): { startDate?: string; endDate?: string; error?: string } => {
+  const ymd = (s: string) => {
+    const [d, m, y] = s.trim().split('.');
+    return `${y}-${m}-${d}`;
+  };
+  if (mode === 'today') return {};
+  if (mode === 'day') {
+    if (!isValidDDMMYYYY(day)) return { error: 'Geçerli bir gün seçin.' };
+    return { startDate: ymd(day), endDate: ymd(day) };
+  }
+  if (!isValidDDMMYYYY(start) || !isValidDDMMYYYY(end)) return { error: 'Başlangıç ve bitiş tarihini seçin.' };
+  let a = ymd(start);
+  let b = ymd(end);
+  if (a > b) [a, b] = [b, a];
+  return { startDate: a, endDate: b };
+};

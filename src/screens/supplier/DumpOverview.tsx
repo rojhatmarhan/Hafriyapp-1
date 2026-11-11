@@ -5,19 +5,23 @@ import { useNavigation } from '@react-navigation/native';
 
 import HaulSearchBar from '../../components/HaulSearchBar';
 import DumpRecordDetail from '../../components/DumpRecordDetail';
+import CebeciConnectionCard from '../../components/CebeciConnectionCard';
+import { excelAc } from '../../utils/excelDownload';
 import { QRScannerModal, ScannedQRData } from '../../components/QRScannerModal';
 import { extractDumpTicketNo } from '../../components/DumpTicketInput';
 import { useAppSelector } from '../../hooks';
 import { useStickySearch } from '../../hooks/useStickySearch';
 import { useDateRange, ddmmyyyyToYMD, todayDDMMYYYY } from '../../utils/dateRange';
-import { DumpSource, dumpSourceTitle, formatTL, formatKg, formatTonnes, formatFee, formatDumpDateTime, getDumpMatchStatus, dumpStatusColor, DumpQueryParams, dumpSourceLabel, parseTurkishAmount, isValidDDMMYYYY, depositDateToIso, formatBalanceSubtext } from '../../utils/dumpFormat';
-import { getDumpSummary, getDumpRecords, buildDumpExportUrl, isEndpointMissing, DumpSummary, DumpRecord, getDeposits, addDeposit, deleteDeposit, DumpDeposit, uploadDumpExcel, formatImportResult, syncIstac, formatIstacSyncSummary, isIstacNotConfigured } from '../../services/dumpService';
+import { DumpSource, dumpSourceTitle, formatTL, formatKg, formatTonnes, formatFee, formatDumpDateTime, getDumpMatchStatus, dumpStatusColor, DumpQueryParams, dumpSourceLabel, parseTurkishAmount, isValidDDMMYYYY, depositDateToIso, formatBalanceSubtext, DumpBalance, DumpStatusFilter, dumpFilterTitle, formatSinceNote } from '../../utils/dumpFormat';
+import { getDumpSummary, getDumpRecords, buildDumpExportUrl, isEndpointMissing, DumpSummary, DumpRecord, getDeposits, addDeposit, deleteDeposit, DumpDeposit, uploadDumpExcel, formatImportResult, syncIstac, formatIstacSyncSummary, isIstacNotConfigured, isForbidden, isAutoSyncAllowed, deleteDumpRecord, deleteDumpImport, DumpImportResult } from '../../services/dumpService';
 
 // ── İşlerim → Döküm: döküm sahası (Cebeci/KİG, İSTAÇ) Excel verilerinin özeti ve listesi.
 // Ekran Modal içinde değil; kaynak/iş seçimi ve QR tarama ekran seviyesinde Modal kullanır.
 // Eski API'de uçlar yok (404) → "sunucu güncellemesi gerekiyor" mesajı, ekran çökmez.
 // Hesapta Kalan: para yatırma paneli tek Modal; içinde başka Modal (CalendarDateButton) açılmaz (iOS üst üste Modal göstermez)
 // → tarih düz "GG.AA.YYYY" metin kutusu.
+// Kullanıcıya görünen bağlanma/çekme metinlerinde "İSTAÇ" geçmez ("Verileri Çek", "Hesap Bağlantısı"); saha adı olarak kalabilir.
+// Otomatik veri çekme izni yoksa (Integrations/istac allowed=false ya da 403) çekme düğmeleri hiç gösterilmez.
 
 type JobOption = { id: string; name: string };
 // topHeader: üst sayfanın kendi başlığı (İşlerim | Döküm sekmesi) — listenin en üstünde, içerikle birlikte kayar.
@@ -33,7 +37,6 @@ const STICKY_SEARCH_INDEX = [1];
 
 const PAGE_SIZE = 30;
 const DUMP_WEB_URL = 'https://hafriyapp.com/Dump/Index';
-const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const SOURCES: DumpSource[] = ['', 'Kig', 'Istac'];
 
@@ -47,8 +50,8 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
   const [source, setSource] = useState<DumpSource>('');
   const [jobSiteId, setJobSiteId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  // Eşleşme filtresi ('' = tümü) ve açık satır (tıklayınca detay)
-  const [status, setStatus] = useState<'' | 'matched' | 'unmatched' | 'plateMismatch'>('');
+  // Eşleşme filtresi ('' = tümü; "İşe Göre Filtrele" menüsünün üstündeki sabit seçenekler) ve açık satır (tıklayınca detay)
+  const [status, setStatus] = useState<DumpStatusFilter>('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // Sekmeler (Web /Dump/Index ile aynı): Fişler varsayılan; Hesap = Hesapta Kalan; Yükle / İndir = İSTAÇ, Excel
   const [tab, setTab] = useState<'fisler' | 'hesap' | 'aktar'>('fisler');
@@ -67,6 +70,14 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
   const [downloading, setDownloading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [syncingIstac, setSyncingIstac] = useState(false);
+  // Otomatik veri çekme izni: null = henüz bilinmiyor (düğme gizli), false = izin yok
+  const [autoSyncAllowed, setAutoSyncAllowed] = useState<boolean | null>(null);
+  // Döküm fişi / yükleme silme
+  const [deletingRecordId, setDeletingRecordId] = useState<string | null>(null);
+  const [lastUpload, setLastUpload] = useState<DumpImportResult | null>(null);
+  const [deletingImport, setDeletingImport] = useState(false);
+  // Cebeci kartını aşağı çekip yenileyince tazele
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [sourceModal, setSourceModal] = useState(false);
   const [jobModal, setJobModal] = useState(false);
@@ -147,6 +158,21 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
     loadAll();
   }, [loadAll]);
 
+  const loadAutoSyncAllowed = useCallback(async () => {
+    if (!companyId) return;
+    setAutoSyncAllowed(await isAutoSyncAllowed(companyId));
+  }, [companyId]);
+
+  useEffect(() => {
+    loadAutoSyncAllowed();
+  }, [loadAutoSyncAllowed]);
+
+  const onPullRefresh = () => {
+    loadAll(true);
+    loadAutoSyncAllowed();
+    setReloadKey(k => k + 1);
+  };
+
   // ── Hesapta Kalan: özet kartını (bakiye) ve para yatırma listesini tazele
   const refreshSummary = useCallback(async () => {
     if (!companyId) return;
@@ -179,8 +205,8 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
     }
   }, [companyId, source]);
 
-  const openDeposits = () => {
-    setFormSource(source);
+  const openDeposits = (preset?: 'Kig' | 'Istac') => {
+    setFormSource(preset ?? source);
     setFormAmount('');
     setFormDate(todayDDMMYYYY());
     setFormNote('');
@@ -243,6 +269,57 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
     ]);
   };
 
+  // ── Döküm fişi silme (satır detayındaki "Fişi Sil"); eşleşen sefer silinmez
+  const confirmDeleteRecord = (item: DumpRecord) => {
+    const label = item.etiketNo || item.kartKodu || item.fisNo || item.plateNumber || '';
+    Alert.alert('Fişi Sil', `${label ? `${label} numaralı d` : 'D'}öküm fişi silinsin mi? Eşleşen sefer silinmez.`, [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: async () => {
+          setDeletingRecordId(item.id);
+          try {
+            await deleteDumpRecord(item.id);
+            setExpandedId(null);
+            loadAll();
+          } catch (e: any) {
+            if (isEndpointMissing(e) && !e?.response?.data?.errors?.[0]) Alert.alert('Bilgi', 'Bu özellik için sunucu güncellemesi gerekiyor.');
+            else Alert.alert('Hata', e?.response?.data?.errors?.[0] || e?.response?.data?.message || 'Fiş silinemedi.');
+          } finally {
+            setDeletingRecordId(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  // ── Son yüklenen dosyanın tamamını silme (yanlış dosya yüklendiyse)
+  const confirmDeleteImport = () => {
+    if (!lastUpload?.id || deletingImport) return;
+    Alert.alert('Yüklemeyi sil', `${lastUpload.fileName} dosyasıyla eklenen tüm döküm fişleri silinsin mi? Eşleşen seferler silinmez.`, [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: async () => {
+          setDeletingImport(true);
+          try {
+            const r = await deleteDumpImport(lastUpload.id);
+            setLastUpload(null);
+            Alert.alert('Silindi', `${r.deletedRecords} döküm fişi silindi.`);
+            loadAll();
+          } catch (e: any) {
+            if (isEndpointMissing(e) && !e?.response?.data?.errors?.[0]) Alert.alert('Bilgi', 'Bu özellik için sunucu güncellemesi gerekiyor.');
+            else Alert.alert('Hata', e?.response?.data?.errors?.[0] || e?.response?.data?.message || 'Yükleme silinemedi.');
+          } finally {
+            setDeletingImport(false);
+          }
+        },
+      },
+    ]);
+  };
+
   const loadMore = async () => {
     if (!companyId || loading || loadingMore || refreshing || page >= totalPages) return;
     const reqId = requestIdRef.current;
@@ -269,7 +346,9 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
     setSearch(code || '');
   };
 
-  // ── İSTAÇ'tan otomatik çek (Tesseract OCR ile güvenlik kodu sormadan, en fazla 5 deneme)
+  // ── Verileri Çek: döküm sahası hesabından otomatik çekme (güvenlik kodu sunucuda çözülür, en fazla 5 deneme)
+  const goToAccountLink = () => navigation.navigate('Integrations', { companyId, from: 'Dump' });
+
   const pullFromIstac = async () => {
     if (!companyId || syncingIstac) return;
     setSyncingIstac(true);
@@ -279,16 +358,20 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
         startDate: ddmmyyyyToYMD(rangeStart),
         endDate: ddmmyyyyToYMD(rangeEnd),
       });
-      Alert.alert(res.plateMismatchRows > 0 ? '⚠️ İSTAÇ Güncellendi' : '✅ İSTAÇ Güncellendi', formatIstacSyncSummary(res));
+      Alert.alert(res.plateMismatchRows > 0 ? '⚠️ Veriler Güncellendi' : '✅ Veriler Güncellendi', formatIstacSyncSummary(res));
       loadAll();
     } catch (e: any) {
-      // İSTAÇ bilgileri kayıtlı değil: API mesajlı 404 döner (uç yoksa gövdesiz 404 → aşağıdaki eski mesaj)
+      // İzin yok: API 403 + Türkçe mesaj → düğmeler gizlenir
+      if (isForbidden(e)) {
+        setAutoSyncAllowed(false);
+        Alert.alert('Bilgi', e?.response?.data?.errors?.[0] || 'Otomatik veri çekme firmanız için açık değil. Döküm dosyasını elle yükleyebilirsiniz.');
+        return;
+      }
+      // Hesap bilgileri kayıtlı değil: API mesajlı 404 döner (uç yoksa gövdesiz 404 → aşağıdaki eski mesaj)
       if (isIstacNotConfigured(e)) {
-        Alert.alert('İSTAÇ Bilgileri Gerekli', `${e.response.data.errors[0]}
-
-İSTAÇ Hafriyat Online kullanıcı adı ve şifrenizi girdikten sonra verileriniz otomatik çekilir.`, [
+        Alert.alert('Hesap Bilgileri Gerekli', 'Döküm sahası kullanıcı adı ve şifrenizi kaydettikten sonra verileriniz otomatik çekilir.', [
           { text: 'Vazgeç', style: 'cancel' },
-          { text: 'Bilgileri Gir', onPress: () => navigation.navigate('Integrations', { companyId, from: 'Dump' }) },
+          { text: 'Bilgileri Gir', onPress: goToAccountLink },
         ]);
         return;
       }
@@ -296,14 +379,11 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
         Alert.alert('Bilgi', 'Bu özellik için sunucu güncellemesi gerekiyor.');
         return;
       }
-      const msg = e?.response?.data?.errors?.[0] || e?.response?.data?.message || 'İSTAÇ verileri çekilemedi.';
+      const msg = e?.response?.data?.errors?.[0] || e?.response?.data?.message || 'Veriler çekilemedi.';
       if (/tanımlı değil|entegrasyon/i.test(String(msg))) {
-        Alert.alert('İSTAÇ Entegrasyonu', msg, [
+        Alert.alert('Hesap Bağlantısı', msg, [
           { text: 'Vazgeç', style: 'cancel' },
-          {
-            text: 'Entegrasyonlara Git',
-            onPress: () => navigation.navigate('Integrations', { companyId, from: 'Dump' }),
-          },
+          { text: 'Hesap Bağlantısına Git', onPress: goToAccountLink },
         ]);
       } else {
         Alert.alert('Hata', msg);
@@ -330,9 +410,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
         Alert.alert('Hata', 'Excel dosyası indirilemedi.');
         return;
       }
-      const path = res.path();
-      if (Platform.OS === 'ios') await RNBlobUtil.ios.openDocument(path);
-      else await RNBlobUtil.android.actionViewIntent(path, XLSX_MIME);
+      await excelAc(res.path());
     } catch {
       Alert.alert('Hata', 'Excel dosyası indirilemedi.');
     } finally {
@@ -342,7 +420,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
 
   // Dosya seçici yoksa (native modül bu derlemede yok) web sayfasına yönlendir
   const openUploadOnWeb = () => {
-    Alert.alert('Excel Yükle', 'Bu uygulama sürümünde dosya seçici yok. Excel yükleme hafriyapp.com → İşlerim → Döküm Verileri sayfasından yapılabilir.', [
+    Alert.alert('Döküm dosyasını yükle', 'Bu uygulama sürümünde dosya seçici yok. Excel yükleme hafriyapp.com → İşlerim → Döküm Verileri sayfasından yapılabilir.', [
       { text: 'Vazgeç', style: 'cancel' },
       {
         text: "Web'de Aç",
@@ -371,11 +449,11 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
       const [file] = await picker.pick({ type: [picker.types.xlsx], allowMultiSelection: false });
       const fileName = file.name || 'dokum.xlsx';
       if (!fileName.toLowerCase().endsWith('.xlsx')) {
-        Alert.alert('Excel Yükle', 'Sadece .xlsx dosyası yüklenebilir. (Eski .xls dosyasını Excel\'de .xlsx olarak kaydedin.)');
+        Alert.alert('Döküm dosyasını yükle', 'Sadece .xlsx dosyası yüklenebilir. (Eski .xls dosyasını Excel\'de .xlsx olarak kaydedin.)');
         return;
       }
       if (file.size && file.size > MAX_UPLOAD_BYTES) {
-        Alert.alert('Excel Yükle', 'Dosya en fazla 10 MB olabilir.');
+        Alert.alert('Döküm dosyasını yükle', 'Dosya en fazla 10 MB olabilir.');
         return;
       }
       setUploading(true);
@@ -385,7 +463,9 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
       const base64 = await RNBlobUtil.fs.readFile(localPath, 'base64');
       RNBlobUtil.fs.unlink(localPath).catch(() => {});
       const result = await uploadDumpExcel(companyId, fileName, base64);
-      Alert.alert(result.plateMismatchRows > 0 ? '⚠️ Yüklendi' : '✅ Yüklendi', `${fileName}: ${formatImportResult(result)}`);
+      Alert.alert(result.plateMismatchRows > 0 ? '⚠️ Döküm dosyası yüklendi' : '✅ Döküm dosyası yüklendi', `${fileName}: ${formatImportResult(result)}`);
+      // "Yüklemeyi sil" için son yükleme (yeni kayıt eklendiyse)
+      setLastUpload(result.id && result.insertedRows > 0 ? result : null);
       loadAll();
     } catch (e: any) {
       if (picker.isErrorWithCode?.(e) && e.code === picker.errorCodes.OPERATION_CANCELED) return;
@@ -394,7 +474,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
         return;
       }
       if (isEndpointMissing(e)) Alert.alert('Bilgi', 'Bu özellik için sunucu güncellemesi gerekiyor.');
-      else Alert.alert('Hata', e?.response?.data?.errors?.[0] || e?.response?.data?.message || 'Excel dosyası yüklenemedi.');
+      else Alert.alert('Hata', e?.response?.data?.errors?.[0] || e?.response?.data?.message || 'Döküm dosyası yüklenemedi.');
     } finally {
       setUploading(false);
     }
@@ -457,7 +537,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
           <Text style={styles.subText}>{formatFee(item.fisBedeli)} ₺</Text>
         </View>
       </View>
-      {expanded && <DumpRecordDetail item={item} />}
+      {expanded && <DumpRecordDetail item={item} onDelete={confirmDeleteRecord} deleting={deletingRecordId === item.id} />}
       </Pressable>
     );
   };
@@ -469,28 +549,32 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
     </View>
   );
 
-  // İş filtresi + İSTAÇ'tan Çek + sütun başlıkları — aramanın altında, listeyle birlikte kayar
+  // İş / eşleşme filtresi + Verileri Çek (izin varsa) + sütun başlıkları — aramanın altında, listeyle birlikte kayar
+  const filterActive = !!jobSiteId || !!status;
   const filtersEl = (
     <View>
       <View style={styles.jobFilterRow}>
-        <TouchableOpacity style={[styles.jobFilterBtn, !!jobSiteId && styles.jobFilterBtnActive]} onPress={() => setJobModal(true)} activeOpacity={0.8}>
+        <TouchableOpacity style={[styles.jobFilterBtn, filterActive && styles.jobFilterBtnActive]} onPress={() => setJobModal(true)} activeOpacity={0.8}>
           <Text style={styles.jobFilterText} numberOfLines={1}>
-            {selectedJobName ? `İş: ${selectedJobName}` : 'İşe Göre Filtrele'} ▾
+            {dumpFilterTitle(status, selectedJobName)} ▾
           </Text>
         </TouchableOpacity>
-        {!!jobSiteId && (
-          <TouchableOpacity onPress={() => setJobSiteId(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="İş filtresini kaldır">
+        {filterActive && (
+          <TouchableOpacity
+            onPress={() => {
+              setJobSiteId(null);
+              setStatus('');
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Filtreyi kaldır">
             <Text style={styles.jobFilterClear}>✕</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity
-          style={[styles.istacPullBtn, syncingIstac && styles.istacPullBtnDisabled]}
-          onPress={pullFromIstac}
-          disabled={syncingIstac || downloading || uploading}
-          activeOpacity={0.85}
-          accessibilityLabel="İSTAÇ'tan döküm verilerini çek">
-          {syncingIstac ? <ActivityIndicator size="small" color="#1B5E20" /> : <Text style={styles.istacPullBtnText}>🔄 İSTAÇ'tan Çek</Text>}
-        </TouchableOpacity>
+        {autoSyncAllowed === true && (
+          <TouchableOpacity style={[styles.istacPullBtn, syncingIstac && styles.istacPullBtnDisabled]} onPress={pullFromIstac} disabled={syncingIstac || downloading || uploading} activeOpacity={0.85} accessibilityLabel="Döküm verilerini otomatik çek">
+            {syncingIstac ? <ActivityIndicator size="small" color="#1B5E20" /> : <Text style={styles.istacPullBtnText}>🔄 Verileri Çek</Text>}
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Sütun başlıkları */}
@@ -516,8 +600,51 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
   const busy = downloading || uploading || syncingIstac;
 
   // Hesapta Kalan kartı (Hesap sekmesi; eski API alanları döndürmezse gizli)
-  const balanceEl = summary?.balanceSupported ? (
-    <TouchableOpacity style={styles.balanceCard} onPress={openDeposits} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Hesapta kalan, para yatırma kayıtlarını aç">
+  // Yeni API: saha bazında (Cebeci, İSTAÇ) ayrı kartlar; kaynak seçiliyse sadece o saha. Eski API (balances yok): tek kart.
+  const balanceCards: DumpBalance[] | null = summary?.balances?.length ? summary.balances.filter(b => !source || b.source === source) : null;
+
+  const renderBalanceCard = (b: DumpBalance) => {
+    const since = formatSinceNote(b.since);
+    return (
+      <TouchableOpacity key={b.source} style={styles.balanceCard} onPress={() => openDeposits(b.source)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={`${b.sourceName} hesapta kalan, para yatırma kayıtlarını aç`}>
+        <View style={styles.balanceHead}>
+          <Text style={styles.balanceLabel}>Hesapta Kalan · {b.sourceName}</Text>
+          <Text style={styles.balanceChevron}>›</Text>
+        </View>
+        {b.hasDeposits ? (
+          <>
+            <Text style={[styles.balanceValue, b.balance < 0 && styles.balanceNegative]} numberOfLines={1} adjustsFontSizeToFit>
+              {formatTL(b.balance)}
+            </Text>
+            <View style={styles.balanceRows}>
+              {(
+                [
+                  ['Yatırılan', b.totalDeposits],
+                  ['Harcanan', b.totalFees],
+                  ['Kalan', b.balance],
+                ] as const
+              ).map(([label, value]) => (
+                <View key={label} style={styles.balanceRow}>
+                  <Text style={styles.balanceRowLabel}>{label}</Text>
+                  <Text style={[styles.balanceRowValue, label === 'Kalan' && value < 0 && styles.balanceNegative]} numberOfLines={1}>
+                    {formatTL(value)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            {!!since && <Text style={styles.balanceSince}>{since}</Text>}
+          </>
+        ) : (
+          <Text style={styles.balanceCta}>+ Yatırım ekle</Text>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  const balanceEl = balanceCards ? (
+    <>{balanceCards.map(renderBalanceCard)}</>
+  ) : summary?.balanceSupported ? (
+    <TouchableOpacity style={styles.balanceCard} onPress={() => openDeposits()} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Hesapta kalan, para yatırma kayıtlarını aç">
       <View style={styles.balanceHead}>
         <Text style={styles.balanceLabel}>Hesapta Kalan{source ? ` · ${dumpSourceLabel(source)}` : ''}</Text>
         <Text style={styles.balanceChevron}>›</Text>
@@ -537,25 +664,51 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
     </TouchableOpacity>
   ) : null;
 
-  // Yükle / İndir sekmesi: önceki "İndir / Yükle" menüsü ve "İSTAÇ'tan Çek" düğmesi
+  // Yükle / İndir sekmesi: Cebeci bağlantısı, Otomatik Veri Çekme (izin varsa), döküm Excel'i indir, döküm dosyasını yükle
   const aktarEl = (
-    <View style={styles.aktarCard}>
-      <Text style={styles.aktarHint}>
-        Tarih aralığı: {rangeStart || rangeEnd ? `${rangeStart || '…'} – ${rangeEnd || '…'}` : 'Tüm zamanlar'} (Fişler sekmesindeki tarih)
-      </Text>
-      {(
-        [
-          ["🔄 İSTAÇ'tan Çek (Otomatik)", pullFromIstac, true],
-          ['📥 İSTAÇ Dökümleri indir', () => downloadExcel('Istac'), false],
-          ['📥 Cebeci Dökümü indir', () => downloadExcel('Kig'), false],
-          ['📤 Excel yükle', uploadExcel, false],
-        ] as const
-      ).map(([label, onPress, primary]) => (
-        <TouchableOpacity key={label} style={[styles.aktarBtn, primary && styles.aktarBtnPrimary, busy && styles.istacPullBtnDisabled]} onPress={onPress} disabled={busy} activeOpacity={0.85}>
-          <Text style={[styles.aktarBtnText, primary && styles.aktarBtnTextPrimary]}>{label}</Text>
+    <View>
+      <CebeciConnectionCard companyId={companyId} reloadKey={reloadKey} />
+      <View style={styles.aktarCard}>
+        <Text style={styles.aktarHint}>
+          Tarih aralığı: {rangeStart || rangeEnd ? `${rangeStart || '…'} – ${rangeEnd || '…'}` : 'Tüm zamanlar'} (Fişler sekmesindeki tarih)
+        </Text>
+        {autoSyncAllowed === true && (
+          <>
+            <Text style={styles.aktarSection}>Otomatik Veri Çekme</Text>
+            <TouchableOpacity style={[styles.aktarBtn, styles.aktarBtnPrimary, busy && styles.istacPullBtnDisabled]} onPress={pullFromIstac} disabled={busy} activeOpacity={0.85}>
+              <Text style={[styles.aktarBtnText, styles.aktarBtnTextPrimary]}>🔄 Verileri Çek</Text>
+            </TouchableOpacity>
+          </>
+        )}
+        {(
+          [
+            ['📥 İSTAÇ Dökümleri indir', () => downloadExcel('Istac')],
+            ['📥 Cebeci Dökümü indir', () => downloadExcel('Kig')],
+          ] as const
+        ).map(([label, onPress]) => (
+          <TouchableOpacity key={label} style={[styles.aktarBtn, busy && styles.istacPullBtnDisabled]} onPress={onPress} disabled={busy} activeOpacity={0.85}>
+            <Text style={styles.aktarBtnText}>{label}</Text>
+          </TouchableOpacity>
+        ))}
+        <TouchableOpacity style={[styles.aktarBtn, busy && styles.istacPullBtnDisabled]} onPress={uploadExcel} disabled={busy} activeOpacity={0.85}>
+          <Text style={styles.aktarBtnText}>📤 Döküm dosyasını yükle</Text>
+          <Text style={styles.aktarBtnSub}>(Seferleriniz sahada girdiklerinizle otomatik eşleşir. Not: Tekrarlanan seferler kendiliğinden bir kere sayılır.)</Text>
         </TouchableOpacity>
-      ))}
-      {busy && <ActivityIndicator size="small" color="#111" style={{ marginTop: 8 }} />}
+        {!!lastUpload && (
+          <View style={styles.lastUploadRow}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.lastUploadName} numberOfLines={1}>
+                Son yükleme: {lastUpload.fileName}
+              </Text>
+              <Text style={styles.lastUploadSub}>{lastUpload.insertedRows} yeni fiş eklendi</Text>
+            </View>
+            <TouchableOpacity style={[styles.lastUploadDelete, deletingImport && styles.istacPullBtnDisabled]} onPress={confirmDeleteImport} disabled={deletingImport} activeOpacity={0.8} accessibilityLabel="Son yüklemeyi sil">
+              {deletingImport ? <ActivityIndicator size="small" color="#C62828" /> : <Text style={styles.lastUploadDeleteText}>Yüklemeyi sil</Text>}
+            </TouchableOpacity>
+          </View>
+        )}
+        {busy && <ActivityIndicator size="small" color="#111" style={{ marginTop: 8 }} />}
+      </View>
     </View>
   );
 
@@ -607,7 +760,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
           {/* KPI kartları */}
           <View style={styles.kpiRow}>
             <View style={styles.kpiCard}>
-              <Text style={styles.kpiLabel}>Aktif Fiş</Text>
+              <Text style={styles.kpiLabel}>Toplam Sefer</Text>
               <Text style={styles.kpiValue} numberOfLines={1} adjustsFontSizeToFit>
                 {(summary?.recordCount ?? 0).toLocaleString('tr-TR')} Adet
               </Text>
@@ -625,27 +778,6 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
               </Text>
             </View>
           </View>
-          {/* Eşleşme filtresi: kesilen seferlerle eşleşen / eşleşmeyen fişler */}
-          {summary && (
-            <View style={styles.statusRow}>
-              {(
-                [
-                  ['', 'Tümü', null],
-                  ['matched', 'Eşleşen', summary.matchedCount],
-                  ['unmatched', 'Eşleşmeyen', summary.unmatchedCount],
-                  ['plateMismatch', 'Farklı plaka', summary.plateMismatchCount],
-                ] as const
-              ).map(([key, label, count]) => (
-                <TouchableOpacity key={key || 'all'} style={[styles.statusChip, status === key && styles.statusChipActive]} onPress={() => setStatus(key)} activeOpacity={0.8}>
-                  <Text style={[styles.statusChipText, status === key && styles.statusChipTextActive]}>
-                    {label}
-                    {count !== null ? ` (${count})` : ''}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
           <Text style={styles.sectionTitle}>Son Giriş Yapan Araçlar</Text>
         </>
       )}
@@ -667,7 +799,7 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
             {showEmpty && (
               <View style={styles.emptyBox}>
                 <Text style={styles.emptyTitle}>{errorText || 'Bu filtreye uygun döküm kaydı yok.'}</Text>
-                {!errorText && <Text style={styles.emptyHint}>"Yükle / İndir" sekmesinden İSTAÇ'tan otomatik çekebilir veya Excel yükleyebilirsiniz.</Text>}
+                {!errorText && <Text style={styles.emptyHint}>{autoSyncAllowed === true ? '"Yükle / İndir" sekmesinden verileri otomatik çekebilir veya döküm dosyanızı yükleyebilirsiniz.' : '"Yükle / İndir" sekmesinden döküm dosyanızı yükleyebilirsiniz.'}</Text>}
               </View>
             )}
             {loadingMore && <ActivityIndicator size="small" color="#FFD500" style={{ marginVertical: 14 }} />}
@@ -675,8 +807,8 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
         }
         onEndReached={loadMore}
         onEndReachedThreshold={0.4}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadAll(true)} />}
-        extraData={`${tab}|${expandedId}|${status}`}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onPullRefresh} />}
+        extraData={`${tab}|${expandedId}|${status}|${deletingRecordId}|${autoSyncAllowed}`}
         contentContainerStyle={styles.listContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -708,22 +840,45 @@ export default function DumpOverview({ jobSites, topHeader = null }: Props) {
         </View>
       </Modal>
 
-      {/* İş seçimi */}
+      {/* İş / eşleşme filtresi: "Eşleşmeyen" ve "Farklı plaka" listenin dışında, hep en üstte (iş sayısı artsa da) */}
       <Modal visible={jobModal} transparent animationType="fade" onRequestClose={() => setJobModal(false)}>
         <View style={styles.overlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setJobModal(false)} accessibilityLabel="Kapat" />
           <View style={[styles.sheet, styles.jobSheet]}>
             <Text style={styles.sheetTitle}>İşe Göre Filtrele</Text>
+            {(
+              [
+                ['unmatched', 'Eşleşmeyen'],
+                ['plateMismatch', 'Farklı plaka'],
+              ] as const
+            ).map(([key, label]) => {
+              const active = status === key;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.sheetItem, styles.sheetItemPinned, active && styles.sheetItemActive]}
+                  onPress={() => {
+                    setStatus(active ? '' : key);
+                    setJobSiteId(null);
+                    setJobModal(false);
+                  }}>
+                  <Text style={[styles.sheetItemText, key === 'plateMismatch' && styles.sheetItemTextWarn]}>{label}</Text>
+                  {active && <Text style={styles.sheetCheck}>✓</Text>}
+                </TouchableOpacity>
+              );
+            })}
             <FlatList
+              style={styles.jobList}
               data={[{ id: '', name: 'Tüm İşler' }, ...jobSites]}
               keyExtractor={j => j.id || 'all'}
               renderItem={({ item: j }) => {
-                const active = (jobSiteId || '') === j.id;
+                const active = !status && (jobSiteId || '') === j.id;
                 return (
                   <TouchableOpacity
                     style={[styles.sheetItem, active && styles.sheetItemActive]}
                     onPress={() => {
                       setJobSiteId(j.id || null);
+                      setStatus('');
                       setJobModal(false);
                     }}>
                     <Text style={styles.sheetItemText} numberOfLines={2}>
@@ -850,6 +1005,13 @@ const styles = StyleSheet.create({
   aktarBtnPrimary: { backgroundColor: '#E8F5E9', borderColor: '#43A047' },
   aktarBtnText: { fontSize: 14, fontWeight: '700', color: '#222' },
   aktarBtnTextPrimary: { color: '#1B5E20', fontWeight: '800' },
+  aktarBtnSub: { fontSize: 11.5, color: '#777', marginTop: 4, lineHeight: 16 },
+  aktarSection: { fontSize: 13, fontWeight: '800', color: '#111', marginTop: 2 },
+  lastUploadRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F6F5F2', borderRadius: 12, paddingVertical: 8, paddingLeft: 12, paddingRight: 8 },
+  lastUploadName: { fontSize: 12.5, fontWeight: '700', color: '#222' },
+  lastUploadSub: { fontSize: 11.5, color: '#777', marginTop: 2 },
+  lastUploadDelete: { borderRadius: 10, borderWidth: 1.5, borderColor: '#EF9A9A', backgroundColor: '#FFF5F5', paddingVertical: 7, paddingHorizontal: 10, minWidth: 104, alignItems: 'center' },
+  lastUploadDeleteText: { fontSize: 12.5, fontWeight: '800', color: '#C62828' },
   sourceBtn: { flex: 1, minWidth: 0, backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#CFCFCF', paddingVertical: 12, paddingHorizontal: 14, elevation: 1, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
   sourceBtnText: { fontSize: 16, fontWeight: '800', color: '#111' },
   actionsBtn: { backgroundColor: '#FFD500', borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14, minWidth: 104, alignItems: 'center', justifyContent: 'center', elevation: 2, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
@@ -866,6 +1028,11 @@ const styles = StyleSheet.create({
   balanceNegative: { color: '#C62828' },
   balanceSub: { fontSize: 12.5, color: '#777', fontWeight: '600', marginTop: 2 },
   balanceCta: { fontSize: 18, color: '#B38F00', fontWeight: '800', marginTop: 6 },
+  balanceRows: { marginTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E0E0E0', paddingTop: 6 },
+  balanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
+  balanceRowLabel: { fontSize: 13, color: '#666', fontWeight: '700' },
+  balanceRowValue: { fontSize: 13.5, color: '#111', fontWeight: '800' },
+  balanceSince: { fontSize: 11.5, color: '#888', fontWeight: '600', marginTop: 6 },
 
   kpiRow: { flexDirection: 'row', gap: 8 },
   kpiCard: { flex: 1, minWidth: 0, backgroundColor: '#fff', borderRadius: 14, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center', elevation: 2, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
@@ -894,11 +1061,6 @@ const styles = StyleSheet.create({
   rowWrapOpen: { borderColor: '#222' },
   rowWrapPressed: { backgroundColor: '#F6F5F2' },
   row: { flexDirection: 'row', alignItems: 'stretch', paddingRight: 10 },
-  statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
-  statusChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1.5, borderColor: '#222', backgroundColor: '#fff' },
-  statusChipActive: { backgroundColor: '#222' },
-  statusChipText: { fontSize: 12, fontWeight: '700', color: '#222' },
-  statusChipTextActive: { color: '#fff' },
   strip: { width: 6, borderTopLeftRadius: 9, borderBottomLeftRadius: 9 },
   cell: { paddingVertical: 9, paddingHorizontal: 4, justifyContent: 'center' },
   colPlate: { flex: 1.3 },
@@ -923,6 +1085,9 @@ const styles = StyleSheet.create({
   sheetSubtitle: { fontSize: 12.5, fontWeight: '600', color: '#666', paddingHorizontal: 18, paddingBottom: 8 },
   sheetItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
   sheetItemActive: { backgroundColor: '#FFF8D6' },
+  sheetItemPinned: { backgroundColor: '#FAFAFA' },
+  sheetItemTextWarn: { color: '#C62828' },
+  jobList: { flexGrow: 0, flexShrink: 1 },
   sheetItemText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#222' },
   sheetCheck: { fontSize: 16, fontWeight: '800', color: '#2E7D32', marginLeft: 8 },
 

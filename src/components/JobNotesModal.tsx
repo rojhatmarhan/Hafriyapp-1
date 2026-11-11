@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, Keyboard, FlatList, ActivityIndicator, InputAccessoryView, StatusBar, Animated, PanResponder, Dimensions, Share } from 'react-native';
-import RNBlobUtil from 'react-native-blob-util';
 import { API_BASE_URL } from '../services/api';
-import { excelIndir, excelDosyaAdi, excelTarihParcasi } from '../utils/excelDownload';
+import { excelIndir, excelDosyaAdi, excelTarihParcasi, excelAc } from '../utils/excelDownload';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getJobSiteNotes, createJobSiteNote, updateJobSiteNote, deleteJobSiteNote, JobSiteNoteItem } from '../services/jobSiteNewService';
 
@@ -435,19 +434,19 @@ export default function JobNotesModal({ visible, onClose, jobSiteId, token, jobN
       }
       const path = res.path();
       if (Platform.OS === 'ios') {
-        // Önizleme (openDocument) ana ekrandan sunulur; bu pencere (Modal) açıkken iOS onu sessizce yutar.
+        // Önizleme (previewDocument) ana ekrandan sunulur; bu pencere (Modal) açıkken iOS onu sessizce yutar.
         // Önce pencereyi kapat, kapanma animasyonu bitince önizlemeyi aç (JobDetails Excel'iyle aynı yöntem).
         // Kaydetme/gönderme önizlemenin paylaş düğmesinden yapılır.
         handleClose();
         await new Promise<void>(r => setTimeout(r, 450));
         try {
-          await RNBlobUtil.ios.openDocument(path);
+          await excelAc(path);
         } catch {
           // Önizleme açılamazsa Paylaş penceresi (Dosyalar'a kaydet / Excel'de aç / gönder)
           await Share.share({ url: path.startsWith('file://') ? path : `file://${path}` });
         }
       } else {
-        await RNBlobUtil.android.actionViewIntent(path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        await excelAc(path);
       }
     } catch {
       Alert.alert('Hata', 'Excel dosyası indirilemedi.');

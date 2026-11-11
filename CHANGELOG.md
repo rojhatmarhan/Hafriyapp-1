@@ -6,6 +6,36 @@ Biçim: `## [Mobil versionName (versionCode/build)] — tarih` → Eklendi / Dü
 
 ## [Yayınlanmadı]
 
+### Döküm: Cebeci bağlantısı, fiş silme, saha bazında Hesap, sade filtre · Excel önizleme
+#### Eklendi
+- **Hesap Bağlantısı ekranı iki kart**: "Otomatik Veri Çekme · Döküm sahası: İSTAÇ (kullanıcı adı / şifre)" (Aktif anahtarı + "Aktif (otomatik çekilir)" / "Pasif (çekilmez)" metni) ve "… CEBECİ (döküm maili)" (`CebeciConnectionCard`, opsiyonel `title`; Döküm → Yükle / İndir'de de durur). Profil kartı alt metni güncellendi (Web ile aynı düzen).
+- **Cebeci Döküm Bağlantısı kartı** (Döküm → Yükle / İndir, en üstte; `CebeciConnectionCard`, `api/Cebeci`): bağlı değilken Cebeci'de
+  kayıtlı mail + firma adı ile **Kaydet**; beklemede / kesme bekleniyor mesajları; aktifken "Son veri: …" (İstanbul saati),
+  **Veri talep et** (Bugün / Tek gün / Tarih aralığı; günde bir kez, `sonraki: 'yarin'` → düğme pasif) ve **Bağlantıyı kes** (onaylı).
+  Tarih seçimi kartın içinde (iOS'ta Modal içinde Modal yok). Talep adresi gösterilmez.
+- **Fişi Sil**: döküm satırının detayında (onay → `DELETE /DumpImport/records/{id}`; eşleşen sefer silinmez), liste ve özet yenilenir.
+- **Yüklemeyi sil**: telefondan dosya yükledikten sonra Yükle / İndir sekmesinde "Son yükleme" satırı; dosyanın bütün fişlerini siler
+  (`DELETE /DumpImport/{importId}`).
+- **Hesap sekmesi saha bazında**: `summary.balances` varsa Cebeci ve İSTAÇ ayrı kart (Yatırılan / Harcanan / Kalan, "… tarihinden itibaren");
+  karta dokununca para yatırma paneli o saha seçili açılır.
+- **Bildirim yönlendirme**: `dump_plate_mismatch`, `cebeci_status`, `cebeci_data` bildirimine dokununca (arka plan / kapalı uygulama)
+  İşlerim → Döküm açılır; uygulama açıkken gelen bildirimde "Görüntüle" düğmesi (`navigationRef`, `notificationRoute`).
+#### Değişti
+- Fişler: "Tümü / Eşleşen / Eşleşmeyen / Farklı plaka" düğmeleri kalktı; **"Eşleşmeyen" ve "Farklı plaka" "İşe Göre Filtrele" menüsünün
+  en üstünde sabit** (iş listesi altta kayar). Seçilince menü başlığında yazar; iş seçilince durum filtresi temizlenir.
+- Özet kartı "Aktif Fiş" → **"Toplam Sefer"**.
+- Otomatik veri çekme metinlerinde "İSTAÇ" geçmez: "🔄 Verileri Çek", "Otomatik Veri Çekme", Profil → **"Hesap Bağlantısı"**
+  ("Döküm sahası kullanıcı adı/şifresi", "Bağlantıyı Kaldır"). Saha adı olarak (kaynak seçici, indir düğmesi, kartlar) "İSTAÇ" duruyor.
+- **İzin**: `GET /Integrations/istac` `allowed === false` ya da 403 ise "Verileri Çek" düğmeleri ve Profil'deki Hesap Bağlantısı kartı
+  gösterilmez; sadece Excel yüklenir.
+- "Excel yükle" → **"Döküm dosyasını yükle"** + açıklama (otomatik eşleşme, tekrarlanan seferler bir kez sayılır); uyarı başlıkları da.
+- **iOS Excel önizleme**: indirilen Excel'ler `previewDocument` ile (QuickLook) hemen açılır; tek yardımcı `excelAc` (`utils/excelDownload.ts`):
+  JobDetails, MyJobs, MyJobs2, SupplierVehicles, DumpOverview, JobNotesModal. Android `actionViewIntent` aynı.
+#### Uyumluluk
+- Yeni alan/uçlar opsiyonel: `balances` yoksa eski tek Hesap kartı; `allowed` alanı yoksa düğmeler eskisi gibi görünür (uç yoksa/403 → gizli);
+  `api/Cebeci` 404/403 → kart gösterilmez; silme uçları yoksa "sunucu güncellemesi gerekiyor". Native değişiklik yok (build numarası artırılmadı).
+
+
 ### Döküm → Fişler: "İSTAÇ'tan Çek" düğmesi geri geldi
 - "İşe Göre Filtrele"nin hemen sağında yine "🔄 İSTAÇ'tan Çek" düğmesi var (sekmeli düzende sadece "Yükle / İndir" sekmesinde kalmıştı;
   orada da duruyor). Native değişiklik yok. iOS build 16 → 17.

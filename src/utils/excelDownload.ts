@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import RNBlobUtil from 'react-native-blob-util';
 import { todayDDMMYYYY } from './dateRange';
 
@@ -34,4 +35,16 @@ export const excelIndir = async (url: string, token: string, dosyaAdi: string) =
     // silinemezse indirme yine aynı yola yazar
   }
   return RNBlobUtil.config({ path }).fetch('GET', url, { Authorization: `Bearer ${token}` });
+};
+
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/**
+ * İndirilen Excel'i açar. iOS: QuickLook önizlemesi (previewDocument) hemen açılır, paylaş düğmesiyle kaydedilir/gönderilir
+ * (openDocument "Birlikte aç" menüsü çıkarıyordu). Android: dosyayı açabilen uygulamaya gönderir (actionViewIntent).
+ * Not: iOS'ta açık bir Modal varken önizleme gösterilmez; çağıran önce Modal'ı kapatmalı.
+ */
+export const excelAc = async (path: string): Promise<void> => {
+  if (Platform.OS === 'ios') await RNBlobUtil.ios.previewDocument(path);
+  else await RNBlobUtil.android.actionViewIntent(path, XLSX_MIME);
 };

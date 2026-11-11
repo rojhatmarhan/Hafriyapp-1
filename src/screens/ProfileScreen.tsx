@@ -8,6 +8,7 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { updateUserProfile, deactivateAccount, deleteAccount, getMyCompanies, getCompanyById } from '../services/userService';
 import { logout, setUser } from '../store/slices/authSlice';
+import { isAutoSyncAllowed } from '../services/dumpService';
 
 const ProfileScreen = () => {
   const user = useAppSelector(state => state.auth.user);
@@ -37,6 +38,8 @@ const ProfileScreen = () => {
   const companyName = user.companyName;
 
   const [companyId, setCompanyId] = useState<string | null>(null);
+  // Otomatik veri çekme izni (Integrations/istac allowed); false/bilinmiyorsa "Hesap Bağlantısı" kartı gösterilmez
+  const [autoSyncAllowed, setAutoSyncAllowed] = useState(false);
   const [companyPhone, setCompanyPhone] = useState('');
   const [companyAddress, setCompanyAddress] = useState('');
   const [companyTaxNumber, setCompanyTaxNumber] = useState('');
@@ -148,6 +151,20 @@ const ProfileScreen = () => {
       fetchBlockedUsers();
     }, [token, isDriver])
   );
+
+  useEffect(() => {
+    let alive = true;
+    if (isDriver || !companyId) {
+      setAutoSyncAllowed(false);
+      return;
+    }
+    isAutoSyncAllowed(companyId).then(ok => {
+      if (alive) setAutoSyncAllowed(ok);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [companyId, isDriver]);
 
   /* ---------------- ACTIONS ---------------- */
   const handlePickImage = async () => {
@@ -329,11 +346,11 @@ const ProfileScreen = () => {
         </View>
       )}
 
-      {/* 🔌 ENTEGRASYONLAR KARTI (SADECE SUPPLIER İÇİN) */}
-      {!isDriver && (
+      {/* 🔌 HESAP BAĞLANTISI KARTI (SADECE SUPPLIER; firmaya otomatik veri çekme izni varsa) */}
+      {!isDriver && autoSyncAllowed && (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>🔌 Entegrasyonlar</Text>
+            <Text style={styles.cardTitle}>🔌 Hesap Bağlantısı</Text>
             <TouchableOpacity
               style={styles.btnOrange}
               onPress={() => {
@@ -347,7 +364,7 @@ const ProfileScreen = () => {
             </TouchableOpacity>
           </View>
           <Text style={{ fontSize: 13.5, color: '#555', lineHeight: 20 }}>
-            İSTAÇ Hafriyat Online kullanıcı adı ve şifrenizi kaydederek döküm verilerinizi güvenlik kodu girmeden otomatik çekebilirsiniz.
+            İSTAÇ (kullanıcı adı / şifre) ve Cebeci (döküm maili) bağlantıları; fişleriniz her gün otomatik gelsin.
           </Text>
         </View>
       )}

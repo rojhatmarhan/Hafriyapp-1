@@ -5,11 +5,23 @@ import {
   getToken,
   onMessage,
   onTokenRefresh,
+  onNotificationOpenedApp,
+  getInitialNotification,
   requestPermission,
   registerDeviceForRemoteMessages,
   AuthorizationStatus,
 } from '@react-native-firebase/messaging';
 import { api } from './api';
+import { isDumpNotification } from '../utils/notificationRoute';
+
+// Navigasyon modülü bildirim anında yüklenir (servis navigasyondan bağımsız kalsın; testlerde navigasyon sahte olabilir)
+const openDumpScreen = () => {
+  try {
+    require('../navigation/navigationRef').openDumpScreen();
+  } catch {
+    // navigasyon hazır değil / yok
+  }
+};
 
 const SYNCED_TOKEN_KEY = 'push_device_token_synced';
 
@@ -17,6 +29,8 @@ const SYNCED_TOKEN_KEY = 'push_device_token_synced';
 // Dinleyiciler uygulama ömrü boyunca TEK kez kurulmalı; aksi halde her bildirim için birden fazla Alert açılır.
 let unsubscribeOnMessage: (() => void) | null = null;
 let unsubscribeTokenRefresh: (() => void) | null = null;
+let unsubscribeOpened: (() => void) | null = null;
+let initialNotificationChecked = false;
 
 // Aynı bildirimin (aynı messageId) kısa sürede ikinci kez gösterilmesini engeller
 const RECENT_MESSAGE_TTL_MS = 60 * 1000;
@@ -43,7 +57,22 @@ export const handleForegroundMessage = (remoteMessage: any) => {
   console.log('[NotificationService] Foreground message received:', remoteMessage?.messageId);
   if (!remoteMessage?.notification) return;
   if (isDuplicateMessage(remoteMessage.messageId)) return;
-  Alert.alert(remoteMessage.notification.title || 'HafriyApp', remoteMessage.notification.body || '');
+  const title = remoteMessage.notification.title || 'HafriyApp';
+  const body = remoteMessage.notification.body || '';
+  // Döküm / Cebeci bildirimi: "Görüntüle" ile Döküm ekranı açılır
+  if (isDumpNotification(remoteMessage.data)) {
+    Alert.alert(title, body, [
+      { text: 'Kapat', style: 'cancel' },
+      { text: 'Görüntüle', onPress: openDumpScreen },
+    ]);
+    return;
+  }
+  Alert.alert(title, body);
+};
+
+/** Bildirime dokunularak açıldıysa (arka plan / kapalı uygulama) ilgili ekrana git. */
+export const handleNotificationOpen = (remoteMessage: any) => {
+  if (isDumpNotification(remoteMessage?.data)) openDumpScreen();
 };
 
 /**
@@ -145,6 +174,17 @@ export const initPushNotifications = async () => {
         console.log('[NotificationService] FCM Token refreshed');
         await registerDeviceToken(newToken, true);
       });
+    }
+
+    // Bildirime dokunarak açılış: arka plandan (dinleyici) ve kapalıyken (ilk bildirim, bir kez)
+    if (!unsubscribeOpened && typeof onNotificationOpenedApp === 'function') {
+      unsubscribeOpened = onNotificationOpenedApp(messagingInstance, handleNotificationOpen);
+    }
+    if (!initialNotificationChecked && typeof getInitialNotification === 'function') {
+      initialNotificationChecked = true;
+      getInitialNotification(messagingInstance)
+        .then(msg => msg && handleNotificationOpen(msg))
+        .catch(() => {});
     }
 
     // Uygulama açıkken (Foreground) gelen bildirimleri yakala (dinleyici tek kez kurulur)

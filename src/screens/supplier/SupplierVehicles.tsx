@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { UPLOADS_HOST, API_BASE_URL } from '../../services/api';
-import { excelIndir, excelDosyaAdi, excelTarihParcasi } from '../../utils/excelDownload';
+import { excelIndir, excelDosyaAdi, excelTarihParcasi, excelAc } from '../../utils/excelDownload';
 import { View, Text, StyleSheet, SectionList, TouchableOpacity, Modal, ScrollView, TextInput, Keyboard, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Pressable, Alert, Image, RefreshControl, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppSelector } from '../../hooks';
@@ -16,7 +16,6 @@ import { getCompanyById } from '../../services/userService';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
 import { ensurePrinterReady, printImage, clearSavedPrinter, getReceiptCaptureLayout } from '../../services/printService';
-import RNBlobUtil from 'react-native-blob-util';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useFocusEffect } from '@react-navigation/native';
 import { useStickySearch } from '../../hooks/useStickySearch';
@@ -652,11 +651,7 @@ export default function SupplierVehicles() {
       const endDate = ddmmyyyyToYMD(rangeEnd);
       const res = await excelIndir(`${API_BASE_URL}/Haul/my/filtered/export?startDate=${startDate}&endDate=${endDate}`, token, excelDosyaAdi('Arac_Seferleri', excelTarihParcasi(rangeStart, rangeEnd)));
       const path = res.path();
-      if (Platform.OS === 'ios') {
-        await RNBlobUtil.ios.openDocument(path);
-      } else {
-        await RNBlobUtil.android.actionViewIntent(path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      }
+      await excelAc(path);
     } catch {
       Alert.alert('Hata', 'Excel dosyası indirilemedi.');
     } finally {

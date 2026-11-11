@@ -14,6 +14,7 @@ import {
   ActionSheetIOS,
 } from 'react-native';
 import RNBlobUtil from 'react-native-blob-util';
+import { excelAc } from '../../utils/excelDownload';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -212,14 +213,7 @@ export default function MyJobs() {
           Authorization: `Bearer ${token}`,
         });
       const path = res.path();
-      if (Platform.OS === 'ios') {
-        await RNBlobUtil.ios.openDocument(path);
-      } else {
-        await RNBlobUtil.android.actionViewIntent(
-          path,
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        );
-      }
+      await excelAc(path);
     } catch {
       Alert.alert('Hata', 'Excel dosyası indirilemedi.');
     } finally {
@@ -237,14 +231,7 @@ export default function MyJobs() {
           Authorization: `Bearer ${token}`,
         });
       const path = res.path();
-      if (Platform.OS === 'ios') {
-        await RNBlobUtil.ios.openDocument(path);
-      } else {
-        await RNBlobUtil.android.actionViewIntent(
-          path,
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        );
-      }
+      await excelAc(path);
     } catch {
       Alert.alert('Hata', 'Excel dosyası indirilemedi.');
     } finally {

@@ -5,7 +5,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useAppSelector, useAppDispatch } from '../../hooks';
 import { getJobHauls, getJobSite, deleteJobSite, forceDeleteJobSite, updateJobSite } from '../../services/jobSiteNewService';
-import RNBlobUtil from 'react-native-blob-util';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NewJobModal from '../../components/NewJobModal';
 import BluetoothPrinterModal from '../../components/BluetoothPrinterModal';
@@ -25,7 +24,7 @@ import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
 import { ensurePrinterReady, printImage, clearSavedPrinter, getReceiptCaptureLayout } from '../../services/printService';
 import { API_BASE_URL, BASE_HOST } from '../../services/api';
-import { excelIndir, excelDosyaAdi, excelTarihParcasi } from '../../utils/excelDownload';
+import { excelIndir, excelDosyaAdi, excelTarihParcasi, excelAc } from '../../utils/excelDownload';
 import HaulSearchBar from '../../components/HaulSearchBar';
 import { useDateRange, isInDateRange as isInRange, todayDDMMYYYY, ddmmyyyyToKey, ddmmyyyyToYMD, dateToDDMMYYYY } from '../../utils/dateRange';
 
@@ -1011,7 +1010,7 @@ export default function JobDetails() {
   const downloadExcel = async () => {
     if (!token || !job?.id) return;
     setDownloading(true);
-    // Modal kapatılmadan openDocument sunamaz; önce kapat, animasyon bitince aç
+    // Modal kapatılmadan önizleme (previewDocument) açılamaz; önce kapat, animasyon bitince aç
     setDeleteStep1Visible(false);
     try {
       let exportUrl = `${API_BASE_URL}/Haul/jobsite/${job.id}/export`;
@@ -1026,11 +1025,7 @@ export default function JobDetails() {
       const res = await excelIndir(exportUrl, token, excelDosyaAdi('Seferler', job.name, tarihParcasi));
       const path = res.path();
       await new Promise<void>(r => setTimeout(r, 350));
-      if (Platform.OS === 'ios') {
-        await RNBlobUtil.ios.openDocument(path);
-      } else {
-        await RNBlobUtil.android.actionViewIntent(path, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      }
+      await excelAc(path);
     } catch {
       Alert.alert('Hata', 'Excel dosyası indirilemedi.');
     } finally {

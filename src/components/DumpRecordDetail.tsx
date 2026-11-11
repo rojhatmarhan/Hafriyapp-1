@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { DumpRecord } from '../services/dumpService';
 import { formatKg, formatTL, formatDumpDateTime, dumpSourceLabel, DumpSource } from '../utils/dumpFormat';
 
 // ── Döküm listesi satırına tıklayınca açılan detay: Excel'in diğer sütunları + eşleşen sefer.
 // Alanlar yeni API'de gelir; eski API'de olmayan satırlar gösterilmez.
+// onDelete verilirse altta "Fişi Sil" düğmesi (onay ve API çağrısı çağıranda).
 
 const isNum = (n: unknown): n is number => typeof n === 'number' && isFinite(n);
 
@@ -16,7 +17,7 @@ const Item = ({ label, value, full }: { label: string; value?: string | null; fu
     </Text>
   ) : null;
 
-export default function DumpRecordDetail({ item }: { item: DumpRecord }) {
+export default function DumpRecordDetail({ item, onDelete, deleting = false }: { item: DumpRecord; onDelete?: (item: DumpRecord) => void; deleting?: boolean }) {
   const exit = item.cikisTarihi ? formatDumpDateTime(item.cikisTarihi) : null;
   const haulTime = item.haulTimeOfHaul ? formatDumpDateTime(item.haulTimeOfHaul) : null;
   const source = item.sourceSite || (item.sourceFormat === 'Kig' || item.sourceFormat === 'Istac' ? dumpSourceLabel(item.sourceFormat as DumpSource) : null);
@@ -52,6 +53,11 @@ export default function DumpRecordDetail({ item }: { item: DumpRecord }) {
       ) : (
         <Text style={styles.noHaul}>Bu etiket numarasıyla kesilmiş sefer bulunamadı.</Text>
       )}
+      {onDelete && (
+        <TouchableOpacity style={[styles.deleteBtn, deleting && styles.deleteBtnDisabled]} onPress={() => onDelete(item)} disabled={deleting} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Döküm fişini sil">
+          {deleting ? <ActivityIndicator size="small" color="#C62828" /> : <Text style={styles.deleteText}>🗑️ Fişi Sil</Text>}
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -69,4 +75,7 @@ const styles = StyleSheet.create({
   bold: { fontWeight: '800' },
   mismatch: { fontWeight: '800', color: '#C62828' },
   noHaul: { fontSize: 12, color: '#888', marginTop: 6 },
+  deleteBtn: { alignSelf: 'flex-end', marginTop: 8, borderRadius: 10, borderWidth: 1.5, borderColor: '#EF9A9A', backgroundColor: '#FFF5F5', paddingVertical: 7, paddingHorizontal: 12, minWidth: 96, alignItems: 'center' },
+  deleteBtnDisabled: { opacity: 0.6 },
+  deleteText: { fontSize: 13, fontWeight: '800', color: '#C62828' },
 });

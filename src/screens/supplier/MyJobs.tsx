@@ -1,6 +1,6 @@
-import React, { useMemo, useState, useCallback, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { API_BASE_URL } from '../../services/api';
-import { excelIndir, excelDosyaAdi, excelTarihParcasi } from '../../utils/excelDownload';
+import { excelIndir, excelDosyaAdi, excelTarihParcasi, excelAc } from '../../utils/excelDownload';
 import { formatJobDumpSummary } from '../../utils/dumpFormat';
 import {
   View,
@@ -15,8 +15,7 @@ import {
   Platform,
   ActionSheetIOS,
 } from 'react-native';
-import RNBlobUtil from 'react-native-blob-util';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import NewJobModal from '../../components/NewJobModal';
@@ -95,6 +94,13 @@ export default function MyJobs() {
   const [filterType, setFilterType] = useState<'ALL' | 'HAFRIYAT' | 'KUM'>('ALL');
   // Üst sekme: İşlerim (mevcut liste) | Döküm (döküm sahası verileri)
   const [tab, setTab] = useState<'jobs' | 'dump'>('jobs');
+  // Push bildirimi (döküm / Cebeci) Döküm sekmesini açar: params { tab: 'dump', openedAt }
+  const route = useRoute<any>();
+  const routeTab = route.params?.tab;
+  const routeOpenedAt = route.params?.openedAt;
+  useEffect(() => {
+    if (routeTab === 'dump') setTab('dump');
+  }, [routeTab, routeOpenedAt]);
   const insets = useSafeAreaInsets();
 
   const fetchJobs = async (isRefresh = false) => {
@@ -194,14 +200,7 @@ export default function MyJobs() {
     try {
       const res = await excelIndir(`${API_BASE_URL}/Haul/jobsite/${jobId}/export`, token, excelDosyaAdi('Seferler', jobName, excelTarihParcasi()));
       const path = res.path();
-      if (Platform.OS === 'ios') {
-        await RNBlobUtil.ios.openDocument(path);
-      } else {
-        await RNBlobUtil.android.actionViewIntent(
-          path,
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        );
-      }
+      await excelAc(path);
     } catch {
       Alert.alert('Hata', 'Excel dosyası indirilemedi.');
     } finally {
@@ -215,14 +214,7 @@ export default function MyJobs() {
     try {
       const res = await excelIndir(`${API_BASE_URL}/Haul/all-jobsites/export`, token, excelDosyaAdi('Tum_Seferler', excelTarihParcasi()));
       const path = res.path();
-      if (Platform.OS === 'ios') {
-        await RNBlobUtil.ios.openDocument(path);
-      } else {
-        await RNBlobUtil.android.actionViewIntent(
-          path,
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        );
-      }
+      await excelAc(path);
     } catch {
       Alert.alert('Hata', 'Excel dosyası indirilemedi.');
     } finally {

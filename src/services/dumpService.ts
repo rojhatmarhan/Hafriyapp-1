@@ -1,5 +1,5 @@
 import { api, API_BASE_URL } from './api';
-import { buildDumpQuery, DumpQueryParams, DumpSource, formatDumpDateTime } from '../utils/dumpFormat';
+import { buildDumpQuery, DumpQueryParams, DumpSource, formatDumpDateTime, DumpBalance, normalizeDumpBalances, CebeciStatus, normalizeCebeciStatus } from '../utils/dumpFormat';
 
 // ── Döküm sahası verileri (İşlerim → Döküm). Yeni API uçları: eski API'de 404 döner → ekran "sunucu güncellemesi gerekiyor" der.
 
@@ -19,6 +19,8 @@ export type DumpSummary = {
   totalDeposits: number;
   totalFeesAllTime: number;
   balance: number; // yatırılan − tüm döküm ücretleri; eksi olabilir. Tarih/arama/iş filtresinden bağımsız, sadece kaynağa bağlı.
+  /** Saha bazında kalan (Cebeci, İSTAÇ ayrı; yatırımdan sonra giren fişler düşer). Eski API'de null → tek kart. */
+  balances: DumpBalance[] | null;
 };
 
 export type DumpDeposit = {
@@ -100,6 +102,7 @@ export const getDumpSummary = async (params: DumpQueryParams): Promise<DumpSumma
     totalDeposits: num(d.totalDeposits),
     totalFeesAllTime: num(d.totalFeesAllTime),
     balance: num(d.balance),
+    balances: normalizeDumpBalances(d.balances ?? null),
   };
 };
 
@@ -167,6 +170,21 @@ export const deleteDeposit = async (id: string): Promise<boolean> => {
   return true;
 };
 
+// ── Döküm kaydı silme (eşleşen sefer silinmez). Eski API'de uç yok → 404 (isEndpointMissing).
+
+export const deleteDumpRecord = async (id: string): Promise<boolean> => {
+  const res = await api.delete(`/DumpImport/records/${encodeURIComponent(id)}`);
+  ensureSuccess(res.data);
+  return true;
+};
+
+/** Bir yüklemenin (Excel dosyası) bütün fişlerini siler. */
+export const deleteDumpImport = async (importId: string): Promise<{ importId: string; deletedRecords: number }> => {
+  const res = await api.delete(`/DumpImport/${encodeURIComponent(importId)}`);
+  const d: any = ensureSuccess(res.data) || {};
+  return { importId: String(d.importId ?? importId), deletedRecords: num(d.deletedRecords) };
+};
+
 // ── Excel yükleme (mobil dosya seçici ile; web'deki "Döküm Verileri" yüklemesiyle aynı uç)
 
 export type DumpImportResult = {
@@ -207,7 +225,8 @@ export const formatImportResult = (r: DumpImportResult): string => {
   return s;
 };
 
-// ── İSTAÇ Hafriyat Online entegrasyonu (Profil → Entegrasyonlar & Döküm → İSTAÇ'tan Çek)
+// ── Otomatik veri çekme (İSTAÇ Hafriyat Online hesabı; Profil → Hesap Bağlantısı & Döküm → Verileri Çek).
+// Kullanıcıya görünen metinlerde "İSTAÇ" geçmez (saha adı olarak liste/filtrede kalabilir).
 
 export type IstacIntegration = {
   companyId: string;
@@ -220,6 +239,8 @@ export type IstacIntegration = {
   lastSyncError?: string | null;
   lastSyncedUntil?: string | null;
   updatedDate?: string | null;
+  /** Firmaya otomatik veri çekme izni (yeni API). false → çekme bölümleri gizlenir; eski API'de null (alan yok). */
+  allowed: boolean | null;
 };
 
 export type IstacSiteSyncResult = {
@@ -257,11 +278,29 @@ const normalizeIstacIntegration = (d: any, fallbackCompanyId: string): IstacInte
   lastSyncError: d?.lastSyncError ?? null,
   lastSyncedUntil: d?.lastSyncedUntil ?? null,
   updatedDate: d?.updatedDate ?? null,
+  allowed: typeof d?.allowed === 'boolean' ? d.allowed : null,
 });
 
 export const getIstacIntegration = async (companyId: string): Promise<IstacIntegration> => {
   const res = await api.get(`/Integrations/istac?companyId=${encodeURIComponent(companyId)}`, { headers: { accept: '*/*' } });
   return normalizeIstacIntegration(ensureSuccess(res.data), companyId);
+};
+
+/** 403: izin yok (otomatik veri çekme kapalı ya da yönetme yetkisi yok). */
+export const isForbidden = (e: any): boolean => e?.response?.status === 403;
+
+/**
+ * Otomatik veri çekme bu firma için açık mı? allowed === false, 403 ya da uç yok (404) → false (düğmeler gizlenir).
+ * Ağ hatası gibi belirsiz durumlarda true (eski davranış: düğme görünür, basınca API mesajı gösterilir).
+ */
+export const isAutoSyncAllowed = async (companyId: string): Promise<boolean> => {
+  try {
+    const d = await getIstacIntegration(companyId);
+    return d.allowed !== false;
+  } catch (e: any) {
+    if (isForbidden(e) || isEndpointMissing(e)) return false;
+    return true;
+  }
 };
 
 export const saveIstacIntegration = async (body: { companyId: string; username: string; password?: string; isActive?: boolean }): Promise<IstacIntegration> => {
@@ -310,7 +349,63 @@ export const syncIstac = async (body: { companyId: string; startDate?: string; e
 export const formatIstacSyncSummary = (r: IstacSyncResult): string => {
   const start = formatDumpDateTime(r.startDate).date;
   const end = formatDumpDateTime(r.endDate).date;
-  let s = `İSTAÇ (${start} – ${end}): ${r.insertedRows} yeni kayıt, ${r.duplicateRows} zaten vardı, ${r.matchedRows} seferle eşleşti`;
+  let s = `Veriler (${start} – ${end}): ${r.insertedRows} yeni kayıt, ${r.duplicateRows} zaten vardı, ${r.matchedRows} seferle eşleşti`;
   s += r.plateMismatchRows > 0 ? `, ${r.plateMismatchRows} plaka farkı.` : '.';
   return s;
+};
+
+// ── Cebeci döküm bağlantısı (api/Cebeci). Eski API'de uç yok (404) → kart gösterilmez.
+
+export type CebeciConnection = {
+  companyId: string;
+  status: CebeciStatus;
+  statusName: string;
+  companyEmail: string | null;
+  companyName: string | null;
+  statusChangedAt: string | null;
+  lastDataAt: string | null;
+  lastFileName: string | null;
+  receivedFileCount: number;
+  lastManualRequestAt: string | null;
+  manualRequestUsedToday: boolean;
+  canRequestData: boolean;
+};
+
+export type CebeciRequestResult = { ok: boolean; mesaj: string; sonraki: string | null };
+
+const normalizeCebeci = (d: any, fallbackCompanyId: string): CebeciConnection => ({
+  companyId: String(d?.companyId ?? fallbackCompanyId),
+  status: normalizeCebeciStatus(d?.status),
+  statusName: String(d?.statusName ?? ''),
+  companyEmail: d?.companyEmail ?? null,
+  companyName: d?.companyName ?? null,
+  statusChangedAt: d?.statusChangedAt ?? null,
+  lastDataAt: d?.lastDataAt ?? null,
+  lastFileName: d?.lastFileName ?? null,
+  receivedFileCount: num(d?.receivedFileCount),
+  lastManualRequestAt: d?.lastManualRequestAt ?? null,
+  manualRequestUsedToday: d?.manualRequestUsedToday === true,
+  canRequestData: d?.canRequestData === true,
+});
+
+export const getCebeci = async (companyId: string): Promise<CebeciConnection> => {
+  const res = await api.get(`/Cebeci?companyId=${encodeURIComponent(companyId)}`, { headers: { accept: '*/*' } });
+  return normalizeCebeci(ensureSuccess(res.data), companyId);
+};
+
+export const connectCebeci = async (body: { companyId: string; companyEmail: string; companyName: string }): Promise<CebeciConnection> => {
+  const res = await api.post('/Cebeci/connect', body);
+  return normalizeCebeci(ensureSuccess(res.data), body.companyId);
+};
+
+export const disconnectCebeci = async (companyId: string): Promise<CebeciConnection> => {
+  const res = await api.post('/Cebeci/disconnect', { companyId });
+  return normalizeCebeci(ensureSuccess(res.data), companyId);
+};
+
+/** Günde bir elle veri talebi; tarihler YYYY-MM-DD (ikisi de boşsa bugün). */
+export const requestCebeciData = async (body: { companyId: string; startDate?: string; endDate?: string }): Promise<CebeciRequestResult> => {
+  const res = await api.post('/Cebeci/request-data', body, { timeout: 60000 });
+  const d: any = ensureSuccess(res.data) || {};
+  return { ok: d.ok !== false, mesaj: String(d.mesaj ?? ''), sonraki: d.sonraki ?? null };
 };

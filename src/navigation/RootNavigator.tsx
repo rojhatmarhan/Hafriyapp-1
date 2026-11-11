@@ -14,6 +14,7 @@ import { clearAuth } from '../utils/secureStore';
 import { checkAndPromptAppUpdate } from '../services/appUpdateService';
 
 import { initPushNotifications } from '../services/notificationService';
+import { navigationRef, flushPendingNavigation } from './navigationRef';
 
 export default function RootNavigator() {
   const dispatch = useDispatch();
@@ -75,7 +76,7 @@ export default function RootNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef} onReady={flushPendingNavigation}>
       <View style={{ flex: 1 }}>
         {isLoggedIn && user?.accessMode === 2 && user?.accessRestrictionNote && (
           <SafeAreaView style={{ backgroundColor: '#FFD500' }}>

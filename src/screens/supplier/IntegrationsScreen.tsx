@@ -3,12 +3,16 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Activi
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useAppSelector } from '../../hooks';
 import { getMyCompanies } from '../../services/userService';
-import { getIstacIntegration, saveIstacIntegration, deleteIstacIntegration, syncIstac, isEndpointMissing, IstacIntegration, IstacSyncResult, formatIstacSyncSummary } from '../../services/dumpService';
+import { getIstacIntegration, saveIstacIntegration, deleteIstacIntegration, syncIstac, isEndpointMissing, isForbidden, IstacIntegration, IstacSyncResult, formatIstacSyncSummary } from '../../services/dumpService';
 import { formatDumpDateTime, isValidDDMMYYYY } from '../../utils/dumpFormat';
 import { ddmmyyyyToYMD } from '../../utils/dateRange';
+import CebeciConnectionCard from '../../components/CebeciConnectionCard';
 
-// ── Profil → Entegrasyonlar: İSTAÇ Hafriyat Online kullanıcı adı/şifre kaydı ve tek tıkla "Şimdi Güncelle" (Tesseract OCR + 5 deneme).
-// Web'deki /Profile/Integrations sayfasıyla birebir aynı işlev ve kurallar.
+// ── Profil → Hesap Bağlantısı: döküm sahası (İSTAÇ Hafriyat Online) kullanıcı adı/şifre kaydı ve "Verileri Çek" (sunucuda OCR + 5 deneme).
+// Web'deki /Profile/Integrations sayfasıyla aynı işlev. Kullanıcıya görünen metinlerde "İSTAÇ" geçmez.
+// Firmaya otomatik veri çekme izni yoksa (allowed=false ya da 403) form gösterilmez, sadece bilgi mesajı.
+
+const NOT_ALLOWED_TEXT = 'Otomatik veri çekme firmanız için açık değil. Döküm dosyasını Döküm ekranından elle yükleyebilirsiniz.';
 
 export default function IntegrationsScreen() {
   const navigation = useNavigation<any>();
@@ -22,6 +26,8 @@ export default function IntegrationsScreen() {
   const [companyId, setCompanyId] = useState<string | null>(paramCompanyId || reduxCompanyId);
   const [loading, setLoading] = useState(true);
   const [notSupported, setNotSupported] = useState(false);
+  // İzin yok: API mesajı (errors[0]) ya da varsayılan metin
+  const [notAllowedText, setNotAllowedText] = useState<string | null>(null);
   const [istac, setIstac] = useState<IstacIntegration | null>(null);
 
   // Form alanları
@@ -57,6 +63,7 @@ export default function IntegrationsScreen() {
       }
       const data = await getIstacIntegration(cid);
       setNotSupported(false);
+      setNotAllowedText(data.allowed === false ? NOT_ALLOWED_TEXT : null);
       setIstac(data);
       setUsername(data.username || '');
       setPassword('');
@@ -64,8 +71,10 @@ export default function IntegrationsScreen() {
     } catch (e: any) {
       if (isEndpointMissing(e)) {
         setNotSupported(true);
+      } else if (isForbidden(e)) {
+        setNotAllowedText(errorMessage(e, NOT_ALLOWED_TEXT));
       } else {
-        Alert.alert('Hata', errorMessage(e, 'Entegrasyon bilgisi alınamadı.'));
+        Alert.alert('Hata', errorMessage(e, 'Bağlantı bilgisi alınamadı.'));
       }
     } finally {
       setLoading(false);
@@ -88,11 +97,11 @@ export default function IntegrationsScreen() {
     if (!companyId || saving) return;
     const trimmedUser = username.trim();
     if (!trimmedUser) {
-      Alert.alert('Eksik Bilgi', 'İSTAÇ kullanıcı adını giriniz.');
+      Alert.alert('Eksik Bilgi', 'Döküm sahası kullanıcı adını giriniz.');
       return;
     }
     if (!istac?.hasPassword && !password) {
-      Alert.alert('Eksik Bilgi', 'İSTAÇ şifresini giriniz.');
+      Alert.alert('Eksik Bilgi', 'Döküm sahası şifresini giriniz.');
       return;
     }
     Keyboard.dismiss();
@@ -108,9 +117,10 @@ export default function IntegrationsScreen() {
       setUsername(updated.username || '');
       setPassword('');
       setIsActive(updated.isActive);
-      Alert.alert('Başarılı', 'İSTAÇ bilgileri kaydedildi.');
+      Alert.alert('Başarılı', 'Hesap bilgileri kaydedildi.');
     } catch (e: any) {
-      Alert.alert('Hata', errorMessage(e, 'İSTAÇ bilgileri kaydedilemedi.'));
+      if (isForbidden(e)) setNotAllowedText(errorMessage(e, NOT_ALLOWED_TEXT));
+      Alert.alert('Hata', errorMessage(e, 'Hesap bilgileri kaydedilemedi.'));
     } finally {
       setSaving(false);
     }
@@ -118,10 +128,10 @@ export default function IntegrationsScreen() {
 
   const handleDelete = () => {
     if (!companyId || deleting) return;
-    Alert.alert('Bağlantıyı Sil', 'İSTAÇ bağlantısı silinsin mi? Daha önce çekilen döküm verileri silinmez.', [
+    Alert.alert('Bağlantıyı Kaldır', 'Hesap bağlantısı kaldırılsın mı? Daha önce çekilen döküm verileri silinmez.', [
       { text: 'Vazgeç', style: 'cancel' },
       {
-        text: 'Sil',
+        text: 'Kaldır',
         style: 'destructive',
         onPress: async () => {
           setDeleting(true);
@@ -133,14 +143,15 @@ export default function IntegrationsScreen() {
               username: '',
               hasPassword: false,
               isActive: true,
+              allowed: istac?.allowed ?? null,
             });
             setUsername('');
             setPassword('');
             setIsActive(true);
             setSyncResult(null);
-            Alert.alert('Başarılı', 'İSTAÇ entegrasyonu silindi. Daha önce çekilen döküm verileri duruyor.');
+            Alert.alert('Başarılı', 'Hesap bağlantısı kaldırıldı. Daha önce çekilen döküm verileri duruyor.');
           } catch (e: any) {
-            Alert.alert('Hata', errorMessage(e, 'İSTAÇ entegrasyonu silinemedi.'));
+            Alert.alert('Hata', errorMessage(e, 'Hesap bağlantısı kaldırılamadı.'));
           } finally {
             setDeleting(false);
           }
@@ -173,13 +184,14 @@ export default function IntegrationsScreen() {
       setSyncResult(result);
       const refreshed = await getIstacIntegration(companyId);
       setIstac(refreshed);
-      Alert.alert(result.hasErrors ? '⚠️ Tamamlandı' : '✅ İSTAÇ Güncellendi', formatIstacSyncSummary(result));
+      Alert.alert(result.hasErrors ? '⚠️ Tamamlandı' : '✅ Veriler Güncellendi', formatIstacSyncSummary(result));
     } catch (e: any) {
       try {
         const refreshed = await getIstacIntegration(companyId);
         setIstac(refreshed);
       } catch {}
-      Alert.alert('Bağlantı Hatası', errorMessage(e, 'İSTAÇ sistemine 5 denemede bağlanılamadı. Lütfen kullanıcı adı ve şifrenizi kontrol edip tekrar deneyiniz.'));
+      if (isForbidden(e)) setNotAllowedText(errorMessage(e, NOT_ALLOWED_TEXT));
+      Alert.alert('Bağlantı Hatası', errorMessage(e, 'Döküm sahası sistemine 5 denemede bağlanılamadı. Lütfen kullanıcı adı ve şifrenizi kontrol edip tekrar deneyiniz.'));
     } finally {
       setSyncing(false);
     }
@@ -231,8 +243,8 @@ export default function IntegrationsScreen() {
             <Text style={styles.btnBackText}>← Geri</Text>
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={styles.topBarTitle}>🔌 Entegrasyonlar</Text>
-            <Text style={styles.topBarSubtitle}>Dış sistem döküm bağlantıları</Text>
+            <Text style={styles.topBarTitle}>🔌 Hesap Bağlantısı</Text>
+            <Text style={styles.topBarSubtitle}>Döküm verilerini otomatik çekme</Text>
           </View>
         </View>
       </View>
@@ -244,22 +256,26 @@ export default function IntegrationsScreen() {
         </View>
       ) : !companyId ? (
         <View style={styles.center}>
-          <Text style={styles.emptyText}>Entegrasyonlar için bir firmaya bağlı olmalısınız.</Text>
+          <Text style={styles.emptyText}>Hesap bağlantısı için bir firmaya bağlı olmalısınız.</Text>
         </View>
       ) : notSupported ? (
         <View style={styles.center}>
           <Text style={styles.emptyText}>Bu özellik için sunucu güncellemesi gerekiyor.</Text>
         </View>
+      ) : notAllowedText ? (
+        <View style={styles.center}>
+          <Text style={styles.emptyText}>{notAllowedText}</Text>
+        </View>
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>♻️ İSTAÇ Hafriyat Online</Text>
+              <Text style={styles.cardTitle}>Otomatik Veri Çekme · Döküm sahası: İSTAÇ (kullanıcı adı / şifre)</Text>
               {renderStatusBadge()}
             </View>
 
             <Text style={styles.descText}>
-              İSTAÇ kullanıcı adı ve şifrenizi bir kez kaydedin. "Şimdi Güncelle"ye bastığınızda güvenlik kodu otomatik çözülerek (en fazla 5 deneme) tüm hafriyat sahalarınızın günlük raporu çekilir ve Döküm ekranına eklenir. Şifreniz şifrelenerek saklanır ve hiçbir ekranda gösterilmez.
+              Döküm sahası kullanıcı adı ve şifrenizi bir kez kaydedin. "Verileri Çek"e bastığınızda güvenlik kodu otomatik çözülerek (en fazla 5 deneme) tüm hafriyat sahalarınızın günlük raporu çekilir ve Döküm ekranına eklenir. Şifreniz şifrelenerek saklanır ve hiçbir ekranda gösterilmez.
             </Text>
 
             {istac?.configured && (
@@ -290,7 +306,7 @@ export default function IntegrationsScreen() {
                       {!!s.error && <Text style={styles.siteError}>{s.error}</Text>}
                     </View>
                     <View style={styles.siteStats}>
-                      <Text style={styles.siteStatText}>İSTAÇ: {s.reportedRows}</Text>
+                      <Text style={styles.siteStatText}>Sahada: {s.reportedRows}</Text>
                       <Text style={styles.siteStatBold}>+{s.insertedRows} yeni</Text>
                       <Text style={styles.siteStatText}>{s.matchedRows} eşleşen</Text>
                     </View>
@@ -302,7 +318,7 @@ export default function IntegrationsScreen() {
             {/* Şimdi Güncelle bölümü (kayıtlı ve aktifse) */}
             {istac?.configured && istac.isActive && (
               <View style={styles.syncSection}>
-                <Text style={styles.sectionTitle}>İSTAÇ'tan Veri Çek</Text>
+                <Text style={styles.sectionTitle}>Verileri Çek</Text>
                 <View style={styles.dateRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.label}>Başlangıç (opsiyonel)</Text>
@@ -336,10 +352,10 @@ export default function IntegrationsScreen() {
                   {syncing ? (
                     <View style={styles.btnLoadingRow}>
                       <ActivityIndicator size="small" color="#111" />
-                      <Text style={styles.syncBtnText}>İSTAÇ'tan çekiliyor...</Text>
+                      <Text style={styles.syncBtnText}>Veriler çekiliyor...</Text>
                     </View>
                   ) : (
-                    <Text style={styles.syncBtnText}>🔄 Şimdi Güncelle</Text>
+                    <Text style={styles.syncBtnText}>🔄 Verileri Çek</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -348,10 +364,10 @@ export default function IntegrationsScreen() {
             <View style={styles.divider} />
 
             {/* Kullanıcı Adı / Şifre Formu */}
-            <Text style={styles.sectionTitle}>{istac?.configured ? 'Giriş Bilgileri' : 'İSTAÇ Hesabını Bağla'}</Text>
+            <Text style={styles.sectionTitle}>{istac?.configured ? 'Giriş Bilgileri' : 'Hesap Bağlantısı'}</Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>İSTAÇ Kullanıcı Adı</Text>
+              <Text style={styles.label}>Döküm sahası kullanıcı adı</Text>
               <TextInput
                 style={styles.input}
                 value={username}
@@ -365,7 +381,7 @@ export default function IntegrationsScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>İSTAÇ Şifresi</Text>
+              <Text style={styles.label}>Döküm sahası şifresi</Text>
               <View style={styles.passwordWrap}>
                 <TextInput
                   style={[styles.input, { flex: 1, marginBottom: 0 }]}
@@ -385,11 +401,17 @@ export default function IntegrationsScreen() {
             </View>
 
             <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Entegrasyon Aktif</Text>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.switchLabel}>Aktif</Text>
+                <Text style={[styles.switchState, isActive ? styles.switchStateOn : styles.switchStateOff]}>
+                  {isActive ? 'Aktif (otomatik çekilir)' : 'Pasif (çekilmez)'}
+                </Text>
+              </View>
               <Switch
                 value={isActive}
                 onValueChange={setIsActive}
-                trackColor={{ false: '#CCC', true: '#FFD500' }}
+                trackColor={{ false: '#9E9E9E', true: '#FFD500' }}
+                ios_backgroundColor="#9E9E9E"
                 thumbColor={isActive ? '#111' : '#F4F3F4'}
               />
             </View>
@@ -400,9 +422,14 @@ export default function IntegrationsScreen() {
 
             {istac?.configured && (
               <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete} disabled={deleting} activeOpacity={0.8}>
-                {deleting ? <ActivityIndicator size="small" color="#C62828" /> : <Text style={styles.deleteBtnText}>🗑️ Bağlantıyı Sil</Text>}
+                {deleting ? <ActivityIndicator size="small" color="#C62828" /> : <Text style={styles.deleteBtnText}>🗑️ Bağlantıyı Kaldır</Text>}
               </TouchableOpacity>
             )}
+          </View>
+
+          {/* Cebeci (döküm maili) kartı: izin yoksa bu ekran zaten bilgi mesajı gösterir */}
+          <View style={{ marginTop: 16 }}>
+            <CebeciConnectionCard companyId={companyId} title="Otomatik Veri Çekme · Döküm sahası: CEBECİ (döküm maili)" />
           </View>
         </ScrollView>
       )}
@@ -544,6 +571,9 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   switchLabel: { fontSize: 14, fontWeight: '700', color: '#222' },
+  switchState: { fontSize: 12.5, fontWeight: '700', marginTop: 2 },
+  switchStateOn: { color: '#2E7D32' },
+  switchStateOff: { color: '#C62828' },
   saveBtn: {
     backgroundColor: '#111',
     borderRadius: 12,
